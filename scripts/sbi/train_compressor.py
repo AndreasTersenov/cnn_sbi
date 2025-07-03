@@ -35,7 +35,7 @@ import tf_dataset
 parser = argparse.ArgumentParser()
 parser.add_argument("--total_steps", type=int, default=150_000)
 parser.add_argument(
-    "--map_kind", type=str, default="gaussian"
+    "--map_kind", type=str, default="nbody"
 )  # nbody_with_baryon_ia or gaussian or nbody
 parser.add_argument("--loss", type=str, default="mse")
 
@@ -54,7 +54,7 @@ os.makedirs(f"./fig/{args.loss}/{args.map_kind}", exist_ok=True)
 print("######## CONFIG ########")
 
 sigma_e = 0.26
-galaxy_density = 10 / 4
+galaxy_density = 30 / 4
 field_size = size = 10
 field_npix = xsize = 80
 nside = 512
@@ -351,13 +351,13 @@ for batch in tqdm(range(1, args.total_steps + 1)):
     if batch % 2000 == 0:
         # save params
         with open(
-            f"./save_params/{args.loss}/{args.map_kind}/params_nd_compressor_batch{batch}.pkl",
+            f"./save_params/{args.loss}/{args.map_kind}/gal_density_{int(galaxy_density*4)}/params_nd_compressor_batch{batch}.pkl",
             "wb",
         ) as fp:
             pickle.dump(parameters_compressor, fp)
 
         with open(
-            f"./save_params/{args.loss}/{args.map_kind}/opt_state_resnet_batch{batch}.pkl",
+            f"./save_params/{args.loss}/{args.map_kind}/gal_density_{int(galaxy_density*4)}/opt_state_resnet_batch{batch}.pkl",
             "wb",
         ) as fp:
             pickle.dump(opt_state_resnet, fp)
@@ -367,6 +367,7 @@ for batch in tqdm(range(1, args.total_steps + 1)):
         plt.plot(store_loss[1000:])
         plt.title("Batch Loss")
         plt.savefig(f"./fig/{args.loss}/{args.map_kind}/loss_compressor")
+        plt.close()
 
         ex_test = next(ds_test)
 
@@ -382,16 +383,17 @@ for batch in tqdm(range(1, args.total_steps + 1)):
         loss_test.append(b_loss_test)
 
         jnp.save(
-            f"./save_params/{args.loss}/{args.map_kind}/loss_train.npy", loss_train
+            f"./save_params/{args.loss}/{args.map_kind}/gal_density_{int(galaxy_density*4)}/loss_train.npy", loss_train
         )
-        jnp.save(f"./save_params/{args.loss}/{args.map_kind}/loss_test.npy", loss_test)
+        jnp.save(f"./save_params/{args.loss}/{args.map_kind}/gal_density_{int(galaxy_density*4)}/loss_test.npy", loss_test)
 
         plt.figure()
         plt.plot(loss_train, label="train loss")
         plt.plot(loss_test, label="test loss")
         plt.legend()
         plt.title("Batch Loss")
-        plt.savefig(f"./fig/{args.loss}/{args.map_kind}/loss_compressor_train_test")
+        plt.savefig(f"./fig/{args.loss}/{args.map_kind}/gal_density_{int(galaxy_density*4)}/loss_compressor_train_test")
+        plt.close()
 
         # save contour plot
         y, _ = compressor_eval.apply(
@@ -424,7 +426,7 @@ for batch in tqdm(range(1, args.total_steps + 1)):
         c.add_chain(chain)
 
         fig = c.plotter.plot(figsize=1.2)
-
         plt.savefig(
-            f"./fig/{args.loss}/{args.map_kind}/contour_plot_compressor_batch{batch}"
+            f"./fig/{args.loss}/{args.map_kind}/gal_density_{int(galaxy_density*4)}/contour_plot_compressor_batch{batch}"
         )
+        plt.close()
