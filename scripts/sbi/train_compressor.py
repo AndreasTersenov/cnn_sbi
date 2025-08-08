@@ -43,12 +43,12 @@ from tensorflow_probability.substrates import jax as tfp
 tfb = tfp.bijectors
 tfd = tfp.distributions
 
-import tf_dataset
+import tf_dataset_nbody
 
 sigma_e = 0.26
 galaxy_density = 30 / 4
-field_size = size = 10
-field_npix = xsize = 80
+field_size = size = 20
+field_npix = xsize = 160
 nside = 512
 reso = size * 60 / xsize
 nbins = 1
@@ -331,7 +331,8 @@ model_compressor = TrainModel(
 
 
 # train dataset
-ds_tr = tfds.load("NbodyCosmogridDataset/grid", split="train")
+# ds_tr = tfds.load("NbodyCosmogridDatasetLarge/grid", split="train")
+ds_tr = tfds.load("NbodyCosmogridDatasetLargeFOV/grid_20deg_160px", split="train")
 
 ds_tr = ds_tr.repeat()
 ds_tr = ds_tr.shuffle(800)
@@ -342,7 +343,7 @@ ds_tr = ds_tr.prefetch(tf.data.experimental.AUTOTUNE)
 ds_train = iter(tfds.as_numpy(ds_tr))
 
 # test dataset
-ds_te = tfds.load("NbodyCosmogridDataset/grid", split="test")
+ds_te = tfds.load("NbodyCosmogridDatasetLargeFOV/grid_20deg_160px", split="test")
 
 ds_te = ds_te.repeat()
 ds_te = ds_te.shuffle(200)
