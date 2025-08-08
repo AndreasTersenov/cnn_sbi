@@ -2,6 +2,9 @@ import argparse
 import pickle
 from functools import partial
 
+import os
+os.environ['CUDA_VISIBLE_DEVICES'] = "0"
+
 import h5py
 import haiku as hk
 import healpy as hp
@@ -20,7 +23,18 @@ from sbi_lens.normflow.models import AffineCoupling, ConditionalRealNVP
 from sbi_lens.normflow.train_model import TrainModel
 from tqdm import tqdm
 
-import os
+import getdist.plots as gplot
+from getdist import MCSamples
+
+# Set memory growth for GPU
+gpus = tf.config.experimental.list_physical_devices('GPU')
+if gpus:
+    try:
+        # Restrict TensorFlow to only use the first GPU
+        tf.config.set_visible_devices(gpus[0], 'GPU')
+        tf.config.experimental.set_memory_growth(gpus[0], True)
+    except RuntimeError as e:
+        print(e)
 
 print(xla_bridge.get_backend().platform)
 
@@ -31,28 +45,6 @@ tfd = tfp.distributions
 
 import tf_dataset
 
-# script arguments
-parser = argparse.ArgumentParser()
-parser.add_argument("--total_steps", type=int, default=150_000)
-parser.add_argument(
-    "--map_kind", type=str, default="nbody"
-)  # nbody_with_baryon_ia or gaussian or nbody
-parser.add_argument("--loss", type=str, default="mse")
-
-args = parser.parse_args()
-
-if args.loss == "mse":
-    loss_name = "train_compressor_mse"
-elif args.loss == "vmim":
-    loss_name = "train_compressor_vmim"
-    
-
-# Ensure the save_params and fig directories exist
-os.makedirs(f"./save_params/{args.loss}/{args.map_kind}", exist_ok=True)
-os.makedirs(f"./fig/{args.loss}/{args.map_kind}", exist_ok=True)
-
-print("######## CONFIG ########")
-
 sigma_e = 0.26
 galaxy_density = 30 / 4
 field_size = size = 10
@@ -61,6 +53,34 @@ nside = 512
 reso = size * 60 / xsize
 nbins = 1
 dim = 6
+
+# script arguments
+parser = argparse.ArgumentParser()
+parser.add_argument("--total_steps", type=int, default=150_000)
+parser.add_argument(
+    "--map_kind", type=str, default="nbody"
+)  # nbody_with_baryon_ia or gaussian or nbody
+parser.add_argument("--loss", type=str, default="mse")
+parser.add_argument("--bin", type=int, default=4, help="Specify the lensing bin number")
+parser.add_argument("--sigma_e", type=float, default=0.26, help="Noise level sigma_e")
+
+args = parser.parse_args()
+# override sigma_e from command line
+sigma_e = args.sigma_e
+
+bin_number = args.bin
+
+if args.loss == "mse":
+    loss_name = "train_compressor_mse"
+elif args.loss == "vmim":
+    loss_name = "train_compressor_vmim"
+    
+
+# Ensure the save_params and fig directories exist
+os.makedirs(f"./save_params/{args.loss}/{args.map_kind}/sigma_{sigma_e}/gal_density_{int(galaxy_density*4)}/bin_{bin_number}", exist_ok=True)
+os.makedirs(f"./fig/{args.loss}/{args.map_kind}/sigma_{sigma_e}/gal_density_{int(galaxy_density*4)}/bin_{bin_number}", exist_ok=True)
+
+print("######## CONFIG ########")
 
 
 print("######## OBSERVED DATA ########")
@@ -81,9 +101,7 @@ truth = list(cosmo_parameters[0])
 print('TRUTH=', truth)
 path = "/home/tersenov/CosmoGridV1/stage3_forecast/fiducial/cosmo_fiducial/perm_0000/projected_probes_maps_nobaryons512.h5"
 m_data = h5py.File(path, "r")
-m_data = np.array(m_data["kg"][f"stage3_lensing{4}"]) + np.array(
-    m_data["ia"][f"stage3_lensing{4}"]
-)
+m_data = np.array(m_data["kg"][f"stage3_lensing{bin_number}"]) #+ np.array(m_data["ia"][f"stage3_lensing{bin_number}"])
 proj = hp.projector.GnomonicProj(rot=[0, 0, 0], xsize=xsize, ysize=xsize, reso=reso)
 m_data = proj.projmap(m_data, vec2pix_func=partial(hp.vec2pix, nside))
 m_data = dist.Independent(
@@ -94,14 +112,21 @@ m_data = dist.Independent(
     2,
 ).sample(jax.random.PRNGKey(0), (1,))
 
+# params_name = [
+#     r"$\Omega_m$",
+#     r"$\sigma_8$",
+#     r"$w_0$",
+#     r"$h_0$",
+#     r"$n_s$",
+#     r"$\Omega_b$",
+# ]
 params_name = [
-    r"$\Omega_m$",
-    r"$\sigma_8$",
-    r"$w_0$",
-    r"$h_0$",
-    r"$n_s$",
-    r"$\Omega_b$",
-]
+    r'\Omega_m', 
+    r'\sigma_8', 
+    r'w_0', 
+    r'h_0', 
+    r'n_s', 
+    r'\Omega_b']
 
 print("######## DATA AUGMENTATION ########")
 tf.random.set_seed(1)
@@ -351,13 +376,13 @@ for batch in tqdm(range(1, args.total_steps + 1)):
     if batch % 2000 == 0:
         # save params
         with open(
-            f"./save_params/{args.loss}/{args.map_kind}/gal_density_{int(galaxy_density*4)}/params_nd_compressor_batch{batch}.pkl",
+            f"./save_params/{args.loss}/{args.map_kind}/sigma_{sigma_e}/gal_density_{int(galaxy_density*4)}/bin_{bin_number}/params_nd_compressor_batch{batch}.pkl",
             "wb",
         ) as fp:
             pickle.dump(parameters_compressor, fp)
 
         with open(
-            f"./save_params/{args.loss}/{args.map_kind}/gal_density_{int(galaxy_density*4)}/opt_state_resnet_batch{batch}.pkl",
+            f"./save_params/{args.loss}/{args.map_kind}/sigma_{sigma_e}/gal_density_{int(galaxy_density*4)}/bin_{bin_number}/opt_state_resnet_batch{batch}.pkl",
             "wb",
         ) as fp:
             pickle.dump(opt_state_resnet, fp)
@@ -366,7 +391,7 @@ for batch in tqdm(range(1, args.total_steps + 1)):
         plt.figure()
         plt.plot(store_loss[1000:])
         plt.title("Batch Loss")
-        plt.savefig(f"./fig/{args.loss}/{args.map_kind}/loss_compressor")
+        plt.savefig(f"./fig/{args.loss}/{args.map_kind}/sigma_{sigma_e}/gal_density_{int(galaxy_density*4)}/bin_{bin_number}/loss_compressor")
         plt.close()
 
         ex_test = next(ds_test)
@@ -383,16 +408,16 @@ for batch in tqdm(range(1, args.total_steps + 1)):
         loss_test.append(b_loss_test)
 
         jnp.save(
-            f"./save_params/{args.loss}/{args.map_kind}/gal_density_{int(galaxy_density*4)}/loss_train.npy", loss_train
+            f"./save_params/{args.loss}/{args.map_kind}/sigma_{sigma_e}/gal_density_{int(galaxy_density*4)}/bin_{bin_number}/loss_train.npy", loss_train
         )
-        jnp.save(f"./save_params/{args.loss}/{args.map_kind}/gal_density_{int(galaxy_density*4)}/loss_test.npy", loss_test)
+        jnp.save(f"./save_params/{args.loss}/{args.map_kind}/sigma_{sigma_e}/gal_density_{int(galaxy_density*4)}/bin_{bin_number}/loss_test.npy", loss_test)
 
         plt.figure()
         plt.plot(loss_train, label="train loss")
         plt.plot(loss_test, label="test loss")
         plt.legend()
         plt.title("Batch Loss")
-        plt.savefig(f"./fig/{args.loss}/{args.map_kind}/gal_density_{int(galaxy_density*4)}/loss_compressor_train_test")
+        plt.savefig(f"./fig/{args.loss}/{args.map_kind}/sigma_{sigma_e}/gal_density_{int(galaxy_density*4)}/bin_{bin_number}/loss_compressor_train_test")
         plt.close()
 
         # save contour plot
@@ -415,18 +440,68 @@ for batch in tqdm(range(1, args.total_steps + 1)):
         sample_nd = jnp.delete(sample_nd, idx, axis=0)
 
 
-        from chainconsumer import Chain, ChainConsumer, Truth
-        plt.figure()
-        c = ChainConsumer()
-        # c.add_chain(sample_nd, parameters=params_name, name="SBI")
-        
-        import pandas as pd
-        df = pd.DataFrame(sample_nd, columns=params_name)  # Convert to DataFrame
-        chain = Chain(samples=df, name="SBI")  # Pass the DataFrame instead of NumPy array
-        c.add_chain(chain)
+        # from chainconsumer import Chain, ChainConsumer, Truth
+        # plt.figure()
+        # c = ChainConsumer()
+        # # c.add_chain(sample_nd, parameters=params_name, name="SBI")
 
-        fig = c.plotter.plot(figsize=1.2)
+        # # c.add_marker(location={
+        # #     "Om": 0.26,
+        # #     "sigma_8": 0.84,
+        # #     "w_0": -1.0,
+        # #     "h_0": 0.6736,
+        # #     "n_s": 0.9649,
+        # #     "Omega_b": 0.0493,
+        # # }, label="Truth", color="black", linewidth=1.5)
+
+        # c.add_truth(
+        #     Truth(location={
+        #     "Om": 0.26,
+        #     "sigma_8": 0.84,
+        #     "w_0": -1.0,
+        #     "h_0": 0.6736,
+        #     "n_s": 0.9649,
+        #     "Omega_b": 0.0493,
+        # }
+        #     )
+        # )
+        
+        # import pandas as pd
+        # df = pd.DataFrame(sample_nd, columns=params_name)  # Convert to DataFrame
+        # chain = Chain(samples=df, name="SBI")  # Pass the DataFrame instead of NumPy array
+        # c.add_chain(chain)
+
+        # fig = c.plotter.plot(figsize=1.2)
+
+ 
+        truth_arr = np.array(truth)
+        theta = dict(zip(params_name, truth_arr))
+
+        plt.figure()
+        param_limits = {}
+        for i, name in enumerate(params_name):
+            s_min, s_max = sample_nd[:, i].min(), sample_nd[:, i].max()
+            truth_val = truth[i]
+
+            lower = min(s_min, truth_val) - 0.05 * abs(truth_val)
+            upper = max(s_max, truth_val) + 0.05 * abs(truth_val)
+            
+            param_limits[name] = (lower, upper)
+
+        # Convert truth values to dictionary
+        truth_arr = np.array(truth)
+        theta_dict = dict(zip(params_name, truth_arr))
+
+        # Create MCSamples object for GetDist
+        samples = MCSamples(samples=sample_nd, names=params_name, labels=params_name)
+
+        # Create plotter
+        g = gplot.get_subplot_plotter(subplot_size=1.5)
+        g.triangle_plot(samples, filled=True, markers=truth_arr, marker_args={"color": "red", "lw": 1.2}, param_limits=param_limits)
+
+
+
         plt.savefig(
-            f"./fig/{args.loss}/{args.map_kind}/gal_density_{int(galaxy_density*4)}/contour_plot_compressor_batch{batch}"
+            f"./fig/{args.loss}/{args.map_kind}/sigma_{sigma_e}/gal_density_{int(galaxy_density*4)}/bin_{bin_number}/contour_plot_compressor_batch{batch}"
         )
         plt.close()
