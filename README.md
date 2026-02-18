@@ -30,7 +30,7 @@ The project also explores extensions to tomographic analyses (multiple redshift 
 - **Neural Likelihood Estimation (NLE)** and **Neural Posterior Estimation (NPE)** via [`sbi_lens`](https://github.com/DifferentiableUniverseInitiative/sbi_lens)
 - Support for **Gaussian** and **N-body** simulated datasets
 - **Tomographic analyses** with multiple redshift bins
-- **BNT (Baryon Transfer Network)** transform support
+- **BNT** transform support
 - Studies of **baryonic effects** and **intrinsic alignments** on cosmological posteriors
 - Differentiable forward modelling via [`jax-cosmo`](https://github.com/DifferentiableUniverseInitiative/jax_cosmo) and [`numpyro`](https://github.com/pyro-ppl/numpyro)
 
