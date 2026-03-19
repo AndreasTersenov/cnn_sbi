@@ -49,6 +49,11 @@ class NbodyCosmogridDatasetTomo(tfds.core.GeneratorBasedBuilder):
             xsize=80,
             size=10,
         ),
+        DatasetConfig(
+            name="grid_20deg_160px",
+            xsize=160,
+            size=20,
+        ),
     ]
 
     def _info(self) -> tfds.core.DatasetInfo:

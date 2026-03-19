@@ -13,7 +13,8 @@ Main stages:
  3. Build CNN compressor and load pretrained VMIM weights
  4. Compress observed map, train set, and test set through the CNN
  5. Define & train conditional RealNVP normalizing flow for p(theta | y)
- 6. Sample the posterior and produce contour plots
+ 6. Sample the posterior and produce contour
+  plots
 
 Requires:
   - Pretrained CNN compressor weights (from train_compressor_tomographic.py)
@@ -23,12 +24,15 @@ Requires:
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
 import os
 import pickle
+import re
 import time
 from functools import partial
 from pathlib import Path
-from typing import Dict, Tuple
+from typing import Dict, Optional, Tuple
 
 import wandb
 
@@ -57,6 +61,35 @@ tfd = tfp.distributions
 # =============================================================================
 # CLI
 # =============================================================================
+
+def parse_tomo_bin_indices(spec: str) -> tuple[int, ...]:
+    """Parse comma-separated tomographic bin indices."""
+    values = []
+    for token in spec.split(","):
+        token = token.strip()
+        if not token:
+            continue
+        b = int(token)
+        if b < 1 or b > 4:
+            raise ValueError(
+                f"Invalid tomo bin '{b}' in --tomo-bin-indices. Allowed range: 1..4."
+            )
+        values.append(b)
+    if not values:
+        raise ValueError("--tomo-bin-indices must contain at least one bin.")
+    deduped = []
+    seen = set()
+    for b in values:
+        if b not in seen:
+            deduped.append(b)
+            seen.add(b)
+    return tuple(deduped)
+
+
+def _checkpoint_step(path: Path) -> int:
+    match = re.search(r"batch(\d+)\.pkl$", path.name)
+    return int(match.group(1)) if match is not None else -1
+
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(
@@ -112,6 +145,18 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--cache-dir", type=str, default=None,
                     help="Directory to cache compressed datasets "
                          "(skip recomputation)")
+    p.add_argument(
+        "--tfds-name",
+        type=str,
+        default="NbodyCosmogridDatasetTomo/grid",
+        help="TFDS dataset name/config for training and validation maps",
+    )
+    p.add_argument(
+        "--tomo-bin-indices",
+        type=str,
+        default="1,2,3,4",
+        help="Tomographic bins to use, e.g. '1,2,3,4' or '3'",
+    )
 
     # Flow training hyperparameters
     p.add_argument("--total-steps", type=int, default=50_000)
@@ -135,7 +180,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--npe-samples", type=int, default=100_000)
 
     # Weights & Biases
-    p.add_argument("--wandb-project", type=str, default="l1norm-npe-tomo",
+    p.add_argument("--wandb-project", type=str, default="cnn-npe-tomo",
                     help="W&B project name")
     p.add_argument("--wandb-entity", type=str, default=None,
                     help="W&B entity (team or username)")
@@ -156,6 +201,11 @@ def parse_args() -> argparse.Namespace:
                     help="Batch size for compressor training")
     p.add_argument("--compressor-save-every", type=int, default=2000,
                     help="Save compressor checkpoint every N steps")
+    p.add_argument(
+        "--compressor-plot-contours",
+        action="store_true",
+        help="Plot compressor contour diagnostics at each compressor checkpoint",
+    )
 
     # Execution flags
     p.add_argument("--no-train", action="store_true",
@@ -167,6 +217,20 @@ def parse_args() -> argparse.Namespace:
                     help="Generate triangle plot")
     p.add_argument("--ds-batch-size", type=int, default=500,
                     help="Batch size for CNN compression of datasets")
+    p.add_argument("--shuffle-theta-train", action="store_true",
+                    help="Control test: shuffle training theta labels before "
+                         "flow training (should degrade posterior quality)")
+    p.add_argument("--standardize-summary", dest="standardize_summary",
+                    action="store_true",
+                    help="Z-score normalize compressed summaries using "
+                         "training-set statistics before flow training")
+    p.add_argument("--no-standardize-summary", dest="standardize_summary",
+                    action="store_false",
+                    help="Disable summary standardization")
+    p.set_defaults(standardize_summary=True)
+    p.add_argument("--summary-clip-value", type=float, default=5.0,
+                    help="Clip standardized summary features to ±this value "
+                         "(0 = disabled)")
 
     return p.parse_args()
 
@@ -210,6 +274,7 @@ def load_observed_map(
     field_npix: int,
     nside: int,
     nbins: int,
+    tomo_bin_indices: tuple[int, ...],
     sigma_e: float,
     galaxy_density: float,
     rng_key: jax.Array,
@@ -233,10 +298,15 @@ def load_observed_map(
         rot=[0, 0, 0], xsize=field_npix, ysize=field_npix, reso=reso,
     )
 
+    if len(tomo_bin_indices) != nbins:
+        raise ValueError(
+            f"nbins={nbins} is inconsistent with selected bins {tomo_bin_indices}."
+        )
+
     with h5py.File(fid_path, "r") as f:
         kg = f["kg"]
         proj_bins = []
-        for b in range(1, nbins + 1):
+        for b in tomo_bin_indices:
             full_map = np.array(kg[f"stage3_lensing{b}"])
             patch = proj.projmap(
                 full_map, vec2pix_func=partial(hp.vec2pix, nside),
@@ -297,6 +367,110 @@ def load_compressor_params(
     return params, state
 
 
+def file_sha256(path: Path) -> str:
+    """Compute SHA256 hash of a file."""
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def build_cnn_cache_metadata(
+    args: argparse.Namespace,
+    compressor_source: str,
+    compressor_params_path: Optional[str],
+    compressor_state_path: Optional[str],
+    tomo_bin_indices: tuple[int, ...],
+) -> Dict[str, object]:
+    """Build metadata used to validate cached compressed datasets."""
+    params_path = Path(compressor_params_path).resolve() if compressor_params_path else None
+    state_path = Path(compressor_state_path).resolve() if compressor_state_path else None
+
+    meta: Dict[str, object] = {
+        "compressor_source": compressor_source,
+        "compressor_dim": int(args.compressor_dim),
+        "tfds_name": str(args.tfds_name),
+        "tomo_bin_indices": ",".join(str(b) for b in tomo_bin_indices),
+        "map_kind": str(args.map_kind),
+        "field_size": int(args.field_size),
+        "field_npix": int(args.field_npix),
+        "nbins": int(args.nbins),
+        "sigma_e": float(args.sigma_e),
+        "galaxy_density": float(args.galaxy_density),
+        "compressor_params_path": str(params_path) if params_path else "",
+        "compressor_state_path": str(state_path) if state_path else "",
+        "compressor_params_sha256": (
+            file_sha256(params_path) if params_path and params_path.exists() else ""
+        ),
+        "compressor_state_sha256": (
+            file_sha256(state_path) if state_path and state_path.exists() else ""
+        ),
+    }
+    return meta
+
+
+def compare_cache_metadata(
+    meta_npz: np.lib.npyio.NpzFile,
+    expected: Dict[str, object],
+) -> Tuple[bool, list[str]]:
+    """Compare cached metadata against expected values."""
+    mismatches: list[str] = []
+    for key, expected_value in expected.items():
+        if key not in meta_npz.files:
+            mismatches.append(f"missing:{key}")
+            continue
+        cached_raw = meta_npz[key]
+        if isinstance(expected_value, float):
+            cached_value = float(cached_raw)
+            if abs(cached_value - expected_value) > 1e-12:
+                mismatches.append(
+                    f"{key}={cached_value} (expected {expected_value})"
+                )
+        elif isinstance(expected_value, int):
+            cached_value = int(cached_raw)
+            if cached_value != expected_value:
+                mismatches.append(
+                    f"{key}={cached_value} (expected {expected_value})"
+                )
+        else:
+            cached_value = str(cached_raw)
+            if cached_value != str(expected_value):
+                mismatches.append(
+                    f"{key}={cached_value} (expected {expected_value})"
+                )
+
+    return len(mismatches) == 0, mismatches
+
+
+def log_compressor_checkpoint_provenance(
+    params_path: str,
+    state_path: str,
+) -> None:
+    """Print and log compressor checkpoint provenance info."""
+    p_params = Path(params_path).resolve()
+    p_state = Path(state_path).resolve()
+    params_size = p_params.stat().st_size if p_params.exists() else -1
+    state_size = p_state.stat().st_size if p_state.exists() else -1
+    params_hash = file_sha256(p_params) if p_params.exists() else ""
+    state_hash = file_sha256(p_state) if p_state.exists() else ""
+
+    print("  Compressor checkpoint provenance:")
+    print(f"    params: {p_params} ({params_size} bytes)")
+    print(f"    state:  {p_state} ({state_size} bytes)")
+    print(f"    params_sha256: {params_hash[:16]}...")
+    print(f"    state_sha256:  {state_hash[:16]}...")
+
+    wandb.config.update({
+        "compressor/params_path": str(p_params),
+        "compressor/state_path": str(p_state),
+        "compressor/params_size_bytes": params_size,
+        "compressor/state_size_bytes": state_size,
+        "compressor/params_sha256": params_hash,
+        "compressor/state_sha256": state_hash,
+    }, allow_val_change=True)
+
+
 # =============================================================================
 # Compressor training (VMIM)
 # =============================================================================
@@ -316,6 +490,8 @@ def train_compressor_vmim(
     m_data_obs: np.ndarray,
     truth: np.ndarray,
     param_names: list[str],
+    tfds_name: str,
+    plot_contours: bool = False,
 ) -> Tuple[hk.Params, hk.State]:
     """Train the CNN compressor from scratch using VMIM loss.
 
@@ -384,14 +560,14 @@ def train_compressor_vmim(
     update = jax.jit(model.update)
 
     # --- Streaming datasets ---
-    ds_tr = tfds.load("NbodyCosmogridDatasetTomo/grid", split="train")
+    ds_tr = tfds.load(tfds_name, split="train")
     ds_tr = ds_tr.repeat().shuffle(800)
     ds_tr = ds_tr.map(augmentation_fn, num_parallel_calls=tf.data.AUTOTUNE)
     ds_tr = ds_tr.batch(batch_size)
     ds_tr = ds_tr.prefetch(tf.data.AUTOTUNE)
     ds_train_iter = iter(tfds.as_numpy(ds_tr))
 
-    ds_te = tfds.load("NbodyCosmogridDatasetTomo/grid", split="test")
+    ds_te = tfds.load(tfds_name, split="test")
     ds_te = ds_te.repeat().shuffle(200)
     ds_te = ds_te.map(augmentation_fn, num_parallel_calls=tf.data.AUTOTUNE)
     ds_te = ds_te.batch(batch_size)
@@ -464,12 +640,13 @@ def train_compressor_vmim(
             np.save(save_dir / "loss_compressor_test.npy",
                     np.array(loss_test_hist))
 
-            # Quick contour plot from compressor + companion NF
-            _plot_compressor_contours(
-                compressor, params_merged, state_cnn, nf,
-                m_data_obs, field_npix, nbins, n_cosmo, compressor_dim,
-                truth, param_names, save_dir, step,
-            )
+            # Optional contour diagnostic from compressor + companion NF
+            if plot_contours:
+                _plot_compressor_contours(
+                    compressor, params_merged, state_cnn, nf,
+                    m_data_obs, field_npix, nbins, n_cosmo, compressor_dim,
+                    truth, param_names, save_dir, step,
+                )
 
     print(f"  Compressor training done ({len(store_loss)} steps).")
     wandb.run.summary["compressor/total_steps"] = len(store_loss)
@@ -550,6 +727,7 @@ def build_augmentation(
     field_size: int,
     field_npix: int,
     nbins: int,
+    tomo_bin_indices: tuple[int, ...],
 ):
     """Build the TF augmentation pipeline for the tomographic dataset."""
     noise_std = sigma_e / jnp.sqrt(
@@ -561,9 +739,10 @@ def build_augmentation(
         "nbody_with_baryon_ia": "map_nbody_w_baryon_ia",
         "gaussian": "map_gaussian",
     }[map_kind]
+    gather_indices = tf.constant([b - 1 for b in tomo_bin_indices], dtype=tf.int32)
 
     def augmentation_noise(example):
-        x = example[map_key]
+        x = tf.gather(example[map_key], gather_indices, axis=-1)
         x += tf.random.normal(
             shape=(field_npix, field_npix, nbins), stddev=noise_std,
         )
@@ -691,6 +870,77 @@ def plot_compressor_diagnostics(
     plt.close(fig)
 
 
+def log_compressed_summary_health_diagnostics(
+    obs_summary: np.ndarray,
+    train_x: np.ndarray,
+    val_x: np.ndarray,
+) -> None:
+    """Log compact health diagnostics for CNN compressed summaries."""
+    train_std = train_x.std(axis=0)
+    p01 = np.percentile(train_x, 1.0, axis=0)
+    p99 = np.percentile(train_x, 99.0, axis=0)
+    obs_inlier_frac = np.mean((obs_summary >= p01) & (obs_summary <= p99))
+
+    train_mean = train_x.mean(axis=0)
+    val_mean = val_x.mean(axis=0)
+    val_shift = np.abs(val_mean - train_mean) / (train_std + 1e-8)
+
+    diag = {
+        "diagnostics/summary_std_min": float(train_std.min()),
+        "diagnostics/summary_std_median": float(np.median(train_std)),
+        "diagnostics/summary_std_max": float(train_std.max()),
+        "diagnostics/summary_dead_feature_frac": float(np.mean(train_std < 1e-8)),
+        "diagnostics/obs_in_train_p01_p99_frac": float(obs_inlier_frac),
+        "diagnostics/val_train_mean_shift_median_sigma": float(np.median(val_shift)),
+        "diagnostics/val_train_mean_shift_max_sigma": float(np.max(val_shift)),
+    }
+    wandb.log(diag)
+    print(
+        "  Summary health | "
+        f"std[min,med,max]=[{diag['diagnostics/summary_std_min']:.4e}, "
+        f"{diag['diagnostics/summary_std_median']:.4e}, "
+        f"{diag['diagnostics/summary_std_max']:.4e}] | "
+        f"obs_inlier_frac={diag['diagnostics/obs_in_train_p01_p99_frac']:.3f}"
+    )
+
+
+def apply_summary_standardization(
+    train_x: np.ndarray,
+    val_x: np.ndarray,
+    obs_x: np.ndarray,
+    mean: np.ndarray,
+    std: np.ndarray,
+    clip_value: Optional[float] = 5.0,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Apply precomputed z-score standardization to train/val/obs summaries."""
+    train_std = (train_x - mean) / std
+    val_std = (val_x - mean) / std
+    obs_std = (obs_x - mean) / std
+
+    if clip_value is not None and clip_value > 0:
+        train_std = np.clip(train_std, -clip_value, clip_value)
+        val_std = np.clip(val_std, -clip_value, clip_value)
+        obs_std = np.clip(obs_std, -clip_value, clip_value)
+
+    return train_std, val_std, obs_std
+
+
+def fit_and_apply_summary_standardization(
+    train_x: np.ndarray,
+    val_x: np.ndarray,
+    obs_x: np.ndarray,
+    clip_value: Optional[float] = 5.0,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Fit z-score stats on train summaries, then apply to train/val/obs."""
+    mean = train_x.mean(axis=0)
+    std = train_x.std(axis=0)
+    std[std < 1e-8] = 1.0
+    train_std, val_std, obs_std = apply_summary_standardization(
+        train_x, val_x, obs_x, mean, std, clip_value=clip_value,
+    )
+    return train_std, val_std, obs_std, mean, std
+
+
 # =============================================================================
 # Normalizing Flow (Conditional RealNVP) — JAX / Haiku
 # =============================================================================
@@ -804,6 +1054,7 @@ def train_flow(
 
     # Early stopping state
     best_val_loss = float("inf")
+    best_step = 0
     best_params = params
     patience_counter = 0
     val_batch_size = min(512, n_val)
@@ -838,6 +1089,7 @@ def train_flow(
             improved = ""
             if val_l < best_val_loss:
                 best_val_loss = val_l
+                best_step = step
                 best_params = params
                 patience_counter = 0
                 improved = " ***"
@@ -876,9 +1128,30 @@ def train_flow(
     np.save(save_dir / "loss_train_cnn.npy", np.array(batch_losses))
     np.save(save_dir / "loss_val_cnn.npy", np.array(val_losses))
     np.save(save_dir / "loss_val_steps.npy", np.array(val_steps))
+    summary = {
+        "best_val_loss": float(best_val_loss),
+        "best_step": int(best_step),
+        "final_step": int(step),
+        "best_at_final_step": bool(best_step == step),
+        "total_steps_requested": int(total_steps),
+        "save_every": int(save_every),
+        "patience": int(patience),
+        "n_val_checks": int(len(val_losses)),
+    }
+    (save_dir / "flow_training_summary.json").write_text(
+        json.dumps(summary, indent=2),
+        encoding="utf-8",
+    )
     wandb.run.summary["best_val_loss"] = best_val_loss
+    wandb.run.summary["best_val_step"] = best_step
     wandb.run.summary["final_step"] = step
     print(f"  Best validation loss: {best_val_loss:.4f}")
+    if best_step == step:
+        print(
+            "  WARNING: Best val loss occurred at final step. "
+            "Flow may be underconverged; consider increasing --total-steps "
+            "and/or reducing --save-every."
+        )
     return best_params
 
 
@@ -896,7 +1169,8 @@ def sample_posterior(
     """Draw posterior samples via the trained NPE flow."""
     print("######## SAMPLING POSTERIOR ########")
     summary_dim = summary_obs.shape[-1]
-    y_cond = jnp.ones([n_samples, summary_dim]) * jnp.asarray(summary_obs)
+    y_obs = jnp.asarray(summary_obs).reshape(1, summary_dim)
+    y_cond = jnp.repeat(y_obs, repeats=n_samples, axis=0)
     samples = nf_sample.apply(flow_params, rng_key, y_cond, n_samples)
 
     # Remove NaN samples
@@ -968,6 +1242,13 @@ def plot_posterior(
 
 def main():
     args = parse_args()
+    tomo_bin_indices = parse_tomo_bin_indices(args.tomo_bin_indices)
+    if args.nbins != len(tomo_bin_indices):
+        print(
+            f"  Overriding nbins from {args.nbins} to {len(tomo_bin_indices)} "
+            f"to match selected bins {tomo_bin_indices}."
+        )
+        args.nbins = len(tomo_bin_indices)
     setup_environment(args.cuda_visible_devices)
     rng = jax.random.PRNGKey(args.seed)
     rng, rng_obs, rng_sample = jax.random.split(rng, 3)
@@ -975,6 +1256,8 @@ def main():
     # Derived quantities
     summary_dim = args.compressor_dim
     print(f"  summary_dim    = {summary_dim}")
+    save_path = Path(args.save_dir) / "cnn_vmim" / args.map_kind
+    summary_stats_path = save_path / "cnn_summary_standardization.npz"
 
     param_names = [
         r"\Omega_m", r"\sigma_8", r"w_0",
@@ -1002,6 +1285,7 @@ def main():
     m_data, cosmo_params, truth = load_observed_map(
         args.cosmogrid_meta, args.fiducial_map,
         args.field_size, args.field_npix, args.nside, args.nbins,
+        tomo_bin_indices,
         args.sigma_e, args.galaxy_density, rng_obs,
     )
 
@@ -1010,10 +1294,13 @@ def main():
     # ------------------------------------------------------------------
     print("######## CNN COMPRESSOR ########")
     compressor = build_compressor(args.compressor_dim)
+    compressor_source = "train_compressor" if args.train_compressor else "pretrained"
+    compressor_params_ref: Optional[str] = None
+    compressor_state_ref: Optional[str] = None
 
     augmentation = build_augmentation(
         args.map_kind, args.sigma_e, args.galaxy_density,
-        args.field_size, args.field_npix, args.nbins,
+        args.field_size, args.field_npix, args.nbins, tomo_bin_indices,
     )
 
     if args.train_compressor:
@@ -1038,17 +1325,24 @@ def main():
             m_data_obs=m_data,
             truth=truth,
             param_names=param_names,
+            tfds_name=args.tfds_name,
+            plot_contours=args.compressor_plot_contours,
         )
         # Invalidate any cached compressed datasets
         cache_dir = Path(args.cache_dir) if args.cache_dir else None
         if cache_dir is not None:
-            for f in ["cnn_train.npz", "cnn_val.npz"]:
+            for f in ["cnn_train.npz", "cnn_val.npz", "cnn_cache_meta.npz"]:
                 p = cache_dir / f
                 if p.exists():
                     p.unlink()
                     print(f"  Deleted stale cache: {p}")
     else:
+        compressor_params_ref = args.compressor_params
+        compressor_state_ref = args.compressor_state
         comp_params, comp_state = load_compressor_params(
+            args.compressor_params, args.compressor_state,
+        )
+        log_compressor_checkpoint_provenance(
             args.compressor_params, args.compressor_state,
         )
 
@@ -1069,30 +1363,52 @@ def main():
 
     cache_dir = Path(args.cache_dir) if args.cache_dir else None
     cache_ok = False
+    cache_meta_expected = build_cnn_cache_metadata(
+        args=args,
+        compressor_source=compressor_source,
+        compressor_params_path=compressor_params_ref,
+        compressor_state_path=compressor_state_ref,
+        tomo_bin_indices=tomo_bin_indices,
+    )
 
     if cache_dir is not None and cache_dir.exists():
         train_cache = cache_dir / "cnn_train.npz"
         val_cache = cache_dir / "cnn_val.npz"
-        if train_cache.exists() and val_cache.exists():
-            print("  Loading cached compressed datasets ...")
-            d_tr = np.load(train_cache)
-            dataset_train = {"theta": d_tr["theta"], "x": d_tr["x"]}
-            d_va = np.load(val_cache)
-            dataset_val = {"theta": d_va["theta"], "x": d_va["x"]}
-            cache_ok = True
+        meta_cache = cache_dir / "cnn_cache_meta.npz"
+        if train_cache.exists() and val_cache.exists() and meta_cache.exists():
+            meta = np.load(meta_cache)
+            cache_ok, mismatches = compare_cache_metadata(
+                meta, cache_meta_expected,
+            )
+            if cache_ok:
+                print("  Loading cached compressed datasets (metadata matches) ...")
+                d_tr = np.load(train_cache)
+                dataset_train = {"theta": d_tr["theta"], "x": d_tr["x"]}
+                d_va = np.load(val_cache)
+                dataset_val = {"theta": d_va["theta"], "x": d_va["x"]}
+                print(
+                    f"  Train: {len(dataset_train['theta'])} | "
+                    f"Val: {len(dataset_val['theta'])}"
+                )
+            else:
+                print(
+                    "  CNN cache metadata mismatch; recomputing compressed datasets. "
+                    f"First mismatch: {mismatches[0]}"
+                )
+        elif train_cache.exists() and val_cache.exists():
             print(
-                f"  Train: {len(dataset_train['theta'])} | "
-                f"Val: {len(dataset_val['theta'])}"
+                "  CNN cache metadata file missing "
+                "(cnn_cache_meta.npz); recomputing to avoid stale-cache reuse."
             )
 
     if not cache_ok:
         dataset_train = compress_dataset(
-            "NbodyCosmogridDatasetTomo/grid", "train",
+            args.tfds_name, "train",
             augmentation, compressor, comp_params, comp_state,
             args.ds_batch_size,
         )
         dataset_val = compress_dataset(
-            "NbodyCosmogridDatasetTomo/grid", "test",
+            args.tfds_name, "test",
             augmentation, compressor, comp_params, comp_state,
             args.ds_batch_size,
         )
@@ -1107,6 +1423,7 @@ def main():
                 cache_dir / "cnn_val.npz",
                 theta=dataset_val["theta"], x=dataset_val["x"],
             )
+            np.savez(cache_dir / "cnn_cache_meta.npz", **cache_meta_expected)
             print(f"  Cached datasets to {cache_dir}")
 
     print(f"  Train x shape = {dataset_train['x'].shape}")
@@ -1120,6 +1437,75 @@ def main():
         obs_compressed, dataset_train["x"], dataset_train["theta"],
         param_names,
     )
+    log_compressed_summary_health_diagnostics(
+        obs_compressed, dataset_train["x"], dataset_val["x"],
+    )
+
+    # ------------------------------------------------------------------
+    # 3c. Optional summary standardization
+    # ------------------------------------------------------------------
+    standardization_applied = False
+    standardization_mean: Optional[np.ndarray] = None
+    standardization_std: Optional[np.ndarray] = None
+    summary_clip_value = (
+        args.summary_clip_value if args.summary_clip_value > 0 else None
+    )
+    if args.standardize_summary:
+        if args.no_train and summary_stats_path.exists():
+            std_data = np.load(summary_stats_path)
+            standardization_mean = np.array(std_data["mean"])
+            standardization_std = np.array(std_data["std"])
+            if "clip_value" in std_data.files:
+                loaded_clip = float(std_data["clip_value"])
+                if np.isfinite(loaded_clip) and loaded_clip > 0:
+                    summary_clip_value = loaded_clip
+                else:
+                    summary_clip_value = None
+            dataset_train["x"], dataset_val["x"], obs_compressed = (
+                apply_summary_standardization(
+                    dataset_train["x"], dataset_val["x"], obs_compressed,
+                    standardization_mean, standardization_std,
+                    clip_value=summary_clip_value,
+                )
+            )
+            standardization_applied = True
+            print(
+                "  Loaded summary standardization stats from "
+                f"{summary_stats_path}"
+            )
+        elif args.no_train and not summary_stats_path.exists():
+            print(
+                "  WARNING: --no-train set but no saved CNN summary "
+                "standardization stats found; skipping standardization to avoid "
+                "checkpoint mismatch."
+            )
+        else:
+            (
+                dataset_train["x"],
+                dataset_val["x"],
+                obs_compressed,
+                standardization_mean,
+                standardization_std,
+            ) = fit_and_apply_summary_standardization(
+                dataset_train["x"], dataset_val["x"], obs_compressed,
+                clip_value=summary_clip_value,
+            )
+            standardization_applied = True
+            print(
+                "  Applied summary standardization "
+                f"(clip={summary_clip_value if summary_clip_value is not None else 'off'}). "
+                f"std range=[{standardization_std.min():.4e}, "
+                f"{standardization_std.max():.4e}]"
+            )
+
+    if args.shuffle_theta_train:
+        np.random.seed(args.seed)
+        perm = np.random.permutation(len(dataset_train["theta"]))
+        dataset_train["theta"] = dataset_train["theta"][perm]
+        print("  [control] Shuffled training theta labels before flow training.")
+        wandb.config.update(
+            {"control/shuffle_theta_train": True}, allow_val_change=True,
+        )
 
     # Log dataset statistics to wandb
     wandb.log({
@@ -1130,6 +1516,10 @@ def main():
         "data/train_x_max": float(dataset_train["x"].max()),
         "data/train_x_mean": float(dataset_train["x"].mean()),
         "data/train_x_std": float(dataset_train["x"].std()),
+        "data/summary_standardized": int(standardization_applied),
+        "data/summary_clip_value": (
+            float(summary_clip_value) if summary_clip_value is not None else 0.0
+        ),
     })
 
     # Log theta distributions as histograms
@@ -1152,8 +1542,9 @@ def main():
         hidden=args.nvp_hidden,
     )
 
-    save_path = Path(args.save_dir) / "cnn_vmim" / args.map_kind
+    flow_summary_path = save_path / "flow_training_summary.json"
     flow_params = None
+    flow_params_source = "unknown"
 
     if args.no_train:
         # Prefer best model, fall back to latest checkpoint
@@ -1163,6 +1554,7 @@ def main():
         else:
             candidates = sorted(
                 save_path.glob("params_cnn_flow_batch*.pkl"),
+                key=_checkpoint_step,
             )
             if not candidates:
                 raise FileNotFoundError(
@@ -1172,6 +1564,7 @@ def main():
             load_path = candidates[-1]
         with open(load_path, "rb") as f:
             flow_params = pickle.load(f)
+        flow_params_source = str(load_path.resolve())
         print(f"  Loaded flow params from {load_path}")
     else:
         # Build LR schedule for logging
@@ -1196,6 +1589,19 @@ def main():
             patience=args.patience,
             lr_schedule_fn=_lr_schedule,
         )
+        flow_params_source = "trained_best_val_in_memory"
+
+    if (not args.no_train and standardization_applied and
+            standardization_mean is not None and standardization_std is not None):
+        save_path.mkdir(parents=True, exist_ok=True)
+        np.savez(
+            summary_stats_path,
+            mean=standardization_mean,
+            std=standardization_std,
+            clip_value=(
+                np.nan if summary_clip_value is None else float(summary_clip_value)
+            ),
+        )
 
     # ------------------------------------------------------------------
     # 5. Posterior sampling
@@ -1206,12 +1612,38 @@ def main():
             obs_compressed, args.npe_samples,
         )
         out = Path(args.posterior_out)
+        out.parent.mkdir(parents=True, exist_ok=True)
         np.save(out, posterior_samples)
+        metadata = {
+            "method": "cnn",
+            "posterior_file": str(out.resolve()),
+            "flow_params_source": flow_params_source,
+            "total_steps": int(args.total_steps),
+            "save_every": int(args.save_every),
+            "patience": int(args.patience),
+            "npe_samples": int(args.npe_samples),
+            "summary_standardized": bool(standardization_applied),
+            "summary_standardization_file": (
+                str(summary_stats_path.resolve())
+                if standardization_applied and summary_stats_path.exists()
+                else None
+            ),
+        }
+        if flow_summary_path.exists():
+            metadata["flow_training_summary"] = json.loads(
+                flow_summary_path.read_text(encoding="utf-8")
+            )
+        out.with_suffix(".meta.json").write_text(
+            json.dumps(metadata, indent=2),
+            encoding="utf-8",
+        )
         print(f"  Saved posterior samples → {out.resolve()}")
 
         if args.plot:
+            fig_out = Path(args.figure_out)
+            fig_out.parent.mkdir(parents=True, exist_ok=True)
             plot_posterior(
-                posterior_samples, truth, args.figure_out,
+                posterior_samples, truth, str(fig_out),
                 param_names, log_to_wandb=(not args.no_wandb),
             )
     else:

@@ -25,8 +25,10 @@ Requires:
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import pickle
+import re
 import sys
 import time
 from functools import partial
@@ -68,6 +70,35 @@ tfd = tfp.distributions
 # CLI
 # =============================================================================
 
+def parse_tomo_bin_indices(spec: str) -> tuple[int, ...]:
+    """Parse comma-separated tomographic bin indices."""
+    values = []
+    for token in spec.split(","):
+        token = token.strip()
+        if not token:
+            continue
+        b = int(token)
+        if b < 1 or b > 4:
+            raise ValueError(
+                f"Invalid tomo bin '{b}' in --tomo-bin-indices. Allowed range: 1..4."
+            )
+        values.append(b)
+    if not values:
+        raise ValueError("--tomo-bin-indices must contain at least one bin.")
+    deduped = []
+    seen = set()
+    for b in values:
+        if b not in seen:
+            deduped.append(b)
+            seen.add(b)
+    return tuple(deduped)
+
+
+def _checkpoint_step(path: Path) -> int:
+    match = re.search(r"batch(\d+)\.pkl$", path.name)
+    return int(match.group(1)) if match is not None else -1
+
+
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(
         description="L1-norm + NPE for tomographic weak lensing"
@@ -89,10 +120,10 @@ def parse_args() -> argparse.Namespace:
     # L1-norm configuration
     p.add_argument("--n-scales", type=int, default=5, help="Number of starlet wavelet scales")
     p.add_argument("--l1-nbins", type=int, default=40, help="Number of L1-norm histogram bins per scale")
-    p.add_argument("--l1-min-snr", type=float, default=-7.0,
-                    help="Fixed min SNR for L1-norm binning (CosmOrford-like default)")
-    p.add_argument("--l1-max-snr", type=float, default=7.0,
-                    help="Fixed max SNR for L1-norm binning (CosmOrford-like default)")
+    p.add_argument("--l1-min-snr", type=float, default=-10.0,
+                    help="Fixed min SNR for L1-norm binning (recommended default)")
+    p.add_argument("--l1-max-snr", type=float, default=10.0,
+                    help="Fixed max SNR for L1-norm binning (recommended default)")
     p.add_argument("--auto-calibrate-snr", action="store_true",
                     help="Estimate global SNR range from data instead of using fixed --l1-min/max-snr")
     p.add_argument("--calibration-samples", type=int, default=512,
@@ -123,6 +154,18 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--figure-out", type=str, default="posterior_l1norm_tomo.png")
     p.add_argument("--cache-dir", type=str, default=None,
                     help="Directory to cache precomputed L1-norm datasets (skip recomputation)")
+    p.add_argument(
+        "--tfds-name",
+        type=str,
+        default="NbodyCosmogridDatasetTomo/grid",
+        help="TFDS dataset name/config for training and validation maps",
+    )
+    p.add_argument(
+        "--tomo-bin-indices",
+        type=str,
+        default="1,2,3,4",
+        help="Tomographic bins to use, e.g. '1,2,3,4' or '3'",
+    )
 
     # Dimensionality reduction
     p.add_argument("--pca-components", type=int, default=50,
@@ -211,6 +254,7 @@ def load_observed_map(
     field_npix: int,
     nside: int,
     nbins: int,
+    tomo_bin_indices: tuple[int, ...],
     sigma_e: float,
     galaxy_density: float,
     rng_key: jax.Array,
@@ -232,10 +276,15 @@ def load_observed_map(
     reso = field_size * 60.0 / field_npix
     proj = hp.projector.GnomonicProj(rot=[0, 0, 0], xsize=field_npix, ysize=field_npix, reso=reso)
 
+    if len(tomo_bin_indices) != nbins:
+        raise ValueError(
+            f"nbins={nbins} is inconsistent with selected bins {tomo_bin_indices}."
+        )
+
     with h5py.File(fid_path, "r") as f:
         kg = f["kg"]
         proj_bins = []
-        for b in range(1, nbins + 1):
+        for b in tomo_bin_indices:
             full_map = np.array(kg[f"stage3_lensing{b}"])
             patch = proj.projmap(full_map, vec2pix_func=partial(hp.vec2pix, nside))
             proj_bins.append(patch)
@@ -410,6 +459,7 @@ def build_augmentation(
     field_size: int,
     field_npix: int,
     nbins: int,
+    tomo_bin_indices: tuple[int, ...],
 ):
     """Build the TF augmentation pipeline for the tomographic dataset."""
     noise_std = sigma_e / jnp.sqrt(galaxy_density * (field_size * 60 / field_npix) ** 2)
@@ -419,9 +469,10 @@ def build_augmentation(
         "nbody_with_baryon_ia": "map_nbody_w_baryon_ia",
         "gaussian": "map_gaussian",
     }[map_kind]
+    gather_indices = tf.constant([b - 1 for b in tomo_bin_indices], dtype=tf.int32)
 
     def augmentation_noise(example):
-        x = example[map_key]
+        x = tf.gather(example[map_key], gather_indices, axis=-1)
         x += tf.random.normal(shape=(field_npix, field_npix, nbins), stddev=noise_std)
         return {"maps": x, "theta": example["theta"]}
 
@@ -782,6 +833,7 @@ def train_flow(
 
     # Early stopping state
     best_val_loss = float("inf")
+    best_step = 0
     best_params = params
     patience_counter = 0
     val_batch_size = min(512, n_val)
@@ -810,6 +862,7 @@ def train_flow(
             improved = ""
             if val_l < best_val_loss:
                 best_val_loss = val_l
+                best_step = step
                 best_params = params
                 patience_counter = 0
                 improved = " ***"
@@ -840,9 +893,30 @@ def train_flow(
     np.save(save_dir / "loss_train_l1norm.npy", np.array(batch_losses))
     np.save(save_dir / "loss_val_l1norm.npy", np.array(val_losses))
     np.save(save_dir / "loss_val_steps.npy", np.array(val_steps))
+    summary = {
+        "best_val_loss": float(best_val_loss),
+        "best_step": int(best_step),
+        "final_step": int(step),
+        "best_at_final_step": bool(best_step == step),
+        "total_steps_requested": int(total_steps),
+        "save_every": int(save_every),
+        "patience": int(patience),
+        "n_val_checks": int(len(val_losses)),
+    }
+    (save_dir / "flow_training_summary.json").write_text(
+        json.dumps(summary, indent=2),
+        encoding="utf-8",
+    )
     wandb.run.summary["best_val_loss"] = best_val_loss
+    wandb.run.summary["best_val_step"] = best_step
     wandb.run.summary["final_step"] = step
     print(f"  Best validation loss: {best_val_loss:.4f}")
+    if best_step == step:
+        print(
+            "  WARNING: Best val loss occurred at final step. "
+            "Flow may be underconverged; consider increasing --total-steps "
+            "and/or reducing --save-every."
+        )
     return best_params
 
 
@@ -925,6 +999,13 @@ def plot_posterior(
 
 def main():
     args = parse_args()
+    tomo_bin_indices = parse_tomo_bin_indices(args.tomo_bin_indices)
+    if args.nbins != len(tomo_bin_indices):
+        print(
+            f"  Overriding nbins from {args.nbins} to {len(tomo_bin_indices)} "
+            f"to match selected bins {tomo_bin_indices}."
+        )
+        args.nbins = len(tomo_bin_indices)
     torch_device = setup_environment(args.cuda_visible_devices)
     rng = jax.random.PRNGKey(args.seed)
     rng, rng_obs, rng_sample = jax.random.split(rng, 3)
@@ -965,6 +1046,7 @@ def main():
     m_data, cosmo_params, truth = load_observed_map(
         args.cosmogrid_meta, args.fiducial_map,
         args.field_size, args.field_npix, args.nside, args.nbins,
+        tomo_bin_indices,
         args.sigma_e, args.galaxy_density, rng_obs,
     )
 
@@ -975,7 +1057,7 @@ def main():
 
     augmentation = build_augmentation(
         args.map_kind, args.sigma_e, args.galaxy_density,
-        args.field_size, args.field_npix, args.nbins,
+        args.field_size, args.field_npix, args.nbins, tomo_bin_indices,
     )
 
     # Resolve cache directory once (used for both calibration and dataset caching)
@@ -997,7 +1079,7 @@ def main():
         else:
             l1_min_snr, l1_max_snr = calibrate_snr_range(
                 stats, augmentation,
-                "NbodyCosmogridDatasetTomo/grid",
+                args.tfds_name,
                 noise_sigma, args.nbins,
                 n_calibration=args.calibration_samples,
                 ds_batch_size=args.ds_batch_size,
@@ -1044,6 +1126,7 @@ def main():
             required_meta = {
                 "l1_min_snr", "l1_max_snr", "l1_nbins",
                 "l1_clamp_overflow", "subtract_coarse_mean", "n_scales",
+                "tfds_name", "tomo_bin_indices",
             }
             if not required_meta.issubset(set(meta.files)):
                 print("  Cache metadata is missing newer L1 settings; recomputing ...")
@@ -1054,12 +1137,16 @@ def main():
                 cached_clamp = bool(meta["l1_clamp_overflow"])
                 cached_subtract = bool(meta["subtract_coarse_mean"])
                 cached_n_scales = int(meta["n_scales"])
+                cached_tfds_name = str(meta["tfds_name"])
+                cached_tomo_bins = str(meta["tomo_bin_indices"])
                 if (abs(cached_min - l1_min_snr) < 1e-6 and
                         abs(cached_max - l1_max_snr) < 1e-6 and
                         cached_nbins == args.l1_nbins and
                         cached_clamp == args.l1_clamp_overflow and
                         cached_subtract == args.subtract_coarse_mean and
-                        cached_n_scales == args.n_scales):
+                        cached_n_scales == args.n_scales and
+                        cached_tfds_name == args.tfds_name and
+                        cached_tomo_bins == ",".join(str(b) for b in tomo_bin_indices)):
                     print("  Loading cached L1-norm datasets (metadata matches) ...")
                     d_tr = np.load(train_cache)
                     dataset_train = {"theta": d_tr["theta"], "x": d_tr["x"]}
@@ -1075,14 +1162,14 @@ def main():
 
     if not cache_ok:
         dataset_train = compute_l1_dataset(
-            "NbodyCosmogridDatasetTomo/grid", "train", augmentation, stats,
+            args.tfds_name, "train", augmentation, stats,
             noise_sigma, args.l1_nbins, args.nbins, args.ds_batch_size,
             l1_min_snr=l1_min_snr, l1_max_snr=l1_max_snr,
             clamp_overflow=args.l1_clamp_overflow,
             subtract_coarse_mean=args.subtract_coarse_mean,
         )
         dataset_val = compute_l1_dataset(
-            "NbodyCosmogridDatasetTomo/grid", "test", augmentation, stats,
+            args.tfds_name, "test", augmentation, stats,
             noise_sigma, args.l1_nbins, args.nbins, args.ds_batch_size,
             l1_min_snr=l1_min_snr, l1_max_snr=l1_max_snr,
             clamp_overflow=args.l1_clamp_overflow,
@@ -1100,7 +1187,9 @@ def main():
                      l1_nbins=args.l1_nbins,
                      l1_clamp_overflow=args.l1_clamp_overflow,
                      subtract_coarse_mean=args.subtract_coarse_mean,
-                     n_scales=args.n_scales)
+                     n_scales=args.n_scales,
+                     tfds_name=args.tfds_name,
+                     tomo_bin_indices=",".join(str(b) for b in tomo_bin_indices))
             print(f"  Cached datasets to {cache_dir}")
 
     print(f"  Train x shape = {dataset_train['x'].shape}")
@@ -1178,7 +1267,9 @@ def main():
     )
 
     save_path = Path(args.save_dir) / "l1norm" / args.map_kind
+    flow_summary_path = save_path / "flow_training_summary.json"
     flow_params = None
+    flow_params_source = "unknown"
 
     if args.no_train:
         # Prefer best model, fall back to latest checkpoint
@@ -1186,12 +1277,16 @@ def main():
         if best_path.exists():
             load_path = best_path
         else:
-            candidates = sorted(save_path.glob("params_l1norm_flow_batch*.pkl"))
+            candidates = sorted(
+                save_path.glob("params_l1norm_flow_batch*.pkl"),
+                key=_checkpoint_step,
+            )
             if not candidates:
                 raise FileNotFoundError(f"No saved flow params in {save_path} and --no-train set")
             load_path = candidates[-1]
         with open(load_path, "rb") as f:
             flow_params = pickle.load(f)
+        flow_params_source = str(load_path.resolve())
         print(f"  Loaded flow params from {load_path}")
     else:
         # Build LR schedule for logging
@@ -1216,6 +1311,7 @@ def main():
             patience=args.patience,
             lr_schedule_fn=_lr_schedule,
         )
+        flow_params_source = "trained_best_val_in_memory"
 
     # Save preprocessing artifacts alongside flow params
     save_path.mkdir(parents=True, exist_ok=True)
@@ -1235,11 +1331,31 @@ def main():
             obs_l1_std, args.npe_samples,
         )
         out = Path(args.posterior_out)
+        out.parent.mkdir(parents=True, exist_ok=True)
         np.save(out, posterior_samples)
+        metadata = {
+            "method": "l1norm",
+            "posterior_file": str(out.resolve()),
+            "flow_params_source": flow_params_source,
+            "total_steps": int(args.total_steps),
+            "save_every": int(args.save_every),
+            "patience": int(args.patience),
+            "npe_samples": int(args.npe_samples),
+        }
+        if flow_summary_path.exists():
+            metadata["flow_training_summary"] = json.loads(
+                flow_summary_path.read_text(encoding="utf-8")
+            )
+        out.with_suffix(".meta.json").write_text(
+            json.dumps(metadata, indent=2),
+            encoding="utf-8",
+        )
         print(f"  Saved posterior samples → {out.resolve()}")
 
         if args.plot:
-            plot_posterior(posterior_samples, truth, args.figure_out, param_names,
+            fig_out = Path(args.figure_out)
+            fig_out.parent.mkdir(parents=True, exist_ok=True)
+            plot_posterior(posterior_samples, truth, str(fig_out), param_names,
                            log_to_wandb=(not args.no_wandb))
     else:
         print("  Skipping posterior sampling (--no-sample)")
