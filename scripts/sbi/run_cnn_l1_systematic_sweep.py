@@ -30,7 +30,7 @@ def parse_args() -> argparse.Namespace:
         "--methods",
         type=str,
         default="cnn,l1",
-        help="Comma-separated methods to run from {cnn,l1}.",
+        help="Comma-separated methods to run from {cnn,cnn_jax,l1,l1_jax}.",
     )
     p.add_argument("--seeds", type=str, default="41,42,43")
     p.add_argument(
@@ -160,8 +160,8 @@ def main() -> None:
         raise ValueError("GPU 3 is forbidden for this sweep.")
     seeds = [int(s.strip()) for s in args.seeds.split(",") if s.strip()]
     methods = {m.strip() for m in args.methods.split(",") if m.strip()}
-    if not methods.issubset({"cnn", "l1"}):
-        raise ValueError("--methods must be a subset of {cnn,l1}.")
+    if not methods.issubset({"cnn", "cnn_jax", "l1", "l1_jax"}):
+        raise ValueError("--methods must be a subset of {cnn,cnn_jax,l1,l1_jax}.")
     if not methods:
         raise ValueError("--methods cannot be empty.")
     if args.compressor_steps < args.compressor_save_every:
@@ -173,7 +173,9 @@ def main() -> None:
         )
 
     cnn_script = str(script_dir / "npe_cnn_nbody_tomo.py")
+    cnn_jax_script = str(script_dir / "npe_cnn_jaxili_nbody_tomo.py")
     l1_script = str(script_dir / "npe_l1norm_nbody_tomo.py")
+    l1_jax_script = str(script_dir / "npe_l1norm_jaxili_nbody_tomo.py")
 
     variants = [
         {
@@ -230,7 +232,7 @@ def main() -> None:
 
     all_results: List[Dict[str, object]] = []
     compressor_paths: Dict[str, Dict[str, str]] = {}
-    need_cnn = "cnn" in methods
+    need_cnn = bool({"cnn", "cnn_jax"} & methods)
 
     if need_cnn and not args.skip_compressor_train:
         comp_jobs: List[Job] = []
@@ -387,6 +389,65 @@ def main() -> None:
                         )
                     )
 
+                cnn_jax_save = out_root / "cnn_jax_eval" / v["name"] / f"seed_{seed}"
+                cnn_jax_cache = out_root / "cache" / f"cnn_jax_{v['name']}"
+                cnn_jax_post = out_root / "posteriors" / f"cnn_jax_{tag}.npy"
+                if "cnn_jax" in methods:
+                    cnn_jax_cmd = [
+                        "python",
+                        cnn_jax_script,
+                        "--no-wandb",
+                        "--map-kind",
+                        args.map_kind,
+                        "--seed",
+                        str(seed),
+                        "--tfds-name",
+                        str(v["tfds"]),
+                        "--field-size",
+                        str(v["field_size"]),
+                        "--field-npix",
+                        str(v["field_npix"]),
+                        "--nbins",
+                        str(v["nbins"]),
+                        "--tomo-bin-indices",
+                        str(v["tomo_bins"]),
+                        "--cache-dir",
+                        str(cnn_jax_cache),
+                        "--save-dir",
+                        str(cnn_jax_save),
+                        "--compressor-params",
+                        compressor_paths[v["name"]]["params"],
+                        "--compressor-state",
+                        compressor_paths[v["name"]]["state"],
+                        "--total-steps",
+                        str(args.flow_steps),
+                        "--save-every",
+                        str(args.eval_save_every),
+                        "--patience",
+                        str(args.eval_patience),
+                        "--npe-samples",
+                        str(args.npe_samples),
+                        "--posterior-out",
+                        str(cnn_jax_post),
+                        "--ds-batch-size",
+                        str(args.ds_batch_size_cnn),
+                    ]
+                    if args.plot_cnn_contours:
+                        cnn_jax_cmd.extend(
+                            [
+                                "--plot",
+                                "--figure-out",
+                                str(out_root / "figures" / f"cnn_jax_{tag}.png"),
+                            ]
+                        )
+                    eval_jobs.append(
+                        Job(
+                            name=f"cnn_jax_eval::{tag}",
+                            log_path=out_root / "logs" / f"cnn_jax_eval_{tag}.log",
+                            command=cnn_jax_cmd,
+                        )
+                    )
+
                 l1_save = out_root / "l1_eval" / v["name"] / f"seed_{seed}"
                 l1_cache = out_root / "cache" / f"l1_{v['name']}"
                 l1_post = out_root / "posteriors" / f"l1_{tag}.npy"
@@ -445,6 +506,65 @@ def main() -> None:
                             command=l1_cmd,
                         )
                     )
+
+                l1_jax_save = out_root / "l1_jax_eval" / v["name"] / f"seed_{seed}"
+                l1_jax_cache = out_root / "cache" / f"l1_jax_{v['name']}"
+                l1_jax_post = out_root / "posteriors" / f"l1_jax_{tag}.npy"
+                if "l1_jax" in methods:
+                    l1_jax_cmd = [
+                        "python",
+                        l1_jax_script,
+                        "--no-wandb",
+                        "--map-kind",
+                        args.map_kind,
+                        "--seed",
+                        str(seed),
+                        "--tfds-name",
+                        str(v["tfds"]),
+                        "--field-size",
+                        str(v["field_size"]),
+                        "--field-npix",
+                        str(v["field_npix"]),
+                        "--nbins",
+                        str(v["nbins"]),
+                        "--tomo-bin-indices",
+                        str(v["tomo_bins"]),
+                        "--cache-dir",
+                        str(l1_jax_cache),
+                        "--save-dir",
+                        str(l1_jax_save),
+                        "--total-steps",
+                        str(args.flow_steps),
+                        "--save-every",
+                        str(args.eval_save_every),
+                        "--patience",
+                        str(args.eval_patience),
+                        "--npe-samples",
+                        str(args.npe_samples),
+                        "--posterior-out",
+                        str(l1_jax_post),
+                        "--ds-batch-size",
+                        str(args.ds_batch_size_l1),
+                        "--l1-min-snr",
+                        str(args.l1_min_snr),
+                        "--l1-max-snr",
+                        str(args.l1_max_snr),
+                    ]
+                    if args.plot_l1_contours:
+                        l1_jax_cmd.extend(
+                            [
+                                "--plot",
+                                "--figure-out",
+                                str(out_root / "figures" / f"l1_jax_{tag}.png"),
+                            ]
+                        )
+                    eval_jobs.append(
+                        Job(
+                            name=f"l1_jax_eval::{tag}",
+                            log_path=out_root / "logs" / f"l1_jax_eval_{tag}.log",
+                            command=l1_jax_cmd,
+                        )
+                    )
         all_results.extend(run_jobs_parallel(eval_jobs, gpus, repo_root, args.dry_run))
 
     (out_root / "job_results.json").write_text(
@@ -458,7 +578,14 @@ def main() -> None:
     if post_dir.exists():
         for npy_path in sorted(post_dir.glob("*.npy")):
             s = np.load(npy_path)
-            method = "cnn" if npy_path.name.startswith("cnn_") else "l1"
+            if npy_path.name.startswith("cnn_jax_"):
+                method = "cnn_jax"
+            elif npy_path.name.startswith("cnn_"):
+                method = "cnn"
+            elif npy_path.name.startswith("l1_jax_"):
+                method = "l1_jax"
+            else:
+                method = "l1"
             rows.append(
                 {
                     "file": npy_path.name,
