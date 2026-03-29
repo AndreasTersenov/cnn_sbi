@@ -1,0 +1,262 @@
+# SBI + jaxili run commands (L1 and CNN variants)
+
+# ============================================================================
+# 0) Environment setup (one-time per environment)
+# ============================================================================
+conda activate jaxili
+pip install tensorflow-datasets dm-haiku
+cd /mnt/home/tersenov/software/cnn_sbi
+
+
+# ============================================================================
+# 1) L1 + jaxili (requested settings: n_scales=5, snr=[-13,13], bins=40/scale)
+# ============================================================================
+
+# 1.1) Single run, tomo4, 10deg/80px, GPU 2, with contours
+python scripts/sbi/npe_l1norm_jaxili_nbody_tomo.py \
+  --gpu 2 --no-wandb --map-kind nbody \
+  --tfds-name NbodyCosmogridDatasetTomo/grid --field-size 10 --field-npix 80 \
+  --nbins 4 --tomo-bin-indices 1,2,3,4 \
+  --n-scales 5 --l1-nbins 40 --l1-min-snr -13 --l1-max-snr 13 \
+  --summary-transform log1p-zscore --clip-value 5 --pca-components 50 \
+  --epochs 500 --batch-size 256 --learning-rate 1e-4 \
+  --npe-warmup-steps 256 --npe-decay-steps 200000 \
+  --npe-samples 100000 --seed 42 \
+  --cache-dir scripts/sbi/l1_jax_runs/cache_tomo4_10deg80_snr13 \
+  --save-dir scripts/sbi/l1_jax_runs/tomo4_10deg80_seed42 \
+  --checkpoint-name l1_jax_snr13_n5_b40 \
+  --posterior-out scripts/sbi/l1_jax_runs/posteriors/l1_jax_tomo4_10deg80_seed42.npy \
+  --plot --figure-out scripts/sbi/l1_jax_runs/figures/l1_jax_tomo4_10deg80_seed42.png
+
+# 1.2) Single run, tomo4, 20deg/160px (use matching TFDS config)
+python scripts/sbi/npe_l1norm_jaxili_nbody_tomo.py \
+  --gpu 2 --no-wandb --map-kind nbody \
+  --tfds-name NbodyCosmogridDatasetTomo/grid_20deg_160px --field-size 20 --field-npix 160 \
+  --nbins 4 --tomo-bin-indices 1,2,3,4 \
+  --n-scales 5 --l1-nbins 40 --l1-min-snr -13 --l1-max-snr 13 \
+  --summary-transform log1p-zscore --clip-value 5 --pca-components 100 \
+  --epochs 500 --batch-size 256 --learning-rate 1e-4 \
+  --npe-warmup-steps 256 --npe-decay-steps 200000 \
+  --npe-samples 100000 --seed 42 \
+  --cache-dir scripts/sbi/l1_jax_runs/cache_tomo4_20deg160_snr13 \
+  --save-dir scripts/sbi/l1_jax_runs/tomo4_20deg160_seed42 \
+  --checkpoint-name l1_jax_snr13_n5_b40 \
+  --posterior-out scripts/sbi/l1_jax_runs/posteriors/l1_jax_tomo4_20deg160_seed42.npy \
+  --plot --figure-out scripts/sbi/l1_jax_runs/figures/l1_jax_tomo4_20deg160_seed42.png
+
+# 1.3) Single run, single-bin (bin 3), 20deg/160px
+python scripts/sbi/npe_l1norm_jaxili_nbody_tomo.py \
+  --gpu 2 --no-wandb --map-kind nbody \
+  --tfds-name NbodyCosmogridDatasetTomo/grid_20deg_160px --field-size 20 --field-npix 160 \
+  --nbins 1 --tomo-bin-indices 3 \
+  --n-scales 5 --l1-nbins 40 --l1-min-snr -13 --l1-max-snr 13 \
+  --summary-transform log1p-zscore --clip-value 5 --pca-components 50 \
+  --epochs 500 --batch-size 256 --learning-rate 1e-4 \
+  --npe-warmup-steps 256 --npe-decay-steps 200000 \
+  --npe-samples 100000 --seed 42 \
+  --cache-dir scripts/sbi/l1_jax_runs/cache_bin3_20deg160_snr13 \
+  --save-dir scripts/sbi/l1_jax_runs/bin3_20deg160_seed42 \
+  --checkpoint-name l1_jax_snr13_n5_b40 \
+  --posterior-out scripts/sbi/l1_jax_runs/posteriors/l1_jax_bin3_20deg160_seed42.npy \
+  --plot --figure-out scripts/sbi/l1_jax_runs/figures/l1_jax_bin3_20deg160_seed42.png
+
+# 1.4) Multi-seed loop, tomo4, 10deg/80px
+for s in 41 42 43; do
+  python scripts/sbi/npe_l1norm_jaxili_nbody_tomo.py \
+    --gpu 2 --no-wandb --map-kind nbody \
+    --tfds-name NbodyCosmogridDatasetTomo/grid --field-size 10 --field-npix 80 \
+    --nbins 4 --tomo-bin-indices 1,2,3,4 \
+    --n-scales 5 --l1-nbins 40 --l1-min-snr -13 --l1-max-snr 13 \
+    --summary-transform log1p-zscore --clip-value 5 --pca-components 50 \
+    --epochs 500 --batch-size 256 --learning-rate 1e-4 \
+    --npe-warmup-steps 256 --npe-decay-steps 200000 \
+    --npe-samples 100000 --seed ${s} \
+    --cache-dir scripts/sbi/l1_jax_runs/cache_tomo4_10deg80_snr13 \
+    --save-dir scripts/sbi/l1_jax_runs/tomo4_10deg80_seed${s} \
+    --checkpoint-name l1_jax_snr13_n5_b40_seed${s} \
+    --posterior-out scripts/sbi/l1_jax_runs/posteriors/l1_jax_tomo4_10deg80_seed${s}.npy \
+    --plot --figure-out scripts/sbi/l1_jax_runs/figures/l1_jax_tomo4_10deg80_seed${s}.png
+done
+
+# 1.5) Reuse trained checkpoint only (no retraining), sample + plot
+python scripts/sbi/npe_l1norm_jaxili_nbody_tomo.py \
+  --gpu 2 --no-wandb --map-kind nbody \
+  --tfds-name NbodyCosmogridDatasetTomo/grid --field-size 10 --field-npix 80 \
+  --nbins 4 --tomo-bin-indices 1,2,3,4 \
+  --n-scales 5 --l1-nbins 40 --l1-min-snr -13 --l1-max-snr 13 \
+  --summary-transform log1p-zscore --clip-value 5 --pca-components 50 \
+  --seed 42 --no-train --npe-samples 100000 \
+  --cache-dir scripts/sbi/l1_jax_runs/cache_tomo4_10deg80_snr13 \
+  --save-dir scripts/sbi/l1_jax_runs/tomo4_10deg80_seed42 \
+  --checkpoint-name l1_jax_snr13_n5_b40 \
+  --posterior-out scripts/sbi/l1_jax_runs/posteriors/l1_jax_tomo4_10deg80_seed42_notrain.npy \
+  --plot --figure-out scripts/sbi/l1_jax_runs/figures/l1_jax_tomo4_10deg80_seed42_notrain.png
+
+
+# ============================================================================
+# 2) CNN compressor outputs + jaxili NPE (cnn_jax)
+# ============================================================================
+
+# 2.1) Single run, tomo4, 10deg/80px, GPU 2, with contours
+python scripts/sbi/npe_cnn_jaxili_nbody_tomo.py \
+  --gpu 2 --no-wandb --map-kind nbody \
+  --tfds-name NbodyCosmogridDatasetTomo/grid --field-size 10 --field-npix 80 \
+  --nbins 4 --tomo-bin-indices 1,2,3,4 \
+  --compressor-params /home/tersenov/software/cnn_sbi/tomo/save_params/vmim/nbody/sigma_0.26/gal_density_30/bin_4/params_nd_compressor_batch150000.pkl \
+  --compressor-state /home/tersenov/software/cnn_sbi/tomo/save_params/vmim/nbody/sigma_0.26/gal_density_30/bin_4/opt_state_resnet_batch150000.pkl \
+  --summary-clip-value 5 --epochs 500 --batch-size 256 --learning-rate 1e-4 \
+  --npe-warmup-steps 256 --npe-decay-steps 200000 \
+  --npe-samples 100000 --seed 42 \
+  --cache-dir scripts/sbi/cnn_jax_runs/cache_tomo4_10deg80 \
+  --save-dir scripts/sbi/cnn_jax_runs/tomo4_10deg80_seed42 \
+  --checkpoint-name cnn_jax_snr13_n5_b40 \
+  --posterior-out scripts/sbi/cnn_jax_runs/posteriors/cnn_jax_tomo4_10deg80_seed42.npy \
+  --plot --figure-out scripts/sbi/cnn_jax_runs/figures/cnn_jax_tomo4_10deg80_seed42.png
+
+# 2.2) Single run, tomo4, 20deg/160px
+python scripts/sbi/npe_cnn_jaxili_nbody_tomo.py \
+  --gpu 2 --no-wandb --map-kind nbody \
+  --tfds-name NbodyCosmogridDatasetTomo/grid_20deg_160px --field-size 20 --field-npix 160 \
+  --nbins 4 --tomo-bin-indices 1,2,3,4 \
+  --compressor-params /home/tersenov/software/cnn_sbi/tomo/save_params/vmim/nbody/sigma_0.26/gal_density_30/bin_4/params_nd_compressor_batch150000.pkl \
+  --compressor-state /home/tersenov/software/cnn_sbi/tomo/save_params/vmim/nbody/sigma_0.26/gal_density_30/bin_4/opt_state_resnet_batch150000.pkl \
+  --summary-clip-value 5 --epochs 500 --batch-size 256 --learning-rate 1e-4 \
+  --npe-warmup-steps 256 --npe-decay-steps 200000 \
+  --npe-samples 100000 --seed 42 \
+  --cache-dir scripts/sbi/cnn_jax_runs/cache_tomo4_20deg160 \
+  --save-dir scripts/sbi/cnn_jax_runs/tomo4_20deg160_seed42 \
+  --checkpoint-name cnn_jax_snr13_n5_b40 \
+  --posterior-out scripts/sbi/cnn_jax_runs/posteriors/cnn_jax_tomo4_20deg160_seed42.npy \
+  --plot --figure-out scripts/sbi/cnn_jax_runs/figures/cnn_jax_tomo4_20deg160_seed42.png
+
+# 2.3) Multi-seed loop, tomo4, 10deg/80px
+for s in 41 42 43; do
+  python scripts/sbi/npe_cnn_jaxili_nbody_tomo.py \
+    --gpu 2 --no-wandb --map-kind nbody \
+    --tfds-name NbodyCosmogridDatasetTomo/grid --field-size 10 --field-npix 80 \
+    --nbins 4 --tomo-bin-indices 1,2,3,4 \
+    --compressor-params /home/tersenov/software/cnn_sbi/tomo/save_params/vmim/nbody/sigma_0.26/gal_density_30/bin_4/params_nd_compressor_batch150000.pkl \
+    --compressor-state /home/tersenov/software/cnn_sbi/tomo/save_params/vmim/nbody/sigma_0.26/gal_density_30/bin_4/opt_state_resnet_batch150000.pkl \
+    --summary-clip-value 5 --epochs 500 --batch-size 256 --learning-rate 1e-4 \
+    --npe-warmup-steps 256 --npe-decay-steps 200000 \
+    --npe-samples 100000 --seed ${s} \
+    --cache-dir scripts/sbi/cnn_jax_runs/cache_tomo4_10deg80 \
+    --save-dir scripts/sbi/cnn_jax_runs/tomo4_10deg80_seed${s} \
+    --checkpoint-name cnn_jax_seed${s} \
+    --posterior-out scripts/sbi/cnn_jax_runs/posteriors/cnn_jax_tomo4_10deg80_seed${s}.npy \
+    --plot --figure-out scripts/sbi/cnn_jax_runs/figures/cnn_jax_tomo4_10deg80_seed${s}.png
+done
+
+# 2.4) Reuse trained checkpoint only (no retraining), sample + plot
+python scripts/sbi/npe_cnn_jaxili_nbody_tomo.py \
+  --gpu 2 --no-wandb --map-kind nbody \
+  --tfds-name NbodyCosmogridDatasetTomo/grid --field-size 10 --field-npix 80 \
+  --nbins 4 --tomo-bin-indices 1,2,3,4 \
+  --compressor-params /home/tersenov/software/cnn_sbi/tomo/save_params/vmim/nbody/sigma_0.26/gal_density_30/bin_4/params_nd_compressor_batch150000.pkl \
+  --compressor-state /home/tersenov/software/cnn_sbi/tomo/save_params/vmim/nbody/sigma_0.26/gal_density_30/bin_4/opt_state_resnet_batch150000.pkl \
+  --summary-clip-value 5 --seed 42 --no-train --npe-samples 100000 \
+  --cache-dir scripts/sbi/cnn_jax_runs/cache_tomo4_10deg80 \
+  --save-dir scripts/sbi/cnn_jax_runs/tomo4_10deg80_seed42 \
+  --checkpoint-name cnn_jax_snr13_n5_b40 \
+  --posterior-out scripts/sbi/cnn_jax_runs/posteriors/cnn_jax_tomo4_10deg80_seed42_notrain.npy \
+  --plot --figure-out scripts/sbi/cnn_jax_runs/figures/cnn_jax_tomo4_10deg80_seed42_notrain.png
+
+
+# ============================================================================
+# 3) Sweep runner commands (different method settings)
+# ============================================================================
+
+# 3.1) L1+jax only sweep
+python scripts/sbi/run_cnn_l1_systematic_sweep.py \
+  --methods l1_jax --seeds 41,42,43 --gpus 0,1,2 \
+  --flow-steps 500 --npe-samples 50000 \
+  --l1-min-snr -13 --l1-max-snr 13 --plot-l1-contours \
+  --output-root scripts/sbi/systematic_runs_l1_jax_prod
+
+# 3.2) CNN+jax only sweep
+python scripts/sbi/run_cnn_l1_systematic_sweep.py \
+  --methods cnn_jax --seeds 41,42,43 --gpus 0,1,2 \
+  --flow-steps 500 --npe-samples 50000 --plot-cnn-contours \
+  --output-root scripts/sbi/systematic_runs_cnn_jax_prod
+
+# 3.3) Combined jax methods sweep
+python scripts/sbi/run_cnn_l1_systematic_sweep.py \
+  --methods l1_jax,cnn_jax --seeds 41,42,43 --gpus 0,1,2 \
+  --flow-steps 500 --npe-samples 50000 \
+  --l1-min-snr -13 --l1-max-snr 13 --plot-l1-contours --plot-cnn-contours \
+  --output-root scripts/sbi/systematic_runs_jax_combined_prod
+
+# 3.4) Legacy + jax all-method comparison sweep
+python scripts/sbi/run_cnn_l1_systematic_sweep.py \
+  --methods cnn,l1,cnn_jax,l1_jax --seeds 41,42,43 --gpus 0,1,2 \
+  --flow-steps 500 --npe-samples 50000 \
+  --l1-min-snr -13 --l1-max-snr 13 --plot-l1-contours --plot-cnn-contours \
+  --output-root scripts/sbi/systematic_runs_all_methods_prod
+
+
+# ============================================================================
+# 4) CNN compressor from scratch, then cnn_jax inference
+# ============================================================================
+
+# 4.1) Train compressor from scratch (tomo4, 10deg/80px)
+# NOTE: this uses npe_cnn_nbody_tomo.py because that script contains VMIM compressor training.
+python scripts/sbi/npe_cnn_nbody_tomo.py \
+  --cuda-visible-devices 2 --no-wandb --map-kind nbody \
+  --tfds-name NbodyCosmogridDatasetTomo/grid --field-size 10 --field-npix 80 \
+  --nbins 4 --tomo-bin-indices 1,2,3,4 \
+  --save-dir scripts/sbi/cnn_jax_runs/compressor_scratch_tomo4_10deg80 \
+  --cache-dir scripts/sbi/cnn_jax_runs/cache_compressor_tomo4_10deg80 \
+  --train-compressor --compressor-steps 150000 --compressor-lr 5e-4 \
+  --compressor-batch-size 128 --compressor-save-every 2000 \
+  --total-steps 1 --save-every 1 --no-sample
+
+# 4.2) Use the trained compressor checkpoints with cnn_jax (same geometry/tomo)
+# Adjust batch number if you trained with a different --compressor-steps value.
+python scripts/sbi/npe_cnn_jaxili_nbody_tomo.py \
+  --gpu 2 --no-wandb --map-kind nbody \
+  --tfds-name NbodyCosmogridDatasetTomo/grid --field-size 10 --field-npix 80 \
+  --nbins 4 --tomo-bin-indices 1,2,3,4 \
+  --compressor-params scripts/sbi/cnn_jax_runs/compressor_scratch_tomo4_10deg80/vmim/nbody/sigma_0.26/gal_density_30/bin_4/params_nd_compressor_batch150000.pkl \
+  --compressor-state scripts/sbi/cnn_jax_runs/compressor_scratch_tomo4_10deg80/vmim/nbody/sigma_0.26/gal_density_30/bin_4/opt_state_resnet_batch150000.pkl \
+  --summary-clip-value 5 --epochs 500 --batch-size 256 --learning-rate 1e-4 \
+  --npe-warmup-steps 256 --npe-decay-steps 200000 \
+  --npe-samples 100000 --seed 42 \
+  --cache-dir scripts/sbi/cnn_jax_runs/cache_tomo4_10deg80_scratch_comp \
+  --save-dir scripts/sbi/cnn_jax_runs/tomo4_10deg80_seed42_scratch_comp \
+  --checkpoint-name cnn_jax_scratch_comp \
+  --posterior-out scripts/sbi/cnn_jax_runs/posteriors/cnn_jax_tomo4_10deg80_seed42_scratch_comp.npy \
+  --plot --figure-out scripts/sbi/cnn_jax_runs/figures/cnn_jax_tomo4_10deg80_seed42_scratch_comp.png
+
+# 4.3) Train compressor from scratch (tomo4, 20deg/160px) + cnn_jax
+python scripts/sbi/npe_cnn_nbody_tomo.py \
+  --cuda-visible-devices 2 --no-wandb --map-kind nbody \
+  --tfds-name NbodyCosmogridDatasetTomo/grid_20deg_160px --field-size 20 --field-npix 160 \
+  --nbins 4 --tomo-bin-indices 1,2,3,4 \
+  --save-dir scripts/sbi/cnn_jax_runs/compressor_scratch_tomo4_20deg160 \
+  --cache-dir scripts/sbi/cnn_jax_runs/cache_compressor_tomo4_20deg160 \
+  --train-compressor --compressor-steps 150000 --compressor-lr 5e-4 \
+  --compressor-batch-size 128 --compressor-save-every 2000 \
+  --total-steps 1 --save-every 1 --no-sample
+
+python scripts/sbi/npe_cnn_jaxili_nbody_tomo.py \
+  --gpu 2 --no-wandb --map-kind nbody \
+  --tfds-name NbodyCosmogridDatasetTomo/grid_20deg_160px --field-size 20 --field-npix 160 \
+  --nbins 4 --tomo-bin-indices 1,2,3,4 \
+  --compressor-params scripts/sbi/cnn_jax_runs/compressor_scratch_tomo4_20deg160/vmim/nbody/sigma_0.26/gal_density_30/bin_4/params_nd_compressor_batch150000.pkl \
+  --compressor-state scripts/sbi/cnn_jax_runs/compressor_scratch_tomo4_20deg160/vmim/nbody/sigma_0.26/gal_density_30/bin_4/opt_state_resnet_batch150000.pkl \
+  --summary-clip-value 5 --epochs 500 --batch-size 256 --learning-rate 1e-4 \
+  --npe-warmup-steps 256 --npe-decay-steps 200000 \
+  --npe-samples 100000 --seed 42 \
+  --cache-dir scripts/sbi/cnn_jax_runs/cache_tomo4_20deg160_scratch_comp \
+  --save-dir scripts/sbi/cnn_jax_runs/tomo4_20deg160_seed42_scratch_comp \
+  --checkpoint-name cnn_jax_scratch_comp \
+  --posterior-out scripts/sbi/cnn_jax_runs/posteriors/cnn_jax_tomo4_20deg160_seed42_scratch_comp.npy \
+  --plot --figure-out scripts/sbi/cnn_jax_runs/figures/cnn_jax_tomo4_20deg160_seed42_scratch_comp.png
+
+# 4.4) Full sweep with automatic compressor training from scratch per variant
+# This trains compressor checkpoints first, then runs cnn_jax evals using those checkpoints.
+python scripts/sbi/run_cnn_l1_systematic_sweep.py \
+  --methods cnn_jax --seeds 41,42,43 --gpus 0,1,2 \
+  --compressor-steps 20000 --compressor-save-every 2000 \
+  --flow-steps 500 --npe-samples 50000 --plot-cnn-contours \
+  --output-root scripts/sbi/systematic_runs_cnn_jax_scratch_comp
