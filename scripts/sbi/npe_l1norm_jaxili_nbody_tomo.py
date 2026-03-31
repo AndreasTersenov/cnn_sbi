@@ -775,6 +775,64 @@ def parse_args() -> argparse.Namespace:
     return args
 
 
+def build_l1_cache_metadata(
+    args: argparse.Namespace,
+    tomo_bin_indices: tuple[int, ...],
+    l1_min_snr: float,
+    l1_max_snr: float,
+    l1_clamp_overflow: bool,
+    subtract_coarse_mean: bool,
+) -> Dict[str, object]:
+    return {
+        "l1_min_snr": float(l1_min_snr),
+        "l1_max_snr": float(l1_max_snr),
+        "l1_nbins": int(args.l1_nbins),
+        "l1_clamp_overflow": bool(l1_clamp_overflow),
+        "subtract_coarse_mean": bool(subtract_coarse_mean),
+        "l1_implementation": str(args.l1_implementation),
+        "n_scales": int(args.n_scales),
+        "tfds_name": str(args.tfds_name),
+        "tomo_bin_indices": ",".join(str(b) for b in tomo_bin_indices),
+        "map_kind": str(args.map_kind),
+        "field_size": int(args.field_size),
+        "field_npix": int(args.field_npix),
+        "nside": int(args.nside),
+        "nbins": int(args.nbins),
+        "sigma_e": float(args.sigma_e),
+        "galaxy_density": float(args.galaxy_density),
+        "ds_batch_size": int(args.ds_batch_size),
+    }
+
+
+def compare_cache_metadata(
+    meta_npz: np.lib.npyio.NpzFile,
+    expected: Dict[str, object],
+) -> Tuple[bool, list[str]]:
+    mismatches: list[str] = []
+    for key, expected_value in expected.items():
+        if key not in meta_npz.files:
+            mismatches.append(f"missing:{key}")
+            continue
+        cached_raw = meta_npz[key]
+        if isinstance(expected_value, bool):
+            cached_value = bool(cached_raw)
+            if cached_value != expected_value:
+                mismatches.append(f"{key}={cached_value} (expected {expected_value})")
+        elif isinstance(expected_value, float):
+            cached_value = float(cached_raw)
+            if abs(cached_value - expected_value) > 1e-10:
+                mismatches.append(f"{key}={cached_value} (expected {expected_value})")
+        elif isinstance(expected_value, int):
+            cached_value = int(cached_raw)
+            if cached_value != expected_value:
+                mismatches.append(f"{key}={cached_value} (expected {expected_value})")
+        else:
+            cached_value = str(cached_raw)
+            if cached_value != str(expected_value):
+                mismatches.append(f"{key}={cached_value} (expected {expected_value})")
+    return len(mismatches) == 0, mismatches
+
+
 def filter_zero_variance_bins(
     data: np.ndarray,
     min_variance: float = 1e-5,
@@ -866,6 +924,7 @@ def train_with_nan_retry(
     decay_steps: int,
     params: jnp.ndarray,
     data: jnp.ndarray,
+    split_key: jax.Array,
     max_retries: int = 10,
 ) -> tuple[NPE, object, object]:
     """Train jaxili NPE with bounded retries if train/val losses become NaN."""
@@ -890,7 +949,7 @@ def train_with_nan_retry(
             if nan_source is not None:
                 print(f"  NaN detected in {nan_source}; reinitializing inference object.")
                 inference = NPE()
-                inference = inference.append_simulations(params, data)
+                inference = inference.append_simulations(params, data, key=split_key)
                 continue
 
             if hasattr(metrics, "test_loss") and _metric_has_nan(getattr(metrics, "test_loss")):
@@ -903,7 +962,7 @@ def train_with_nan_retry(
             if attempt == max_retries:
                 raise
             inference = NPE()
-            inference = inference.append_simulations(params, data)
+            inference = inference.append_simulations(params, data, key=split_key)
 
     raise RuntimeError("Training failed after exhausting NaN-retry budget.")
 
@@ -986,6 +1045,8 @@ def main() -> None:
     torch_device = setup_environment(args.cuda_visible_devices)
     rng = jax.random.PRNGKey(args.seed)
     rng, rng_obs, rng_sample = jax.random.split(rng, 3)
+    split_seed = int(args.seed) + 1
+    split_key = jax.random.PRNGKey(split_seed)
 
     pixel_arcmin = args.field_size * 60.0 / args.field_npix
     noise_sigma = pixel_noise_sigma(
@@ -1050,6 +1111,7 @@ def main() -> None:
     )
 
     cache_dir = Path(args.cache_dir) if args.cache_dir else None
+    cache_meta_expected: Optional[Dict[str, object]] = None
     if not args.auto_calibrate_snr:
         l1_min_snr = args.l1_min_snr
         l1_max_snr = args.l1_max_snr
@@ -1079,6 +1141,15 @@ def main() -> None:
                 np.savez(calib_cache, min_snr=l1_min_snr, max_snr=l1_max_snr)
                 print(f"  Cached SNR calibration to {calib_cache}")
 
+    cache_meta_expected = build_l1_cache_metadata(
+        args=args,
+        tomo_bin_indices=tomo_bin_indices,
+        l1_min_snr=l1_min_snr,
+        l1_max_snr=l1_max_snr,
+        l1_clamp_overflow=effective_l1_clamp,
+        subtract_coarse_mean=effective_subtract_coarse_mean,
+    )
+
     print("######## L1-NORM: OBSERVED MAP ########")
     obs_l1 = compute_l1_single_map(
         m_data,
@@ -1103,41 +1174,19 @@ def main() -> None:
         meta_cache = cache_dir / "l1_cache_meta.npz"
         if train_cache.exists() and val_cache.exists() and meta_cache.exists():
             meta = np.load(meta_cache)
-            required_meta = {
-                "l1_min_snr",
-                "l1_max_snr",
-                "l1_nbins",
-                "l1_clamp_overflow",
-                "subtract_coarse_mean",
-                "n_scales",
-                "tfds_name",
-                "tomo_bin_indices",
-                "l1_implementation",
-            }
-            if required_meta.issubset(set(meta.files)):
-                cached_tfds_name = str(meta["tfds_name"])
-                cached_tomo_bins = str(meta["tomo_bin_indices"])
-                cache_ok = (
-                    abs(float(meta["l1_min_snr"]) - l1_min_snr) < 1e-6
-                    and abs(float(meta["l1_max_snr"]) - l1_max_snr) < 1e-6
-                    and int(meta["l1_nbins"]) == args.l1_nbins
-                    and bool(meta["l1_clamp_overflow"]) == effective_l1_clamp
-                    and bool(meta["subtract_coarse_mean"]) == effective_subtract_coarse_mean
-                    and int(meta["n_scales"]) == args.n_scales
-                    and str(meta["l1_implementation"]) == args.l1_implementation
-                    and cached_tfds_name == args.tfds_name
-                    and cached_tomo_bins == ",".join(str(b) for b in tomo_bin_indices)
-                )
-                if cache_ok:
-                    d_tr = np.load(train_cache)
-                    dataset_train = {"theta": d_tr["theta"], "x": d_tr["x"]}
-                    d_va = np.load(val_cache)
-                    dataset_val = {"theta": d_va["theta"], "x": d_va["x"]}
-                    print("  Loaded cached L1 train/val datasets.")
-                else:
-                    print("  Cache metadata mismatch. Recomputing L1 train/val datasets.")
+            cache_ok, mismatches = compare_cache_metadata(meta, cache_meta_expected)
+            if cache_ok:
+                d_tr = np.load(train_cache)
+                dataset_train = {"theta": d_tr["theta"], "x": d_tr["x"]}
+                d_va = np.load(val_cache)
+                dataset_val = {"theta": d_va["theta"], "x": d_va["x"]}
+                print("  Loaded cached L1 train/val datasets (metadata matches).")
             else:
-                print("  Cache metadata incomplete for current settings. Recomputing.")
+                first_mismatch = mismatches[0] if mismatches else "unknown mismatch"
+                print(
+                    "  Cache metadata mismatch. Recomputing L1 train/val datasets. "
+                    f"First mismatch: {first_mismatch}"
+                )
 
     if not cache_ok:
         dataset_train = compute_l1_dataset(
@@ -1176,15 +1225,7 @@ def main() -> None:
             np.savez(cache_dir / "l1_val.npz", theta=dataset_val["theta"], x=dataset_val["x"])
             np.savez(
                 cache_dir / "l1_cache_meta.npz",
-                l1_min_snr=l1_min_snr,
-                l1_max_snr=l1_max_snr,
-                l1_nbins=args.l1_nbins,
-                l1_clamp_overflow=effective_l1_clamp,
-                subtract_coarse_mean=effective_subtract_coarse_mean,
-                l1_implementation=args.l1_implementation,
-                n_scales=args.n_scales,
-                tfds_name=args.tfds_name,
-                tomo_bin_indices=",".join(str(b) for b in tomo_bin_indices),
+                **cache_meta_expected,
             )
             print(f"  Cached datasets to {cache_dir}")
 
@@ -1355,7 +1396,7 @@ def main() -> None:
             ) from exc
     else:
         inference = NPE()
-        inference = inference.append_simulations(theta_train, x_train)
+        inference = inference.append_simulations(theta_train, x_train, key=split_key)
         if args.no_sample and args.epochs < 2:
             print(
                 "  --epochs < 2 can fail in jaxili scheduler setup; "
@@ -1371,6 +1412,7 @@ def main() -> None:
             decay_steps=args.npe_decay_steps,
             params=theta_train,
             data=x_train,
+            split_key=split_key,
             max_retries=args.nan_retries,
         )
         training_summary = {
@@ -1380,6 +1422,7 @@ def main() -> None:
             "nan_retries": int(args.nan_retries),
             "npe_warmup_steps": int(args.npe_warmup_steps),
             "npe_decay_steps": int(args.npe_decay_steps),
+            "npe_split_seed": split_seed,
             "checkpoint_path": str(checkpoint_path),
         }
         if metrics is not None:
@@ -1454,6 +1497,7 @@ def main() -> None:
         "npe_learning_rate": float(args.learning_rate),
         "npe_warmup_steps": int(args.npe_warmup_steps),
         "npe_decay_steps": int(args.npe_decay_steps),
+        "npe_split_seed": split_seed,
         "min_feature_variance": float(args.min_feature_variance),
         "truth_parameters": [float(v) for v in np.asarray(truth).ravel()],
         "tomo_bin_indices": list(tomo_bin_indices),

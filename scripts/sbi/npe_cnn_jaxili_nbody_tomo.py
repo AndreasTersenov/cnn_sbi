@@ -663,6 +663,7 @@ def train_with_nan_retry(
     decay_steps: int,
     params: jnp.ndarray,
     data: jnp.ndarray,
+    split_key: jax.Array,
     max_retries: int = 10,
 ) -> tuple[NPE, object, object]:
     for attempt in range(1, max_retries + 1):
@@ -682,12 +683,12 @@ def train_with_nan_retry(
             if train_metric is not None and _metric_has_nan(train_metric):
                 print("  NaN detected in training loss; reinitializing inference object.")
                 inference = _new_inference()
-                inference = inference.append_simulations(params, data)
+                inference = inference.append_simulations(params, data, key=split_key)
                 continue
             if val_metric is not None and _metric_has_nan(val_metric):
                 print("  NaN detected in validation loss; reinitializing inference object.")
                 inference = _new_inference()
-                inference = inference.append_simulations(params, data)
+                inference = inference.append_simulations(params, data, key=split_key)
                 continue
             print("  Training completed successfully.")
             return inference, metrics, density_estimator
@@ -696,7 +697,7 @@ def train_with_nan_retry(
             if attempt == max_retries:
                 raise
             inference = _new_inference()
-            inference = inference.append_simulations(params, data)
+            inference = inference.append_simulations(params, data, key=split_key)
 
     raise RuntimeError("Training failed after exhausting NaN-retry budget.")
 
@@ -823,6 +824,8 @@ def main() -> None:
     setup_environment(args.cuda_visible_devices)
     rng = jax.random.PRNGKey(args.seed)
     rng, rng_obs, rng_sample = jax.random.split(rng, 3)
+    split_seed = int(args.seed) + 1
+    split_key = jax.random.PRNGKey(split_seed)
 
     summary_dim = args.compressor_dim
     print(f"  summary_dim    = {summary_dim}")
@@ -1064,7 +1067,7 @@ def main() -> None:
             ) from exc
     else:
         inference = _new_inference()
-        inference = inference.append_simulations(theta_train, x_train)
+        inference = inference.append_simulations(theta_train, x_train, key=split_key)
         inference, metrics, _ = train_with_nan_retry(
             inference=inference,
             checkpoint_path=str(checkpoint_path),
@@ -1075,6 +1078,7 @@ def main() -> None:
             decay_steps=args.npe_decay_steps,
             params=theta_train,
             data=x_train,
+            split_key=split_key,
             max_retries=args.nan_retries,
         )
         training_summary = {
@@ -1084,6 +1088,7 @@ def main() -> None:
             "nan_retries": int(args.nan_retries),
             "npe_warmup_steps": int(args.npe_warmup_steps),
             "npe_decay_steps": int(args.npe_decay_steps),
+            "npe_split_seed": split_seed,
             "checkpoint_path": str(checkpoint_path),
         }
         if metrics is not None:
@@ -1155,6 +1160,7 @@ def main() -> None:
         "npe_learning_rate": float(args.learning_rate),
         "npe_warmup_steps": int(args.npe_warmup_steps),
         "npe_decay_steps": int(args.npe_decay_steps),
+        "npe_split_seed": split_seed,
         "min_feature_variance": float(args.min_feature_variance),
         "truth_parameters": [float(v) for v in np.asarray(truth).ravel()],
         "tomo_bin_indices": list(tomo_bin_indices),
