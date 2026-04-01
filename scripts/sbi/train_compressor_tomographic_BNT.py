@@ -43,15 +43,16 @@ from tensorflow_probability.substrates import jax as tfp
 tfb = tfp.bijectors
 tfd = tfp.distributions
 
-import tf_dataset_nbody
+# Register TFDS tomo dataset builder
+import tf_dataset_nbody_tomo as tf_dataset_nbody
 
 sigma_e = 0.26
 galaxy_density = 30 / 4
-field_size = size = 20
-field_npix = xsize = 160
+field_size = size = 10
+field_npix = xsize = 80
 nside = 512
 reso = size * 60 / xsize
-nbins = 1
+nbins = 4
 dim = 6
 
 # script arguments
@@ -74,7 +75,7 @@ if args.loss == "mse":
     loss_name = "train_compressor_mse"
 elif args.loss == "vmim":
     loss_name = "train_compressor_vmim"
-    
+
 
 # Ensure the save_params and fig directories exist
 os.makedirs(f"./save_params/{args.loss}/{args.map_kind}/sigma_{sigma_e}/gal_density_{int(galaxy_density*4)}/bin_{bin_number}", exist_ok=True)
@@ -100,32 +101,46 @@ cosmo_parameters = jnp.array(
 truth = list(cosmo_parameters[0])
 print('TRUTH=', truth)
 path = "/home/tersenov/CosmoGridV1/stage3_forecast/fiducial/cosmo_fiducial/perm_0000/projected_probes_maps_nobaryons512.h5"
-m_data = h5py.File(path, "r")
-m_data = np.array(m_data["kg"][f"stage3_lensing{bin_number}"]) #+ np.array(m_data["ia"][f"stage3_lensing{bin_number}"])
+m_data_h5 = h5py.File(path, "r")
+# Build 4-channel tomographic observed map (bins 1..4), then project each with same projector
 proj = hp.projector.GnomonicProj(rot=[0, 0, 0], xsize=xsize, ysize=xsize, reso=reso)
-m_data = proj.projmap(m_data, vec2pix_func=partial(hp.vec2pix, nside))
-m_data = dist.Independent(
-    dist.Normal(
-        m_data,
-        sigma_e / jnp.sqrt(galaxy_density * (field_size * 60 / field_npix) ** 2),
-    ),
-    2,
-).sample(jax.random.PRNGKey(0), (1,))
+proj_bins = []
+for b in (1, 2, 3, 4):
+    full_map = np.array(m_data_h5["kg"][f"stage3_lensing{b}"])
+    proj_map = proj.projmap(full_map, vec2pix_func=partial(hp.vec2pix, nside))
+    proj_bins.append(proj_map)
+# Stack into (H, W, 4)
+m_data = np.stack(proj_bins, axis=-1).astype(np.float32)
+# Add shape noise equally to each bin
+stddev = sigma_e / jnp.sqrt(galaxy_density * (field_size * 60 / field_npix) ** 2)
+m_data = jnp.asarray(m_data) + jax.random.normal(jax.random.PRNGKey(0), (field_npix, field_npix, nbins)) * stddev
+
+# Apply BNT transformation to observed data
+BNT_MATRIX = np.array(
+    [
+        [1.0, 0.0, 0.0, 0.0],
+        [-1.0, 1.0, 0.0, 0.0],
+        [0.4521097, -1.4521097, 1.0, 0.0],
+        [0.0, 0.25127807, -1.251278, 1.0],
+    ],
+    dtype=np.float32,
+)
+m_data = jnp.tensordot(m_data, BNT_MATRIX, axes=[[2], [1]])
 
 # params_name = [
-#     r"$\Omega_m$",
-#     r"$\sigma_8$",
+#     r"$\\Omega_m$",
+#     r"$\\sigma_8$",
 #     r"$w_0$",
 #     r"$h_0$",
 #     r"$n_s$",
-#     r"$\Omega_b$",
+#     r"$\\Omega_b$",
 # ]
 params_name = [
-    r'\Omega_m', 
-    r'\sigma_8', 
-    r'w_0', 
-    r'h_0', 
-    r'n_s', 
+    r'\Omega_m',
+    r'\sigma_8',
+    r'w_0',
+    r'h_0',
+    r'n_s',
     r'\Omega_b']
 
 print("######## DATA AUGMENTATION ########")
@@ -139,7 +154,7 @@ if args.map_kind == "nbody_with_baryon_ia":
     ):
         x = example["map_nbody_w_baryon_ia"]
         x += tf.random.normal(
-            shape=(field_npix, field_npix),
+            shape=(field_npix, field_npix, nbins),
             stddev=sigma_e
             / jnp.sqrt(galaxy_density * (field_size * 60 / field_npix) ** 2),
         )
@@ -154,7 +169,7 @@ elif args.map_kind == "nbody":
     ):
         x = example["map_nbody"]
         x += tf.random.normal(
-            shape=(field_npix, field_npix),
+            shape=(field_npix, field_npix, nbins),
             stddev=sigma_e
             / jnp.sqrt(galaxy_density * (field_size * 60 / field_npix) ** 2),
         )
@@ -169,7 +184,7 @@ elif args.map_kind == "gaussian":
     ):
         x = example["map_gaussian"]
         x += tf.random.normal(
-            shape=(field_npix, field_npix),
+            shape=(field_npix, field_npix, nbins),
             stddev=sigma_e
             / jnp.sqrt(galaxy_density * (field_size * 60 / field_npix) ** 2),
         )
@@ -178,9 +193,24 @@ elif args.map_kind == "gaussian":
 
 
 def augmentation_flip(example):
-    x = tf.expand_dims(example["maps"], -1)
+    x = example["maps"]
     x = tf.image.random_flip_left_right(x)
     x = tf.image.random_flip_up_down(x)
+    return {"maps": x, "theta": example["theta"]}
+
+
+def augmentation_bnt(example):
+    BNT_MATRIX = tf.constant(
+        [
+            [1.0, 0.0, 0.0, 0.0],
+            [-1.0, 1.0, 0.0, 0.0],
+            [0.4521097, -1.4521097, 1.0, 0.0],
+            [0.0, 0.25127807, -1.251278, 1.0],
+        ],
+        dtype=tf.float32,
+    )
+    x = example["maps"]
+    x = tf.tensordot(x, BNT_MATRIX, axes=[[2], [1]])
     return {"maps": x, "theta": example["theta"]}
 
 
@@ -193,13 +223,15 @@ def rescale_h(example):
 
 def augmentation(example):
     return rescale_h(
-        augmentation_flip(
-            augmentation_noise(
-                example=example,
-                sigma_e=sigma_e,
-                galaxy_density=galaxy_density,
-                field_size=field_size,
-                field_npix=field_npix,
+        augmentation_bnt(
+            augmentation_flip(
+                augmentation_noise(
+                    example=example,
+                    sigma_e=sigma_e,
+                    galaxy_density=galaxy_density,
+                    field_size=field_size,
+                    field_npix=field_npix,
+                )
             )
         )
     )
@@ -332,7 +364,7 @@ model_compressor = TrainModel(
 
 # train dataset
 # ds_tr = tfds.load("NbodyCosmogridDatasetLarge/grid", split="train")
-ds_tr = tfds.load("NbodyCosmogridDatasetLargeFOV/grid_20deg_160px", split="train")
+ds_tr = tfds.load("NbodyCosmogridDatasetTomo/grid", split="train")
 
 ds_tr = ds_tr.repeat()
 ds_tr = ds_tr.shuffle(800)
@@ -343,7 +375,7 @@ ds_tr = ds_tr.prefetch(tf.data.experimental.AUTOTUNE)
 ds_train = iter(tfds.as_numpy(ds_tr))
 
 # test dataset
-ds_te = tfds.load("NbodyCosmogridDatasetLargeFOV/grid_20deg_160px", split="test")
+ds_te = tfds.load("NbodyCosmogridDatasetTomo/grid", split="test")
 
 ds_te = ds_te.repeat()
 ds_te = ds_te.shuffle(200)
@@ -376,14 +408,19 @@ for batch in tqdm(range(1, args.total_steps + 1)):
 
     if batch % 2000 == 0:
         # save params
+        save_dir_params = f"./save_params/{args.loss}/{args.map_kind}/sigma_{sigma_e}/gal_density_{int(galaxy_density*4)}/BNT"
+        save_dir_fig = f"./fig/{args.loss}/{args.map_kind}/sigma_{sigma_e}/gal_density_{int(galaxy_density*4)}/BNT"
+        os.makedirs(save_dir_params, exist_ok=True)
+        os.makedirs(save_dir_fig, exist_ok=True)
+
         with open(
-            f"./save_params/{args.loss}/{args.map_kind}/sigma_{sigma_e}/gal_density_{int(galaxy_density*4)}/bin_{bin_number}/params_nd_compressor_batch{batch}.pkl",
+            f"{save_dir_params}/params_nd_compressor_BNT_batch{batch}.pkl",
             "wb",
         ) as fp:
             pickle.dump(parameters_compressor, fp)
 
         with open(
-            f"./save_params/{args.loss}/{args.map_kind}/sigma_{sigma_e}/gal_density_{int(galaxy_density*4)}/bin_{bin_number}/opt_state_resnet_batch{batch}.pkl",
+            f"{save_dir_params}/opt_state_resnet_BNT_batch{batch}.pkl",
             "wb",
         ) as fp:
             pickle.dump(opt_state_resnet, fp)
@@ -392,7 +429,7 @@ for batch in tqdm(range(1, args.total_steps + 1)):
         plt.figure()
         plt.plot(store_loss[1000:])
         plt.title("Batch Loss")
-        plt.savefig(f"./fig/{args.loss}/{args.map_kind}/sigma_{sigma_e}/gal_density_{int(galaxy_density*4)}/bin_{bin_number}/loss_compressor")
+        plt.savefig(f"{save_dir_fig}/loss_compressor_BNT")
         plt.close()
 
         ex_test = next(ds_test)
@@ -409,16 +446,16 @@ for batch in tqdm(range(1, args.total_steps + 1)):
         loss_test.append(b_loss_test)
 
         jnp.save(
-            f"./save_params/{args.loss}/{args.map_kind}/sigma_{sigma_e}/gal_density_{int(galaxy_density*4)}/bin_{bin_number}/loss_train.npy", loss_train
+            f"{save_dir_params}/loss_train_BNT.npy", loss_train
         )
-        jnp.save(f"./save_params/{args.loss}/{args.map_kind}/sigma_{sigma_e}/gal_density_{int(galaxy_density*4)}/bin_{bin_number}/loss_test.npy", loss_test)
+        jnp.save(f"{save_dir_params}/loss_test_BNT.npy", loss_test)
 
         plt.figure()
         plt.plot(loss_train, label="train loss")
         plt.plot(loss_test, label="test loss")
         plt.legend()
         plt.title("Batch Loss")
-        plt.savefig(f"./fig/{args.loss}/{args.map_kind}/sigma_{sigma_e}/gal_density_{int(galaxy_density*4)}/bin_{bin_number}/loss_compressor_train_test")
+        plt.savefig(f"{save_dir_fig}/loss_compressor_train_test_BNT")
         plt.close()
 
         # save contour plot
@@ -440,41 +477,6 @@ for batch in tqdm(range(1, args.total_steps + 1)):
         idx = jnp.where(jnp.isnan(sample_nd))[0]
         sample_nd = jnp.delete(sample_nd, idx, axis=0)
 
-
-        # from chainconsumer import Chain, ChainConsumer, Truth
-        # plt.figure()
-        # c = ChainConsumer()
-        # # c.add_chain(sample_nd, parameters=params_name, name="SBI")
-
-        # # c.add_marker(location={
-        # #     "Om": 0.26,
-        # #     "sigma_8": 0.84,
-        # #     "w_0": -1.0,
-        # #     "h_0": 0.6736,
-        # #     "n_s": 0.9649,
-        # #     "Omega_b": 0.0493,
-        # # }, label="Truth", color="black", linewidth=1.5)
-
-        # c.add_truth(
-        #     Truth(location={
-        #     "Om": 0.26,
-        #     "sigma_8": 0.84,
-        #     "w_0": -1.0,
-        #     "h_0": 0.6736,
-        #     "n_s": 0.9649,
-        #     "Omega_b": 0.0493,
-        # }
-        #     )
-        # )
-        
-        # import pandas as pd
-        # df = pd.DataFrame(sample_nd, columns=params_name)  # Convert to DataFrame
-        # chain = Chain(samples=df, name="SBI")  # Pass the DataFrame instead of NumPy array
-        # c.add_chain(chain)
-
-        # fig = c.plotter.plot(figsize=1.2)
-
- 
         truth_arr = np.array(truth)
         theta = dict(zip(params_name, truth_arr))
 
@@ -486,7 +488,7 @@ for batch in tqdm(range(1, args.total_steps + 1)):
 
             lower = min(s_min, truth_val) - 0.05 * abs(truth_val)
             upper = max(s_max, truth_val) + 0.05 * abs(truth_val)
-            
+
             param_limits[name] = (lower, upper)
 
         # Convert truth values to dictionary
@@ -500,9 +502,7 @@ for batch in tqdm(range(1, args.total_steps + 1)):
         g = gplot.get_subplot_plotter(subplot_size=1.5)
         g.triangle_plot(samples, filled=True, markers=truth_arr, marker_args={"color": "red", "lw": 1.2}, param_limits=param_limits)
 
-
-
         plt.savefig(
-            f"./fig/{args.loss}/{args.map_kind}/sigma_{sigma_e}/gal_density_{int(galaxy_density*4)}/bin_{bin_number}/contour_plot_compressor_batch{batch}"
+            f"{save_dir_fig}/contour_plot_compressor_BNT_batch{batch}"
         )
         plt.close()

@@ -43,15 +43,16 @@ from tensorflow_probability.substrates import jax as tfp
 tfb = tfp.bijectors
 tfd = tfp.distributions
 
-import tf_dataset_nbody
+# Register TFDS tomo dataset builder
+import tf_dataset_nbody_tomo as tf_dataset_nbody
 
 sigma_e = 0.26
 galaxy_density = 30 / 4
-field_size = size = 20
-field_npix = xsize = 160
+field_size = size = 10
+field_npix = xsize = 80
 nside = 512
 reso = size * 60 / xsize
-nbins = 1
+nbins = 4
 dim = 6
 
 # script arguments
@@ -74,7 +75,7 @@ if args.loss == "mse":
     loss_name = "train_compressor_mse"
 elif args.loss == "vmim":
     loss_name = "train_compressor_vmim"
-    
+
 
 # Ensure the save_params and fig directories exist
 os.makedirs(f"./save_params/{args.loss}/{args.map_kind}/sigma_{sigma_e}/gal_density_{int(galaxy_density*4)}/bin_{bin_number}", exist_ok=True)
@@ -100,32 +101,34 @@ cosmo_parameters = jnp.array(
 truth = list(cosmo_parameters[0])
 print('TRUTH=', truth)
 path = "/home/tersenov/CosmoGridV1/stage3_forecast/fiducial/cosmo_fiducial/perm_0000/projected_probes_maps_nobaryons512.h5"
-m_data = h5py.File(path, "r")
-m_data = np.array(m_data["kg"][f"stage3_lensing{bin_number}"]) #+ np.array(m_data["ia"][f"stage3_lensing{bin_number}"])
+m_data_h5 = h5py.File(path, "r")
+# Build 4-channel tomographic observed map (bins 1..4), then project each with same projector
 proj = hp.projector.GnomonicProj(rot=[0, 0, 0], xsize=xsize, ysize=xsize, reso=reso)
-m_data = proj.projmap(m_data, vec2pix_func=partial(hp.vec2pix, nside))
-m_data = dist.Independent(
-    dist.Normal(
-        m_data,
-        sigma_e / jnp.sqrt(galaxy_density * (field_size * 60 / field_npix) ** 2),
-    ),
-    2,
-).sample(jax.random.PRNGKey(0), (1,))
+proj_bins = []
+for b in (1, 2, 3, 4):
+    full_map = np.array(m_data_h5["kg"][f"stage3_lensing{b}"])
+    proj_map = proj.projmap(full_map, vec2pix_func=partial(hp.vec2pix, nside))
+    proj_bins.append(proj_map)
+# Stack into (H, W, 4)
+m_data = np.stack(proj_bins, axis=-1).astype(np.float32)
+# Add shape noise equally to each bin
+stddev = sigma_e / jnp.sqrt(galaxy_density * (field_size * 60 / field_npix) ** 2)
+m_data = jnp.asarray(m_data) + jax.random.normal(jax.random.PRNGKey(0), (field_npix, field_npix, nbins)) * stddev
 
 # params_name = [
-#     r"$\Omega_m$",
-#     r"$\sigma_8$",
+#     r"$\\Omega_m$",
+#     r"$\\sigma_8$",
 #     r"$w_0$",
 #     r"$h_0$",
 #     r"$n_s$",
-#     r"$\Omega_b$",
+#     r"$\\Omega_b$",
 # ]
 params_name = [
-    r'\Omega_m', 
-    r'\sigma_8', 
-    r'w_0', 
-    r'h_0', 
-    r'n_s', 
+    r'\Omega_m',
+    r'\sigma_8',
+    r'w_0',
+    r'h_0',
+    r'n_s',
     r'\Omega_b']
 
 print("######## DATA AUGMENTATION ########")
@@ -139,7 +142,7 @@ if args.map_kind == "nbody_with_baryon_ia":
     ):
         x = example["map_nbody_w_baryon_ia"]
         x += tf.random.normal(
-            shape=(field_npix, field_npix),
+            shape=(field_npix, field_npix, nbins),
             stddev=sigma_e
             / jnp.sqrt(galaxy_density * (field_size * 60 / field_npix) ** 2),
         )
@@ -154,7 +157,7 @@ elif args.map_kind == "nbody":
     ):
         x = example["map_nbody"]
         x += tf.random.normal(
-            shape=(field_npix, field_npix),
+            shape=(field_npix, field_npix, nbins),
             stddev=sigma_e
             / jnp.sqrt(galaxy_density * (field_size * 60 / field_npix) ** 2),
         )
@@ -169,7 +172,7 @@ elif args.map_kind == "gaussian":
     ):
         x = example["map_gaussian"]
         x += tf.random.normal(
-            shape=(field_npix, field_npix),
+            shape=(field_npix, field_npix, nbins),
             stddev=sigma_e
             / jnp.sqrt(galaxy_density * (field_size * 60 / field_npix) ** 2),
         )
@@ -178,7 +181,7 @@ elif args.map_kind == "gaussian":
 
 
 def augmentation_flip(example):
-    x = tf.expand_dims(example["maps"], -1)
+    x = example["maps"]
     x = tf.image.random_flip_left_right(x)
     x = tf.image.random_flip_up_down(x)
     return {"maps": x, "theta": example["theta"]}
@@ -332,7 +335,7 @@ model_compressor = TrainModel(
 
 # train dataset
 # ds_tr = tfds.load("NbodyCosmogridDatasetLarge/grid", split="train")
-ds_tr = tfds.load("NbodyCosmogridDatasetLargeFOV/grid_20deg_160px", split="train")
+ds_tr = tfds.load("NbodyCosmogridDatasetTomo/grid", split="train")
 
 ds_tr = ds_tr.repeat()
 ds_tr = ds_tr.shuffle(800)
@@ -343,7 +346,7 @@ ds_tr = ds_tr.prefetch(tf.data.experimental.AUTOTUNE)
 ds_train = iter(tfds.as_numpy(ds_tr))
 
 # test dataset
-ds_te = tfds.load("NbodyCosmogridDatasetLargeFOV/grid_20deg_160px", split="test")
+ds_te = tfds.load("NbodyCosmogridDatasetTomo/grid", split="test")
 
 ds_te = ds_te.repeat()
 ds_te = ds_te.shuffle(200)
@@ -466,7 +469,7 @@ for batch in tqdm(range(1, args.total_steps + 1)):
         # }
         #     )
         # )
-        
+
         # import pandas as pd
         # df = pd.DataFrame(sample_nd, columns=params_name)  # Convert to DataFrame
         # chain = Chain(samples=df, name="SBI")  # Pass the DataFrame instead of NumPy array
@@ -474,7 +477,7 @@ for batch in tqdm(range(1, args.total_steps + 1)):
 
         # fig = c.plotter.plot(figsize=1.2)
 
- 
+
         truth_arr = np.array(truth)
         theta = dict(zip(params_name, truth_arr))
 
@@ -486,7 +489,7 @@ for batch in tqdm(range(1, args.total_steps + 1)):
 
             lower = min(s_min, truth_val) - 0.05 * abs(truth_val)
             upper = max(s_max, truth_val) + 0.05 * abs(truth_val)
-            
+
             param_limits[name] = (lower, upper)
 
         # Convert truth values to dictionary
