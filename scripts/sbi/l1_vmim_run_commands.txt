@@ -1,0 +1,68 @@
+# L1 datavectors + VMIM MLP compressor + NPE run commands
+
+# 0) Environment
+cd /mnt/home/tersenov/software/cnn_sbi
+# Ensure jaxili env has required deps (one-time):
+# conda run -n jaxili pip install --no-deps "sbi_lens @ git+https://github.com/DifferentiableUniverseInitiative/sbi_lens.git"
+# conda run -n jaxili pip install jaxopt
+
+
+# 1) Single-bin (bin3) no-PCA style run (20deg/160px)
+conda run -n jaxili python scripts/sbi/npe_l1vmim_nbody_tomo.py \
+  --no-wandb --gpu 2 --map-kind nbody \
+  --tfds-name NbodyCosmogridDatasetTomo/grid_20deg_160px --field-size 20 --field-npix 160 \
+  --nbins 1 --tomo-bin-indices 3 \
+  --n-scales 5 --l1-nbins 40 --l1-min-snr -13 --l1-max-snr 13 \
+  --cache-dir scripts/sbi/l1_jax_runs/cache_bin3_20deg160_snr13 \
+  --save-dir scripts/sbi/l1_vmim_runs/bin3_20deg160_seed42/save_params \
+  --train-compressor --compressor-log1p-input \
+  --compressor-dim 6 --compressor-hidden 256,256 \
+  --compressor-steps 5000 --compressor-save-every 500 --compressor-batch-size 128 --compressor-lr 1e-4 \
+  --total-steps 500 --save-every 100 --patience 10 --batch-size 256 \
+  --npe-samples 100000 \
+  --posterior-out scripts/sbi/l1_vmim_runs/posteriors/l1_vmim_bin3_20deg160_seed42.npy \
+  --plot --figure-out scripts/sbi/l1_vmim_runs/figures/l1_vmim_bin3_20deg160_seed42.png
+
+
+# 2) Tomographic (bins 1,2,3,4) no-PCA style run (20deg/160px)
+conda run -n jaxili python scripts/sbi/npe_l1vmim_nbody_tomo.py \
+  --no-wandb --gpu 2 --map-kind nbody \
+  --tfds-name NbodyCosmogridDatasetTomo/grid_20deg_160px --field-size 20 --field-npix 160 \
+  --nbins 4 --tomo-bin-indices 1,2,3,4 \
+  --n-scales 5 --l1-nbins 40 --l1-min-snr -13 --l1-max-snr 13 \
+  --cache-dir scripts/sbi/l1_jax_runs/cache_tomo4_20deg160_snr13 \
+  --save-dir scripts/sbi/l1_vmim_runs/tomo4_20deg160_seed42/save_params \
+  --train-compressor --compressor-log1p-input \
+  --compressor-dim 6 --compressor-hidden 256,256 \
+  --compressor-steps 5000 --compressor-save-every 500 --compressor-batch-size 128 --compressor-lr 1e-4 \
+  --total-steps 500 --save-every 100 --patience 10 --batch-size 256 \
+  --npe-samples 100000 \
+  --posterior-out scripts/sbi/l1_vmim_runs/posteriors/l1_vmim_tomo4_20deg160_seed42.npy \
+  --plot --figure-out scripts/sbi/l1_vmim_runs/figures/l1_vmim_tomo4_20deg160_seed42.png
+
+
+# 3) Use trained flow checkpoint only (no retraining)
+conda run -n jaxili python scripts/sbi/npe_l1vmim_nbody_tomo.py \
+  --no-wandb --gpu 2 --map-kind nbody \
+  --tfds-name NbodyCosmogridDatasetTomo/grid_20deg_160px --field-size 20 --field-npix 160 \
+  --nbins 4 --tomo-bin-indices 1,2,3,4 \
+  --n-scales 5 --l1-nbins 40 --l1-min-snr -13 --l1-max-snr 13 \
+  --cache-dir scripts/sbi/l1_jax_runs/cache_tomo4_20deg160_snr13 \
+  --save-dir scripts/sbi/l1_vmim_runs/tomo4_20deg160_seed42/save_params \
+  --compressor-params scripts/sbi/l1_vmim_runs/tomo4_20deg160_seed42/save_params/vmim_l1/nbody/sigma_0.26/gal_density_30/bin_4/params_nd_compressor_best.pkl \
+  --compressor-state scripts/sbi/l1_vmim_runs/tomo4_20deg160_seed42/save_params/vmim_l1/nbody/sigma_0.26/gal_density_30/bin_4/opt_state_resnet_best.pkl \
+  --compressor-log1p-input --no-train --npe-samples 100000 \
+  --posterior-out scripts/sbi/l1_vmim_runs/posteriors/l1_vmim_tomo4_20deg160_seed42_notrain.npy \
+  --plot --figure-out scripts/sbi/l1_vmim_runs/figures/l1_vmim_tomo4_20deg160_seed42_notrain.png
+
+
+# 4) Systematic multi-GPU runner
+conda run -n jaxili python scripts/sbi/run_l1_vmim_systematic_sweep.py \
+  --gpus 0,1,2 --seeds 41,42,43 \
+  --variants bin3_20deg160,tomo4_20deg160 \
+  --compressor-log1p-input \
+  --compressor-dim 6 --compressor-hidden 256,256 \
+  --compressor-steps 5000 --compressor-save-every 500 --compressor-batch-size 128 --compressor-lr 1e-4 \
+  --flow-steps 500 --save-every 100 --patience 10 --batch-size 256 \
+  --npe-samples 50000 --plot \
+  --output-root scripts/sbi/l1_vmim_runs/systematic_prod
