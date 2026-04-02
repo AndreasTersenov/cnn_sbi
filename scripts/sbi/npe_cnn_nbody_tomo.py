@@ -102,6 +102,24 @@ def parse_tomo_bin_indices(spec: str) -> tuple[int, ...]:
     return tuple(deduped)
 
 
+def parse_positive_int_list(spec: str, arg_name: str) -> tuple[int, ...]:
+    """Parse comma-separated positive integers."""
+    values = []
+    for token in spec.split(","):
+        token = token.strip()
+        if not token:
+            continue
+        value = int(token)
+        if value < 1:
+            raise ValueError(
+                f"Invalid value '{value}' in {arg_name}. Values must be >= 1."
+            )
+        values.append(value)
+    if not values:
+        raise ValueError(f"{arg_name} must contain at least one integer.")
+    return tuple(values)
+
+
 def _checkpoint_step(path: Path) -> int:
     match = re.search(r"batch(\d+)\.pkl$", path.name)
     return int(match.group(1)) if match is not None else -1
@@ -134,6 +152,30 @@ def parse_args() -> argparse.Namespace:
     # Compressor
     p.add_argument("--compressor-dim", type=int, default=6,
                     help="CNN compressor output dimension")
+    p.add_argument(
+        "--compressor-conv-channels",
+        type=str,
+        default="32,64,128",
+        help="Comma-separated Conv2D channel widths for compressor trunk",
+    )
+    p.add_argument(
+        "--compressor-dense-width",
+        type=int,
+        default=64,
+        help="Hidden width of the compressor dense head",
+    )
+    p.add_argument(
+        "--compressor-pool-window",
+        type=int,
+        default=16,
+        help="AvgPool window size in compressor head",
+    )
+    p.add_argument(
+        "--compressor-pool-stride",
+        type=int,
+        default=8,
+        help="AvgPool stride in compressor head",
+    )
     p.add_argument("--compressor-params", type=str,
                     default="/home/tersenov/software/cnn_sbi/tomo/save_params/"
                             "vmim/nbody/sigma_0.26/gal_density_30/bin_4/"
@@ -354,28 +396,52 @@ def load_observed_map(
 class CompressorCNN2D(hk.Module):
     """CNN compressor: (B, H, W, nbins) -> (B, output_dim)."""
 
-    def __init__(self, output_dim: int, name: str | None = None):
+    def __init__(
+        self,
+        output_dim: int,
+        conv_channels: tuple[int, ...],
+        dense_width: int,
+        pool_window: int,
+        pool_stride: int,
+        name: str | None = None,
+    ):
         super().__init__(name=name)
         self.output_dim = output_dim
+        self.conv_channels = conv_channels
+        self.dense_width = dense_width
+        self.pool_window = pool_window
+        self.pool_stride = pool_stride
 
     def __call__(self, x):
-        net_x = hk.Conv2D(32, 3, 2)(x)
-        net_x = jax.nn.leaky_relu(net_x)
-        net_x = hk.Conv2D(64, 3, 2)(net_x)
-        net_x = jax.nn.leaky_relu(net_x)
-        net_x = hk.Conv2D(128, 3, 2)(net_x)
-        net_x = jax.nn.leaky_relu(net_x)
-        net_x = hk.AvgPool(16, 8, "SAME")(net_x)
+        net_x = x
+        for channels in self.conv_channels:
+            net_x = hk.Conv2D(channels, 3, 2)(net_x)
+            net_x = jax.nn.leaky_relu(net_x)
+        net_x = hk.AvgPool(self.pool_window, self.pool_stride, "SAME")(net_x)
         net_x = hk.Flatten()(net_x)
-        net_x = hk.Linear(64)(net_x)
+        net_x = hk.Linear(self.dense_width)(net_x)
         net_x = jax.nn.leaky_relu(net_x)
         net_x = hk.Linear(self.output_dim)(net_x)
         return net_x.squeeze()
 
 
-def build_compressor(dim: int):
+def build_compressor(
+    dim: int,
+    conv_channels: tuple[int, ...],
+    dense_width: int,
+    pool_window: int,
+    pool_stride: int,
+):
     """Build the Haiku compressor transform."""
-    return hk.transform_with_state(lambda y: CompressorCNN2D(dim)(y))
+    return hk.transform_with_state(
+        lambda y: CompressorCNN2D(
+            dim,
+            conv_channels=conv_channels,
+            dense_width=dense_width,
+            pool_window=pool_window,
+            pool_stride=pool_stride,
+        )(y)
+    )
 
 
 def load_compressor_params(
@@ -414,6 +480,10 @@ def build_cnn_cache_metadata(
     meta: Dict[str, object] = {
         "compressor_source": compressor_source,
         "compressor_dim": int(args.compressor_dim),
+        "compressor_conv_channels": str(args.compressor_conv_channels),
+        "compressor_dense_width": int(args.compressor_dense_width),
+        "compressor_pool_window": int(args.compressor_pool_window),
+        "compressor_pool_stride": int(args.compressor_pool_stride),
         "tfds_name": str(args.tfds_name),
         "tomo_bin_indices": ",".join(str(b) for b in tomo_bin_indices),
         "map_kind": str(args.map_kind),
@@ -1272,6 +1342,18 @@ def plot_posterior(
 def main():
     args = parse_args()
     tomo_bin_indices = parse_tomo_bin_indices(args.tomo_bin_indices)
+    compressor_conv_channels = parse_positive_int_list(
+        args.compressor_conv_channels, "--compressor-conv-channels",
+    )
+    args.compressor_conv_channels = ",".join(
+        str(v) for v in compressor_conv_channels
+    )
+    if args.compressor_dense_width < 1:
+        raise ValueError("--compressor-dense-width must be >= 1.")
+    if args.compressor_pool_window < 1:
+        raise ValueError("--compressor-pool-window must be >= 1.")
+    if args.compressor_pool_stride < 1:
+        raise ValueError("--compressor-pool-stride must be >= 1.")
     if args.nbins != len(tomo_bin_indices):
         print(
             f"  Overriding nbins from {args.nbins} to {len(tomo_bin_indices)} "
@@ -1325,7 +1407,19 @@ def main():
     # 2. CNN compressor
     # ------------------------------------------------------------------
     print("######## CNN COMPRESSOR ########")
-    compressor = build_compressor(args.compressor_dim)
+    print(
+        "  Compressor architecture: "
+        f"conv={compressor_conv_channels}, "
+        f"dense={args.compressor_dense_width}, "
+        f"pool=({args.compressor_pool_window},{args.compressor_pool_stride})"
+    )
+    compressor = build_compressor(
+        args.compressor_dim,
+        conv_channels=compressor_conv_channels,
+        dense_width=args.compressor_dense_width,
+        pool_window=args.compressor_pool_window,
+        pool_stride=args.compressor_pool_stride,
+    )
     compressor_source = "train_compressor" if args.train_compressor else "pretrained"
     compressor_params_ref: Optional[str] = None
     compressor_state_ref: Optional[str] = None
