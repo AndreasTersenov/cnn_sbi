@@ -1,0 +1,133 @@
+{
+  "count": 18,
+  "project_url": "https://wandb.ai/cosmostat/cnn_sbi_bnt",
+  "group_url": "https://wandb.ai/cosmostat/cnn_sbi_bnt/groups/bnt_tomo4_study",
+  "runs": [
+    {
+      "run_name": "cnn_tomo4_20deg160_bnt_s41",
+      "method": "cnn",
+      "condition": "bnt",
+      "seed": 41,
+      "url": "https://wandb.ai/cosmostat/cnn_sbi_bnt/runs/do0k8ven"
+    },
+    {
+      "run_name": "cnn_tomo4_20deg160_bnt_s42",
+      "method": "cnn",
+      "condition": "bnt",
+      "seed": 42,
+      "url": "https://wandb.ai/cosmostat/cnn_sbi_bnt/runs/stoz5g6c"
+    },
+    {
+      "run_name": "cnn_tomo4_20deg160_bnt_s43",
+      "method": "cnn",
+      "condition": "bnt",
+      "seed": 43,
+      "url": "https://wandb.ai/cosmostat/cnn_sbi_bnt/runs/6vx8iw46"
+    },
+    {
+      "run_name": "cnn_tomo4_20deg160_nobnt_s41",
+      "method": "cnn",
+      "condition": "nobnt",
+      "seed": 41,
+      "url": "https://wandb.ai/cosmostat/cnn_sbi_bnt/runs/wxokbwkx"
+    },
+    {
+      "run_name": "cnn_tomo4_20deg160_nobnt_s42",
+      "method": "cnn",
+      "condition": "nobnt",
+      "seed": 42,
+      "url": "https://wandb.ai/cosmostat/cnn_sbi_bnt/runs/plltrjdx"
+    },
+    {
+      "run_name": "cnn_tomo4_20deg160_nobnt_s43",
+      "method": "cnn",
+      "condition": "nobnt",
+      "seed": 43,
+      "url": "https://wandb.ai/cosmostat/cnn_sbi_bnt/runs/aiv2b00w"
+    },
+    {
+      "run_name": "l1_tomo4_20deg160_bnt_s41",
+      "method": "l1",
+      "condition": "bnt",
+      "seed": 41,
+      "url": "https://wandb.ai/cosmostat/cnn_sbi_bnt/runs/zgr2hv0g"
+    },
+    {
+      "run_name": "l1_tomo4_20deg160_bnt_s42",
+      "method": "l1",
+      "condition": "bnt",
+      "seed": 42,
+      "url": "https://wandb.ai/cosmostat/cnn_sbi_bnt/runs/7x9o42i8"
+    },
+    {
+      "run_name": "l1_tomo4_20deg160_bnt_s43",
+      "method": "l1",
+      "condition": "bnt",
+      "seed": 43,
+      "url": "https://wandb.ai/cosmostat/cnn_sbi_bnt/runs/bz35qz8x"
+    },
+    {
+      "run_name": "l1_tomo4_20deg160_nobnt_s41",
+      "method": "l1",
+      "condition": "nobnt",
+      "seed": 41,
+      "url": "https://wandb.ai/cosmostat/cnn_sbi_bnt/runs/i0878wln"
+    },
+    {
+      "run_name": "l1_tomo4_20deg160_nobnt_s42",
+      "method": "l1",
+      "condition": "nobnt",
+      "seed": 42,
+      "url": "https://wandb.ai/cosmostat/cnn_sbi_bnt/runs/n10jf2jh"
+    },
+    {
+      "run_name": "l1_tomo4_20deg160_nobnt_s43",
+      "method": "l1",
+      "condition": "nobnt",
+      "seed": 43,
+      "url": "https://wandb.ai/cosmostat/cnn_sbi_bnt/runs/0azlnesi"
+    },
+    {
+      "run_name": "l1vmim_tomo4_20deg160_bnt_s41",
+      "method": "l1vmim",
+      "condition": "bnt",
+      "seed": 41,
+      "url": "https://wandb.ai/cosmostat/cnn_sbi_bnt/runs/28w8neti"
+    },
+    {
+      "run_name": "l1vmim_tomo4_20deg160_bnt_s42",
+      "method": "l1vmim",
+      "condition": "bnt",
+      "seed": 42,
+      "url": "https://wandb.ai/cosmostat/cnn_sbi_bnt/runs/1he9pd5g"
+    },
+    {
+      "run_name": "l1vmim_tomo4_20deg160_bnt_s43",
+      "method": "l1vmim",
+      "condition": "bnt",
+      "seed": 43,
+      "url": "https://wandb.ai/cosmostat/cnn_sbi_bnt/runs/kz1lpc6e"
+    },
+    {
+      "run_name": "l1vmim_tomo4_20deg160_nobnt_s41",
+      "method": "l1vmim",
+      "condition": "nobnt",
+      "seed": 41,
+      "url": "https://wandb.ai/cosmostat/cnn_sbi_bnt/runs/ujfz71ei"
+    },
+    {
+      "run_name": "l1vmim_tomo4_20deg160_nobnt_s42",
+      "method": "l1vmim",
+      "condition": "nobnt",
+      "seed": 42,
+      "url": "https://wandb.ai/cosmostat/cnn_sbi_bnt/runs/8ys15e9w"
+    },
+    {
+      "run_name": "l1vmim_tomo4_20deg160_nobnt_s43",
+      "method": "l1vmim",
+      "condition": "nobnt",
+      "seed": 43,
+      "url": "https://wandb.ai/cosmostat/cnn_sbi_bnt/runs/eklbv0ze"
+    }
+  ]
+}

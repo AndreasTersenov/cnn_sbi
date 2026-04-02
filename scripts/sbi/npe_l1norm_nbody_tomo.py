@@ -50,6 +50,24 @@ from jax.lib import xla_bridge
 from sklearn.decomposition import PCA
 from tensorflow_probability.substrates import jax as tfp
 
+if not hasattr(np, "issctype"):
+    # Compatibility for NumPy >= 2.0 with tensorflow_probability paths that
+    # still reference np.issctype.
+    def _np_issctype(rep):
+        try:
+            return issubclass(np.dtype(rep).type, np.generic)
+        except Exception:
+            return False
+
+    np.issctype = _np_issctype  # type: ignore[attr-defined]
+
+from bnt_utils import (
+    BNT_MATRIX_VERSION,
+    apply_bnt_numpy,
+    apply_bnt_tf,
+    validate_bnt_configuration,
+)
+
 # sbi_lens normalizing flow
 from sbi_lens.normflow.models import AffineCoupling, ConditionalRealNVP
 
@@ -166,6 +184,11 @@ def parse_args() -> argparse.Namespace:
         default="1,2,3,4",
         help="Tomographic bins to use, e.g. '1,2,3,4' or '3'",
     )
+    p.add_argument(
+        "--apply-bnt",
+        action="store_true",
+        help="Apply BNT transform after shape-noise injection.",
+    )
 
     # Dimensionality reduction
     p.add_argument("--pca-components", type=int, default=50,
@@ -258,6 +281,7 @@ def load_observed_map(
     sigma_e: float,
     galaxy_density: float,
     rng_key: jax.Array,
+    apply_bnt: bool = False,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Load fiducial 4-bin tomographic map, project, and add shape noise."""
     print("######## OBSERVED DATA ########")
@@ -294,6 +318,8 @@ def load_observed_map(
     noise_std = pixel_noise_sigma(sigma_e, galaxy_density, field_size, field_npix)
     noise = jax.random.normal(rng_key, (field_npix, field_npix, nbins)) * noise_std
     m_data = np.array(jnp.asarray(m_data) + noise)
+    if apply_bnt:
+        m_data = apply_bnt_numpy(m_data)
     print(f"  Observed map shape = {m_data.shape}, noise_std/pixel = {noise_std:.6f}")
     return m_data, cosmo_params, truth
 
@@ -460,6 +486,7 @@ def build_augmentation(
     field_npix: int,
     nbins: int,
     tomo_bin_indices: tuple[int, ...],
+    apply_bnt: bool = False,
 ):
     """Build the TF augmentation pipeline for the tomographic dataset."""
     noise_std = sigma_e / jnp.sqrt(galaxy_density * (field_size * 60 / field_npix) ** 2)
@@ -474,6 +501,8 @@ def build_augmentation(
     def augmentation_noise(example):
         x = tf.gather(example[map_key], gather_indices, axis=-1)
         x += tf.random.normal(shape=(field_npix, field_npix, nbins), stddev=noise_std)
+        if apply_bnt:
+            x = apply_bnt_tf(x)
         return {"maps": x, "theta": example["theta"]}
 
     def augmentation_flip(example):
@@ -1006,6 +1035,8 @@ def main():
             f"to match selected bins {tomo_bin_indices}."
         )
         args.nbins = len(tomo_bin_indices)
+    if args.apply_bnt:
+        validate_bnt_configuration(args.nbins, tomo_bin_indices)
     torch_device = setup_environment(args.cuda_visible_devices)
     rng = jax.random.PRNGKey(args.seed)
     rng, rng_obs, rng_sample = jax.random.split(rng, 3)
@@ -1048,6 +1079,7 @@ def main():
         args.field_size, args.field_npix, args.nside, args.nbins,
         tomo_bin_indices,
         args.sigma_e, args.galaxy_density, rng_obs,
+        apply_bnt=args.apply_bnt,
     )
 
     # ------------------------------------------------------------------
@@ -1058,6 +1090,7 @@ def main():
     augmentation = build_augmentation(
         args.map_kind, args.sigma_e, args.galaxy_density,
         args.field_size, args.field_npix, args.nbins, tomo_bin_indices,
+        apply_bnt=args.apply_bnt,
     )
 
     # Resolve cache directory once (used for both calibration and dataset caching)
@@ -1126,7 +1159,7 @@ def main():
             required_meta = {
                 "l1_min_snr", "l1_max_snr", "l1_nbins",
                 "l1_clamp_overflow", "subtract_coarse_mean", "n_scales",
-                "tfds_name", "tomo_bin_indices",
+                "tfds_name", "tomo_bin_indices", "apply_bnt", "bnt_matrix_version",
             }
             if not required_meta.issubset(set(meta.files)):
                 print("  Cache metadata is missing newer L1 settings; recomputing ...")
@@ -1139,6 +1172,8 @@ def main():
                 cached_n_scales = int(meta["n_scales"])
                 cached_tfds_name = str(meta["tfds_name"])
                 cached_tomo_bins = str(meta["tomo_bin_indices"])
+                cached_apply_bnt = bool(meta["apply_bnt"])
+                cached_bnt_version = str(meta["bnt_matrix_version"])
                 if (abs(cached_min - l1_min_snr) < 1e-6 and
                         abs(cached_max - l1_max_snr) < 1e-6 and
                         cached_nbins == args.l1_nbins and
@@ -1146,7 +1181,9 @@ def main():
                         cached_subtract == args.subtract_coarse_mean and
                         cached_n_scales == args.n_scales and
                         cached_tfds_name == args.tfds_name and
-                        cached_tomo_bins == ",".join(str(b) for b in tomo_bin_indices)):
+                        cached_tomo_bins == ",".join(str(b) for b in tomo_bin_indices) and
+                        cached_apply_bnt == bool(args.apply_bnt) and
+                        cached_bnt_version == (BNT_MATRIX_VERSION if args.apply_bnt else "none")):
                     print("  Loading cached L1-norm datasets (metadata matches) ...")
                     d_tr = np.load(train_cache)
                     dataset_train = {"theta": d_tr["theta"], "x": d_tr["x"]}
@@ -1157,7 +1194,7 @@ def main():
                 else:
                     print(
                         "  Cache metadata does not match current L1 settings "
-                        "(SNR range / nbins / clamp / coarse-mean / n_scales). Recomputing ..."
+                        "(SNR range / nbins / clamp / coarse-mean / n_scales / BNT). Recomputing ..."
                     )
 
     if not cache_ok:
@@ -1189,7 +1226,9 @@ def main():
                      subtract_coarse_mean=args.subtract_coarse_mean,
                      n_scales=args.n_scales,
                      tfds_name=args.tfds_name,
-                     tomo_bin_indices=",".join(str(b) for b in tomo_bin_indices))
+                     tomo_bin_indices=",".join(str(b) for b in tomo_bin_indices),
+                     apply_bnt=bool(args.apply_bnt),
+                     bnt_matrix_version=(BNT_MATRIX_VERSION if args.apply_bnt else "none"))
             print(f"  Cached datasets to {cache_dir}")
 
     print(f"  Train x shape = {dataset_train['x'].shape}")

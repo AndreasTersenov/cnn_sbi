@@ -91,6 +91,11 @@ def parse_args() -> argparse.Namespace:
         type=str,
         default="/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/systematic_runs",
     )
+    p.add_argument(
+        "--apply-bnt",
+        action="store_true",
+        help="Apply BNT transform after noise in CNN/L1 pipelines.",
+    )
     return p.parse_args()
 
 
@@ -225,6 +230,7 @@ def main() -> None:
         "npe_samples": args.npe_samples,
         "l1_min_snr": args.l1_min_snr,
         "l1_max_snr": args.l1_max_snr,
+        "apply_bnt": bool(args.apply_bnt),
     }
     (out_root / "manifest.json").write_text(
         json.dumps(run_manifest, indent=2), encoding="utf-8"
@@ -373,6 +379,8 @@ def main() -> None:
                         "--ds-batch-size",
                         str(args.ds_batch_size_cnn),
                     ]
+                    if args.apply_bnt:
+                        cnn_cmd.append("--apply-bnt")
                     if args.plot_cnn_contours:
                         cnn_cmd.extend(
                             [
@@ -491,6 +499,8 @@ def main() -> None:
                         "--l1-max-snr",
                         str(args.l1_max_snr),
                     ]
+                    if args.apply_bnt:
+                        l1_cmd.append("--apply-bnt")
                     if args.plot_l1_contours:
                         l1_cmd.extend(
                             [

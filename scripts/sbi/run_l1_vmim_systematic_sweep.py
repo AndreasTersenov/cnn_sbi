@@ -67,6 +67,11 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--l1-nbins", type=int, default=40)
     p.add_argument("--l1-min-snr", type=float, default=-13.0)
     p.add_argument("--l1-max-snr", type=float, default=13.0)
+    p.add_argument(
+        "--apply-bnt",
+        action="store_true",
+        help="Apply BNT transform after noise in the L1-VMIM pipeline.",
+    )
 
     p.add_argument(
         "--output-root",
@@ -199,6 +204,7 @@ def main() -> None:
         "flow_steps": args.flow_steps,
         "npe_samples": args.npe_samples,
         "compressor_log1p_input": bool(args.compressor_log1p_input),
+        "apply_bnt": bool(args.apply_bnt),
     }
     (out_root / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
 
@@ -280,6 +286,8 @@ def main() -> None:
                 cmd.append("--compressor-log1p-input")
             else:
                 cmd.append("--no-compressor-log1p-input")
+            if args.apply_bnt:
+                cmd.append("--apply-bnt")
             if args.plot:
                 cmd.extend(
                     [
