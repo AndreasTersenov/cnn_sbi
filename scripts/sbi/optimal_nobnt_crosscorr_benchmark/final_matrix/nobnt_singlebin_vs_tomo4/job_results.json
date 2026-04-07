@@ -1,0 +1,272 @@
+[
+  {
+    "name": "copy::cnn_bin1_20deg160_nobnt_s41.npy",
+    "returncode": 0,
+    "source": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/nobnt_tomo_bins_crosscorr_study/posteriors/cnn_bin1_20deg160_nobnt_s41.npy",
+    "dest": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/optimal_nobnt_crosscorr_benchmark/final_matrix/nobnt_singlebin_vs_tomo4/posteriors/cnn_bin1_20deg160_nobnt_s41.npy"
+  },
+  {
+    "name": "copy::cnn_bin1_20deg160_nobnt_s42.npy",
+    "returncode": 0,
+    "source": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/nobnt_tomo_bins_crosscorr_study/posteriors/cnn_bin1_20deg160_nobnt_s42.npy",
+    "dest": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/optimal_nobnt_crosscorr_benchmark/final_matrix/nobnt_singlebin_vs_tomo4/posteriors/cnn_bin1_20deg160_nobnt_s42.npy"
+  },
+  {
+    "name": "copy::cnn_bin1_20deg160_nobnt_s43.npy",
+    "returncode": 0,
+    "source": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/nobnt_tomo_bins_crosscorr_study/posteriors/cnn_bin1_20deg160_nobnt_s43.npy",
+    "dest": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/optimal_nobnt_crosscorr_benchmark/final_matrix/nobnt_singlebin_vs_tomo4/posteriors/cnn_bin1_20deg160_nobnt_s43.npy"
+  },
+  {
+    "name": "copy::cnn_bin2_20deg160_nobnt_s41.npy",
+    "returncode": 0,
+    "source": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/nobnt_tomo_bins_crosscorr_study/posteriors/cnn_bin2_20deg160_nobnt_s41.npy",
+    "dest": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/optimal_nobnt_crosscorr_benchmark/final_matrix/nobnt_singlebin_vs_tomo4/posteriors/cnn_bin2_20deg160_nobnt_s41.npy"
+  },
+  {
+    "name": "copy::cnn_bin2_20deg160_nobnt_s42.npy",
+    "returncode": 0,
+    "source": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/nobnt_tomo_bins_crosscorr_study/posteriors/cnn_bin2_20deg160_nobnt_s42.npy",
+    "dest": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/optimal_nobnt_crosscorr_benchmark/final_matrix/nobnt_singlebin_vs_tomo4/posteriors/cnn_bin2_20deg160_nobnt_s42.npy"
+  },
+  {
+    "name": "copy::cnn_bin2_20deg160_nobnt_s43.npy",
+    "returncode": 0,
+    "source": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/nobnt_tomo_bins_crosscorr_study/posteriors/cnn_bin2_20deg160_nobnt_s43.npy",
+    "dest": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/optimal_nobnt_crosscorr_benchmark/final_matrix/nobnt_singlebin_vs_tomo4/posteriors/cnn_bin2_20deg160_nobnt_s43.npy"
+  },
+  {
+    "name": "copy::cnn_bin3_20deg160_nobnt_s41.npy",
+    "returncode": 0,
+    "source": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/nobnt_tomo_bins_crosscorr_study/posteriors/cnn_bin3_20deg160_nobnt_s41.npy",
+    "dest": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/optimal_nobnt_crosscorr_benchmark/final_matrix/nobnt_singlebin_vs_tomo4/posteriors/cnn_bin3_20deg160_nobnt_s41.npy"
+  },
+  {
+    "name": "copy::cnn_bin3_20deg160_nobnt_s42.npy",
+    "returncode": 0,
+    "source": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/nobnt_tomo_bins_crosscorr_study/posteriors/cnn_bin3_20deg160_nobnt_s42.npy",
+    "dest": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/optimal_nobnt_crosscorr_benchmark/final_matrix/nobnt_singlebin_vs_tomo4/posteriors/cnn_bin3_20deg160_nobnt_s42.npy"
+  },
+  {
+    "name": "copy::cnn_bin3_20deg160_nobnt_s43.npy",
+    "returncode": 0,
+    "source": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/nobnt_tomo_bins_crosscorr_study/posteriors/cnn_bin3_20deg160_nobnt_s43.npy",
+    "dest": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/optimal_nobnt_crosscorr_benchmark/final_matrix/nobnt_singlebin_vs_tomo4/posteriors/cnn_bin3_20deg160_nobnt_s43.npy"
+  },
+  {
+    "name": "copy::cnn_bin4_20deg160_nobnt_s41.npy",
+    "returncode": 0,
+    "source": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/nobnt_tomo_bins_crosscorr_study/posteriors/cnn_bin4_20deg160_nobnt_s41.npy",
+    "dest": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/optimal_nobnt_crosscorr_benchmark/final_matrix/nobnt_singlebin_vs_tomo4/posteriors/cnn_bin4_20deg160_nobnt_s41.npy"
+  },
+  {
+    "name": "copy::cnn_bin4_20deg160_nobnt_s42.npy",
+    "returncode": 0,
+    "source": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/nobnt_tomo_bins_crosscorr_study/posteriors/cnn_bin4_20deg160_nobnt_s42.npy",
+    "dest": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/optimal_nobnt_crosscorr_benchmark/final_matrix/nobnt_singlebin_vs_tomo4/posteriors/cnn_bin4_20deg160_nobnt_s42.npy"
+  },
+  {
+    "name": "copy::cnn_bin4_20deg160_nobnt_s43.npy",
+    "returncode": 0,
+    "source": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/nobnt_tomo_bins_crosscorr_study/posteriors/cnn_bin4_20deg160_nobnt_s43.npy",
+    "dest": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/optimal_nobnt_crosscorr_benchmark/final_matrix/nobnt_singlebin_vs_tomo4/posteriors/cnn_bin4_20deg160_nobnt_s43.npy"
+  },
+  {
+    "name": "copy::cnn_tomo4_20deg160_nobnt_s41.npy",
+    "returncode": 0,
+    "source": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/nobnt_tomo_bins_crosscorr_study/posteriors/cnn_tomo4_20deg160_nobnt_s41.npy",
+    "dest": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/optimal_nobnt_crosscorr_benchmark/final_matrix/nobnt_singlebin_vs_tomo4/posteriors/cnn_tomo4_20deg160_nobnt_s41.npy"
+  },
+  {
+    "name": "copy::cnn_tomo4_20deg160_nobnt_s42.npy",
+    "returncode": 0,
+    "source": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/nobnt_tomo_bins_crosscorr_study/posteriors/cnn_tomo4_20deg160_nobnt_s42.npy",
+    "dest": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/optimal_nobnt_crosscorr_benchmark/final_matrix/nobnt_singlebin_vs_tomo4/posteriors/cnn_tomo4_20deg160_nobnt_s42.npy"
+  },
+  {
+    "name": "copy::cnn_tomo4_20deg160_nobnt_s43.npy",
+    "returncode": 0,
+    "source": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/nobnt_tomo_bins_crosscorr_study/posteriors/cnn_tomo4_20deg160_nobnt_s43.npy",
+    "dest": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/optimal_nobnt_crosscorr_benchmark/final_matrix/nobnt_singlebin_vs_tomo4/posteriors/cnn_tomo4_20deg160_nobnt_s43.npy"
+  },
+  {
+    "name": "copy::l1_bin1_20deg160_nobnt_s41.npy",
+    "returncode": 0,
+    "source": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/nobnt_tomo_bins_crosscorr_study_l1_jaxili_bestcfg/posteriors/l1_bin1_20deg160_nobnt_s41.npy",
+    "dest": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/optimal_nobnt_crosscorr_benchmark/final_matrix/nobnt_singlebin_vs_tomo4/posteriors/l1_bin1_20deg160_nobnt_s41.npy"
+  },
+  {
+    "name": "copy::l1_bin1_20deg160_nobnt_s42.npy",
+    "returncode": 0,
+    "source": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/nobnt_tomo_bins_crosscorr_study_l1_jaxili_bestcfg/posteriors/l1_bin1_20deg160_nobnt_s42.npy",
+    "dest": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/optimal_nobnt_crosscorr_benchmark/final_matrix/nobnt_singlebin_vs_tomo4/posteriors/l1_bin1_20deg160_nobnt_s42.npy"
+  },
+  {
+    "name": "copy::l1_bin1_20deg160_nobnt_s43.npy",
+    "returncode": 0,
+    "source": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/nobnt_tomo_bins_crosscorr_study_l1_jaxili_bestcfg/posteriors/l1_bin1_20deg160_nobnt_s43.npy",
+    "dest": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/optimal_nobnt_crosscorr_benchmark/final_matrix/nobnt_singlebin_vs_tomo4/posteriors/l1_bin1_20deg160_nobnt_s43.npy"
+  },
+  {
+    "name": "copy::l1_bin2_20deg160_nobnt_s41.npy",
+    "returncode": 0,
+    "source": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/nobnt_tomo_bins_crosscorr_study_l1_jaxili_bestcfg/posteriors/l1_bin2_20deg160_nobnt_s41.npy",
+    "dest": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/optimal_nobnt_crosscorr_benchmark/final_matrix/nobnt_singlebin_vs_tomo4/posteriors/l1_bin2_20deg160_nobnt_s41.npy"
+  },
+  {
+    "name": "copy::l1_bin2_20deg160_nobnt_s42.npy",
+    "returncode": 0,
+    "source": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/nobnt_tomo_bins_crosscorr_study_l1_jaxili_bestcfg/posteriors/l1_bin2_20deg160_nobnt_s42.npy",
+    "dest": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/optimal_nobnt_crosscorr_benchmark/final_matrix/nobnt_singlebin_vs_tomo4/posteriors/l1_bin2_20deg160_nobnt_s42.npy"
+  },
+  {
+    "name": "copy::l1_bin2_20deg160_nobnt_s43.npy",
+    "returncode": 0,
+    "source": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/nobnt_tomo_bins_crosscorr_study_l1_jaxili_bestcfg/posteriors/l1_bin2_20deg160_nobnt_s43.npy",
+    "dest": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/optimal_nobnt_crosscorr_benchmark/final_matrix/nobnt_singlebin_vs_tomo4/posteriors/l1_bin2_20deg160_nobnt_s43.npy"
+  },
+  {
+    "name": "copy::l1_bin3_20deg160_nobnt_s41.npy",
+    "returncode": 0,
+    "source": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/nobnt_tomo_bins_crosscorr_study_l1_jaxili_bestcfg/posteriors/l1_bin3_20deg160_nobnt_s41.npy",
+    "dest": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/optimal_nobnt_crosscorr_benchmark/final_matrix/nobnt_singlebin_vs_tomo4/posteriors/l1_bin3_20deg160_nobnt_s41.npy"
+  },
+  {
+    "name": "copy::l1_bin3_20deg160_nobnt_s42.npy",
+    "returncode": 0,
+    "source": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/nobnt_tomo_bins_crosscorr_study_l1_jaxili_bestcfg/posteriors/l1_bin3_20deg160_nobnt_s42.npy",
+    "dest": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/optimal_nobnt_crosscorr_benchmark/final_matrix/nobnt_singlebin_vs_tomo4/posteriors/l1_bin3_20deg160_nobnt_s42.npy"
+  },
+  {
+    "name": "copy::l1_bin3_20deg160_nobnt_s43.npy",
+    "returncode": 0,
+    "source": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/nobnt_tomo_bins_crosscorr_study_l1_jaxili_bestcfg/posteriors/l1_bin3_20deg160_nobnt_s43.npy",
+    "dest": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/optimal_nobnt_crosscorr_benchmark/final_matrix/nobnt_singlebin_vs_tomo4/posteriors/l1_bin3_20deg160_nobnt_s43.npy"
+  },
+  {
+    "name": "copy::l1_bin4_20deg160_nobnt_s41.npy",
+    "returncode": 0,
+    "source": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/nobnt_tomo_bins_crosscorr_study_l1_jaxili_bestcfg/posteriors/l1_bin4_20deg160_nobnt_s41.npy",
+    "dest": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/optimal_nobnt_crosscorr_benchmark/final_matrix/nobnt_singlebin_vs_tomo4/posteriors/l1_bin4_20deg160_nobnt_s41.npy"
+  },
+  {
+    "name": "copy::l1_bin4_20deg160_nobnt_s42.npy",
+    "returncode": 0,
+    "source": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/nobnt_tomo_bins_crosscorr_study_l1_jaxili_bestcfg/posteriors/l1_bin4_20deg160_nobnt_s42.npy",
+    "dest": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/optimal_nobnt_crosscorr_benchmark/final_matrix/nobnt_singlebin_vs_tomo4/posteriors/l1_bin4_20deg160_nobnt_s42.npy"
+  },
+  {
+    "name": "copy::l1_bin4_20deg160_nobnt_s43.npy",
+    "returncode": 0,
+    "source": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/nobnt_tomo_bins_crosscorr_study_l1_jaxili_bestcfg/posteriors/l1_bin4_20deg160_nobnt_s43.npy",
+    "dest": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/optimal_nobnt_crosscorr_benchmark/final_matrix/nobnt_singlebin_vs_tomo4/posteriors/l1_bin4_20deg160_nobnt_s43.npy"
+  },
+  {
+    "name": "copy::l1_tomo4_20deg160_nobnt_s41.npy",
+    "returncode": 0,
+    "source": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/nobnt_tomo_bins_crosscorr_study_l1_jaxili_bestcfg/posteriors/l1_tomo4_20deg160_nobnt_s41.npy",
+    "dest": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/optimal_nobnt_crosscorr_benchmark/final_matrix/nobnt_singlebin_vs_tomo4/posteriors/l1_tomo4_20deg160_nobnt_s41.npy"
+  },
+  {
+    "name": "copy::l1_tomo4_20deg160_nobnt_s42.npy",
+    "returncode": 0,
+    "source": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/nobnt_tomo_bins_crosscorr_study_l1_jaxili_bestcfg/posteriors/l1_tomo4_20deg160_nobnt_s42.npy",
+    "dest": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/optimal_nobnt_crosscorr_benchmark/final_matrix/nobnt_singlebin_vs_tomo4/posteriors/l1_tomo4_20deg160_nobnt_s42.npy"
+  },
+  {
+    "name": "copy::l1_tomo4_20deg160_nobnt_s43.npy",
+    "returncode": 0,
+    "source": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/nobnt_tomo_bins_crosscorr_study_l1_jaxili_bestcfg/posteriors/l1_tomo4_20deg160_nobnt_s43.npy",
+    "dest": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/optimal_nobnt_crosscorr_benchmark/final_matrix/nobnt_singlebin_vs_tomo4/posteriors/l1_tomo4_20deg160_nobnt_s43.npy"
+  },
+  {
+    "name": "copy::l1vmim_bin1_20deg160_nobnt_s41.npy",
+    "returncode": 0,
+    "source": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/nobnt_tomo_bins_crosscorr_study/posteriors/l1vmim_bin1_20deg160_nobnt_s41.npy",
+    "dest": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/optimal_nobnt_crosscorr_benchmark/final_matrix/nobnt_singlebin_vs_tomo4/posteriors/l1vmim_bin1_20deg160_nobnt_s41.npy"
+  },
+  {
+    "name": "copy::l1vmim_bin1_20deg160_nobnt_s42.npy",
+    "returncode": 0,
+    "source": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/nobnt_tomo_bins_crosscorr_study/posteriors/l1vmim_bin1_20deg160_nobnt_s42.npy",
+    "dest": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/optimal_nobnt_crosscorr_benchmark/final_matrix/nobnt_singlebin_vs_tomo4/posteriors/l1vmim_bin1_20deg160_nobnt_s42.npy"
+  },
+  {
+    "name": "copy::l1vmim_bin1_20deg160_nobnt_s43.npy",
+    "returncode": 0,
+    "source": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/nobnt_tomo_bins_crosscorr_study/posteriors/l1vmim_bin1_20deg160_nobnt_s43.npy",
+    "dest": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/optimal_nobnt_crosscorr_benchmark/final_matrix/nobnt_singlebin_vs_tomo4/posteriors/l1vmim_bin1_20deg160_nobnt_s43.npy"
+  },
+  {
+    "name": "copy::l1vmim_bin2_20deg160_nobnt_s41.npy",
+    "returncode": 0,
+    "source": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/nobnt_tomo_bins_crosscorr_study/posteriors/l1vmim_bin2_20deg160_nobnt_s41.npy",
+    "dest": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/optimal_nobnt_crosscorr_benchmark/final_matrix/nobnt_singlebin_vs_tomo4/posteriors/l1vmim_bin2_20deg160_nobnt_s41.npy"
+  },
+  {
+    "name": "copy::l1vmim_bin2_20deg160_nobnt_s42.npy",
+    "returncode": 0,
+    "source": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/nobnt_tomo_bins_crosscorr_study/posteriors/l1vmim_bin2_20deg160_nobnt_s42.npy",
+    "dest": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/optimal_nobnt_crosscorr_benchmark/final_matrix/nobnt_singlebin_vs_tomo4/posteriors/l1vmim_bin2_20deg160_nobnt_s42.npy"
+  },
+  {
+    "name": "copy::l1vmim_bin2_20deg160_nobnt_s43.npy",
+    "returncode": 0,
+    "source": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/nobnt_tomo_bins_crosscorr_study/posteriors/l1vmim_bin2_20deg160_nobnt_s43.npy",
+    "dest": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/optimal_nobnt_crosscorr_benchmark/final_matrix/nobnt_singlebin_vs_tomo4/posteriors/l1vmim_bin2_20deg160_nobnt_s43.npy"
+  },
+  {
+    "name": "copy::l1vmim_bin3_20deg160_nobnt_s41.npy",
+    "returncode": 0,
+    "source": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/nobnt_tomo_bins_crosscorr_study/posteriors/l1vmim_bin3_20deg160_nobnt_s41.npy",
+    "dest": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/optimal_nobnt_crosscorr_benchmark/final_matrix/nobnt_singlebin_vs_tomo4/posteriors/l1vmim_bin3_20deg160_nobnt_s41.npy"
+  },
+  {
+    "name": "copy::l1vmim_bin3_20deg160_nobnt_s42.npy",
+    "returncode": 0,
+    "source": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/nobnt_tomo_bins_crosscorr_study/posteriors/l1vmim_bin3_20deg160_nobnt_s42.npy",
+    "dest": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/optimal_nobnt_crosscorr_benchmark/final_matrix/nobnt_singlebin_vs_tomo4/posteriors/l1vmim_bin3_20deg160_nobnt_s42.npy"
+  },
+  {
+    "name": "copy::l1vmim_bin3_20deg160_nobnt_s43.npy",
+    "returncode": 0,
+    "source": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/nobnt_tomo_bins_crosscorr_study/posteriors/l1vmim_bin3_20deg160_nobnt_s43.npy",
+    "dest": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/optimal_nobnt_crosscorr_benchmark/final_matrix/nobnt_singlebin_vs_tomo4/posteriors/l1vmim_bin3_20deg160_nobnt_s43.npy"
+  },
+  {
+    "name": "copy::l1vmim_bin4_20deg160_nobnt_s41.npy",
+    "returncode": 0,
+    "source": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/nobnt_tomo_bins_crosscorr_study/posteriors/l1vmim_bin4_20deg160_nobnt_s41.npy",
+    "dest": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/optimal_nobnt_crosscorr_benchmark/final_matrix/nobnt_singlebin_vs_tomo4/posteriors/l1vmim_bin4_20deg160_nobnt_s41.npy"
+  },
+  {
+    "name": "copy::l1vmim_bin4_20deg160_nobnt_s42.npy",
+    "returncode": 0,
+    "source": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/nobnt_tomo_bins_crosscorr_study/posteriors/l1vmim_bin4_20deg160_nobnt_s42.npy",
+    "dest": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/optimal_nobnt_crosscorr_benchmark/final_matrix/nobnt_singlebin_vs_tomo4/posteriors/l1vmim_bin4_20deg160_nobnt_s42.npy"
+  },
+  {
+    "name": "copy::l1vmim_bin4_20deg160_nobnt_s43.npy",
+    "returncode": 0,
+    "source": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/nobnt_tomo_bins_crosscorr_study/posteriors/l1vmim_bin4_20deg160_nobnt_s43.npy",
+    "dest": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/optimal_nobnt_crosscorr_benchmark/final_matrix/nobnt_singlebin_vs_tomo4/posteriors/l1vmim_bin4_20deg160_nobnt_s43.npy"
+  },
+  {
+    "name": "copy::l1vmim_tomo4_20deg160_nobnt_s41.npy",
+    "returncode": 0,
+    "source": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/nobnt_tomo_bins_crosscorr_study/posteriors/l1vmim_tomo4_20deg160_nobnt_s41.npy",
+    "dest": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/optimal_nobnt_crosscorr_benchmark/final_matrix/nobnt_singlebin_vs_tomo4/posteriors/l1vmim_tomo4_20deg160_nobnt_s41.npy"
+  },
+  {
+    "name": "copy::l1vmim_tomo4_20deg160_nobnt_s42.npy",
+    "returncode": 0,
+    "source": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/nobnt_tomo_bins_crosscorr_study/posteriors/l1vmim_tomo4_20deg160_nobnt_s42.npy",
+    "dest": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/optimal_nobnt_crosscorr_benchmark/final_matrix/nobnt_singlebin_vs_tomo4/posteriors/l1vmim_tomo4_20deg160_nobnt_s42.npy"
+  },
+  {
+    "name": "copy::l1vmim_tomo4_20deg160_nobnt_s43.npy",
+    "returncode": 0,
+    "source": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/nobnt_tomo_bins_crosscorr_study/posteriors/l1vmim_tomo4_20deg160_nobnt_s43.npy",
+    "dest": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/optimal_nobnt_crosscorr_benchmark/final_matrix/nobnt_singlebin_vs_tomo4/posteriors/l1vmim_tomo4_20deg160_nobnt_s43.npy"
+  }
+]
