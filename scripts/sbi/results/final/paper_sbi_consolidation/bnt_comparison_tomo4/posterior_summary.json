@@ -1,0 +1,110 @@
+[
+  {
+    "file": "cnn_tomo4_20deg160_bnt_s41.npy",
+    "n_samples": 100000,
+    "std_sum": 0.4008292555809021,
+    "bias_l2": 0.11368294625714351
+  },
+  {
+    "file": "cnn_tomo4_20deg160_bnt_s42.npy",
+    "n_samples": 100000,
+    "std_sum": 0.40501752495765686,
+    "bias_l2": 0.08506521482793061
+  },
+  {
+    "file": "cnn_tomo4_20deg160_bnt_s43.npy",
+    "n_samples": 100000,
+    "std_sum": 0.41205453872680664,
+    "bias_l2": 0.06507093278764828
+  },
+  {
+    "file": "cnn_tomo4_20deg160_nobnt_s41.npy",
+    "n_samples": 100000,
+    "std_sum": 0.22233209013938904,
+    "bias_l2": 0.09169043203664447
+  },
+  {
+    "file": "cnn_tomo4_20deg160_nobnt_s42.npy",
+    "n_samples": 100000,
+    "std_sum": 0.22782035171985626,
+    "bias_l2": 0.0833896272647825
+  },
+  {
+    "file": "cnn_tomo4_20deg160_nobnt_s43.npy",
+    "n_samples": 100000,
+    "std_sum": 0.22461941838264465,
+    "bias_l2": 0.06528586867148216
+  },
+  {
+    "file": "l1_tomo4_20deg160_bnt_s41.npy",
+    "n_samples": 100000,
+    "std_sum": 0.6390917301177979,
+    "bias_l2": 0.09651824103961856
+  },
+  {
+    "file": "l1_tomo4_20deg160_bnt_s42.npy",
+    "n_samples": 100000,
+    "std_sum": 0.5815715789794922,
+    "bias_l2": 0.3117114608992939
+  },
+  {
+    "file": "l1_tomo4_20deg160_bnt_s43.npy",
+    "n_samples": 100000,
+    "std_sum": 0.6050949096679688,
+    "bias_l2": 0.11144415009245859
+  },
+  {
+    "file": "l1_tomo4_20deg160_nobnt_s41.npy",
+    "n_samples": 100000,
+    "std_sum": 0.366817444562912,
+    "bias_l2": 0.06776176647586891
+  },
+  {
+    "file": "l1_tomo4_20deg160_nobnt_s42.npy",
+    "n_samples": 100000,
+    "std_sum": 0.3242628872394562,
+    "bias_l2": 0.08551340053812234
+  },
+  {
+    "file": "l1_tomo4_20deg160_nobnt_s43.npy",
+    "n_samples": 100000,
+    "std_sum": 0.3481539189815521,
+    "bias_l2": 0.0647091367923026
+  },
+  {
+    "file": "l1vmim_tomo4_20deg160_bnt_s41.npy",
+    "n_samples": 100000,
+    "std_sum": 0.623029351234436,
+    "bias_l2": 0.16965530375419938
+  },
+  {
+    "file": "l1vmim_tomo4_20deg160_bnt_s42.npy",
+    "n_samples": 100000,
+    "std_sum": 0.6365804076194763,
+    "bias_l2": 0.1725415242044471
+  },
+  {
+    "file": "l1vmim_tomo4_20deg160_bnt_s43.npy",
+    "n_samples": 100000,
+    "std_sum": 0.6297990083694458,
+    "bias_l2": 0.1494709539410795
+  },
+  {
+    "file": "l1vmim_tomo4_20deg160_nobnt_s41.npy",
+    "n_samples": 100000,
+    "std_sum": 0.4081832766532898,
+    "bias_l2": 0.11402293605338817
+  },
+  {
+    "file": "l1vmim_tomo4_20deg160_nobnt_s42.npy",
+    "n_samples": 100000,
+    "std_sum": 0.39715996384620667,
+    "bias_l2": 0.11523902939663937
+  },
+  {
+    "file": "l1vmim_tomo4_20deg160_nobnt_s43.npy",
+    "n_samples": 100000,
+    "std_sum": 0.40670886635780334,
+    "bias_l2": 0.11798603058314797
+  }
+]
