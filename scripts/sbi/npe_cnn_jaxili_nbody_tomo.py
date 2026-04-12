@@ -25,7 +25,15 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import tensorflow as tf
+import wandb
 from jax.lib import xla_bridge
+
+from bnt_utils import (
+    BNT_MATRIX_VERSION,
+    apply_bnt_numpy,
+    apply_bnt_tf,
+    validate_bnt_configuration,
+)
 
 def _ensure_tfds_builder_registered() -> None:
     """Import local TFDS builder lazily to avoid hard dependency at --help time."""
@@ -220,7 +228,7 @@ def parse_args() -> argparse.Namespace:
         default="/home/tersenov/software/cnn_sbi/scripts/sbi/save_params",
     )
     p.add_argument("--posterior-out", type=str, default="posterior_cnn_jaxili_tomo.npy")
-    p.add_argument("--figure-out", type=str, default="posterior_cnn_jaxili_tomo.png")
+    p.add_argument("--figure-out", type=str, default="posterior_cnn_jaxili_tomo.pdf")
     p.add_argument("--cache-dir", type=str, default=None)
     p.add_argument(
         "--tfds-name",
@@ -233,6 +241,11 @@ def parse_args() -> argparse.Namespace:
         type=str,
         default="1,2,3,4",
         help="Tomographic bins to use, e.g. '1,2,3,4' or '3'",
+    )
+    p.add_argument(
+        "--apply-bnt",
+        action="store_true",
+        help="Apply BNT transform after shape-noise injection.",
     )
 
     # Summary preprocessing (compressed summary)
@@ -299,13 +312,28 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--no-train", action="store_true")
     p.add_argument("--no-sample", action="store_true")
     p.add_argument("--plot", action="store_true")
+    p.add_argument("--wandb-project", type=str, default="cnn-jaxili-npe-tomo")
+    p.add_argument("--wandb-entity", type=str, default=None)
+    p.add_argument("--wandb-run-name", type=str, default=None)
+    p.add_argument(
+        "--wandb-group",
+        type=str,
+        default=None,
+        help="Optional W&B group; defaults to method/map/BNT grouping.",
+    )
+    p.add_argument(
+        "--wandb-tags",
+        type=str,
+        default="",
+        help="Additional comma-separated W&B tags.",
+    )
     p.add_argument(
         "--ds-batch-size",
         type=int,
         default=500,
         help="Batch size for CNN compression of TFDS datasets",
     )
-    p.add_argument("--no-wandb", action="store_true", help="Compatibility flag; ignored")
+    p.add_argument("--no-wandb", action="store_true", help="Disable W&B logging")
 
     args = p.parse_args()
     if args.gpu is not None:
@@ -358,6 +386,7 @@ def load_observed_map(
     sigma_e: float,
     galaxy_density: float,
     rng_key: jax.Array,
+    apply_bnt: bool = False,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     print("######## OBSERVED DATA ########")
     with h5py.File(meta_path, "r") as f:
@@ -398,6 +427,8 @@ def load_observed_map(
     noise_std = pixel_noise_sigma(sigma_e, galaxy_density, field_size, field_npix)
     noise = jax.random.normal(rng_key, (field_npix, field_npix, nbins)) * noise_std
     m_data = np.array(jnp.asarray(m_data) + noise)
+    if apply_bnt:
+        m_data = apply_bnt_numpy(m_data)
     print(f"  Observed map shape = {m_data.shape}, noise_std/pixel = {noise_std:.6f}")
     return m_data, cosmo_params, truth
 
@@ -465,6 +496,8 @@ def build_cnn_cache_metadata(
         "nbins": int(args.nbins),
         "sigma_e": float(args.sigma_e),
         "galaxy_density": float(args.galaxy_density),
+        "apply_bnt": bool(args.apply_bnt),
+        "bnt_matrix_version": BNT_MATRIX_VERSION if args.apply_bnt else "none",
         "compressor_params_path": str(params_path),
         "compressor_state_path": str(state_path),
         "compressor_params_sha256": file_sha256(params_path),
@@ -505,6 +538,7 @@ def build_augmentation(
     field_npix: int,
     nbins: int,
     tomo_bin_indices: tuple[int, ...],
+    apply_bnt: bool = False,
 ):
     noise_std = sigma_e / jnp.sqrt(galaxy_density * (field_size * 60 / field_npix) ** 2)
     map_key = {
@@ -517,6 +551,8 @@ def build_augmentation(
     def augmentation_noise(example):
         x = tf.gather(example[map_key], gather_indices, axis=-1)
         x += tf.random.normal(shape=(field_npix, field_npix, nbins), stddev=noise_std)
+        if apply_bnt:
+            x = apply_bnt_tf(x)
         return {"maps": x, "theta": example["theta"]}
 
     def augmentation_flip(example):
@@ -776,6 +812,31 @@ def _metrics_summary(metrics: object) -> dict:
     return summary
 
 
+def compute_fom3(samples: np.ndarray) -> dict[str, float | bool]:
+    if samples.ndim != 2 or samples.shape[0] < 2 or samples.shape[1] < 3:
+        return {
+            "fom3": float("nan"),
+            "det_cov3": float("nan"),
+            "logdet_cov3": float("nan"),
+            "valid_fom3": False,
+        }
+    cov3 = np.cov(samples[:, :3], rowvar=False)
+    sign, logdet = np.linalg.slogdet(cov3)
+    if sign <= 0:
+        return {
+            "fom3": float("nan"),
+            "det_cov3": float("nan"),
+            "logdet_cov3": float(logdet),
+            "valid_fom3": False,
+        }
+    return {
+        "fom3": float(np.exp(-0.5 * logdet)),
+        "det_cov3": float(np.exp(logdet)),
+        "logdet_cov3": float(logdet),
+        "valid_fom3": True,
+    }
+
+
 def plot_posterior(
     samples: np.ndarray,
     truth: np.ndarray,
@@ -810,8 +871,6 @@ def plot_posterior(
 
 def main() -> None:
     args = parse_args()
-    if args.no_wandb:
-        print("  --no-wandb is accepted for compatibility and has no effect in this script.")
 
     tomo_bin_indices = parse_tomo_bin_indices(args.tomo_bin_indices)
     if args.nbins != len(tomo_bin_indices):
@@ -820,12 +879,39 @@ def main() -> None:
             f"to match selected bins {tomo_bin_indices}."
         )
         args.nbins = len(tomo_bin_indices)
+    if args.apply_bnt:
+        validate_bnt_configuration(args.nbins, tomo_bin_indices)
 
     setup_environment(args.cuda_visible_devices)
     rng = jax.random.PRNGKey(args.seed)
     rng, rng_obs, rng_sample = jax.random.split(rng, 3)
     split_seed = int(args.seed) + 1
     split_key = jax.random.PRNGKey(split_seed)
+
+    wandb_enabled = not args.no_wandb
+    wandb_group = (
+        args.wandb_group
+        if args.wandb_group
+        else f"cnn-jaxili-{args.map_kind}-{'bnt' if args.apply_bnt else 'nobnt'}-bins{args.nbins}"
+    )
+    extra_wandb_tags = [t.strip() for t in args.wandb_tags.split(",") if t.strip()]
+    wandb_tags = [
+        "cnn",
+        "jaxili",
+        args.map_kind,
+        f"bnt:{int(args.apply_bnt)}",
+        f"tomo:{','.join(str(b) for b in tomo_bin_indices)}",
+        *extra_wandb_tags,
+    ]
+    if wandb_enabled:
+        wandb.init(
+            project=args.wandb_project,
+            entity=args.wandb_entity,
+            name=args.wandb_run_name,
+            group=wandb_group,
+            tags=wandb_tags,
+            config=vars(args),
+        )
 
     summary_dim = args.compressor_dim
     print(f"  summary_dim    = {summary_dim}")
@@ -847,6 +933,7 @@ def main() -> None:
         args.sigma_e,
         args.galaxy_density,
         rng_obs,
+        apply_bnt=args.apply_bnt,
     )
 
     # Compressor
@@ -881,6 +968,7 @@ def main() -> None:
         args.field_npix,
         args.nbins,
         tomo_bin_indices,
+        apply_bnt=args.apply_bnt,
     )
 
     cache_dir = Path(args.cache_dir).resolve() if args.cache_dir else None
@@ -1038,6 +1126,17 @@ def main() -> None:
     print(f"  Final summary_dim used by jaxili NPE = {dataset_train['x'].shape[1]}")
 
     validate_npe_inputs(dataset_train, dataset_val, obs_compressed, args.n_cosmo)
+    if wandb_enabled:
+        wandb.log(
+            {
+                "data/train_size": int(dataset_train["theta"].shape[0]),
+                "data/val_size": int(dataset_val["theta"].shape[0]),
+                "data/summary_dim": int(dataset_train["x"].shape[1]),
+                "data/summary_standardized": int(standardization_applied),
+                "data/apply_bnt": int(args.apply_bnt),
+                "data/min_feature_variance": float(args.min_feature_variance),
+            }
+        )
 
     # Train/load jaxili NPE
     save_path.mkdir(parents=True, exist_ok=True)
@@ -1098,6 +1197,19 @@ def main() -> None:
             encoding="utf-8",
         )
         print(f"  Saved training summary to {training_summary_path}")
+        if wandb_enabled:
+            wandb.log(
+                {
+                    "train/epochs": int(args.epochs),
+                    "train/batch_size": int(args.batch_size),
+                    "train/learning_rate": float(args.learning_rate),
+                    **{
+                        f"train/{k}": v
+                        for k, v in training_summary.items()
+                        if isinstance(v, (int, float, bool))
+                    },
+                }
+            )
 
         if standardization_applied and standardization_mean is not None and standardization_std is not None:
             np.savez(
@@ -1113,6 +1225,8 @@ def main() -> None:
     # Posterior sampling
     if args.no_sample:
         print("  Skipping posterior sampling (--no-sample).")
+        if wandb_enabled:
+            wandb.finish()
         return
 
     posterior = inference.build_posterior()
@@ -1132,10 +1246,14 @@ def main() -> None:
     out.parent.mkdir(parents=True, exist_ok=True)
     np.save(out, samples_np)
     print(f"  Saved posterior samples → {out.resolve()}")
+    fom3 = compute_fom3(samples_np)
+    fom_out = out.with_suffix(".fom.json")
+    fom_out.write_text(json.dumps(fom3, indent=2), encoding="utf-8")
 
     metadata = {
         "method": "cnn_jaxili",
         "posterior_file": str(out.resolve()),
+        "fom_file": str(fom_out.resolve()),
         "checkpoint_path": (
             str(loaded_checkpoint_dir)
             if loaded_checkpoint_dir is not None
@@ -1166,7 +1284,10 @@ def main() -> None:
         "tomo_bin_indices": list(tomo_bin_indices),
         "tfds_name": args.tfds_name,
         "map_kind": args.map_kind,
+        "apply_bnt": bool(args.apply_bnt),
+        "bnt_matrix_version": BNT_MATRIX_VERSION if args.apply_bnt else "none",
         "compressor_dim": int(args.compressor_dim),
+        "fom3": fom3,
     }
     out.with_suffix(".meta.json").write_text(
         json.dumps(metadata, indent=2),
@@ -1178,6 +1299,23 @@ def main() -> None:
         fig_out.parent.mkdir(parents=True, exist_ok=True)
         param_names = [r"\Omega_m", r"\sigma_8", r"w_0", r"h_0", r"n_s", r"\Omega_b"]
         plot_posterior(samples_np, np.asarray(truth), str(fig_out), param_names=param_names)
+
+    if wandb_enabled:
+        wandb.log(
+            {
+                "posterior/n_samples_finite": int(samples_np.shape[0]),
+                "posterior/fom3": float(fom3["fom3"]),
+                "posterior/det_cov3": float(fom3["det_cov3"]),
+                "posterior/logdet_cov3": float(fom3["logdet_cov3"]),
+                "posterior/valid_fom3": int(bool(fom3["valid_fom3"])),
+            }
+        )
+        if args.plot:
+            try:
+                wandb.log({"posterior/corner": wandb.Image(str(Path(args.figure_out)))})
+            except Exception:
+                pass
+        wandb.finish()
 
     print("Done.")
 

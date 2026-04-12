@@ -47,6 +47,22 @@ import tensorflow as tf
 from jax.lib import xla_bridge
 from tensorflow_probability.substrates import jax as tfp
 
+from bnt_utils import (
+    BNT_MATRIX_VERSION,
+    apply_bnt_numpy,
+    apply_bnt_tf,
+    validate_bnt_configuration,
+)
+
+# NumPy 2.x compatibility for older TFP/JAX substrate code paths.
+if not hasattr(np, "issctype"):
+    def _np_issctype(rep) -> bool:
+        try:
+            return issubclass(np.dtype(rep).type, np.generic)
+        except Exception:
+            return False
+    np.issctype = _np_issctype  # type: ignore[attr-defined]
+
 # sbi_lens normalizing flow
 from sbi_lens.normflow.models import AffineCoupling, ConditionalRealNVP
 from sbi_lens.normflow.train_model import TrainModel
@@ -156,6 +172,11 @@ def parse_args() -> argparse.Namespace:
         type=str,
         default="1,2,3,4",
         help="Tomographic bins to use, e.g. '1,2,3,4' or '3'",
+    )
+    p.add_argument(
+        "--apply-bnt",
+        action="store_true",
+        help="Apply BNT transform after shape-noise injection.",
     )
 
     # Flow training hyperparameters
@@ -278,6 +299,7 @@ def load_observed_map(
     sigma_e: float,
     galaxy_density: float,
     rng_key: jax.Array,
+    apply_bnt: bool = False,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Load fiducial 4-bin tomographic map, project, and add shape noise."""
     print("######## OBSERVED DATA ########")
@@ -318,6 +340,8 @@ def load_observed_map(
     noise_std = pixel_noise_sigma(sigma_e, galaxy_density, field_size, field_npix)
     noise = jax.random.normal(rng_key, (field_npix, field_npix, nbins)) * noise_std
     m_data = np.array(jnp.asarray(m_data) + noise)
+    if apply_bnt:
+        m_data = apply_bnt_numpy(m_data)
     print(f"  Observed map shape = {m_data.shape}, "
           f"noise_std/pixel = {noise_std:.6f}")
     return m_data, cosmo_params, truth
@@ -398,6 +422,8 @@ def build_cnn_cache_metadata(
         "nbins": int(args.nbins),
         "sigma_e": float(args.sigma_e),
         "galaxy_density": float(args.galaxy_density),
+        "apply_bnt": bool(args.apply_bnt),
+        "bnt_matrix_version": BNT_MATRIX_VERSION if args.apply_bnt else "none",
         "compressor_params_path": str(params_path) if params_path else "",
         "compressor_state_path": str(state_path) if state_path else "",
         "compressor_params_sha256": (
@@ -728,6 +754,7 @@ def build_augmentation(
     field_npix: int,
     nbins: int,
     tomo_bin_indices: tuple[int, ...],
+    apply_bnt: bool = False,
 ):
     """Build the TF augmentation pipeline for the tomographic dataset."""
     noise_std = sigma_e / jnp.sqrt(
@@ -746,6 +773,8 @@ def build_augmentation(
         x += tf.random.normal(
             shape=(field_npix, field_npix, nbins), stddev=noise_std,
         )
+        if apply_bnt:
+            x = apply_bnt_tf(x)
         return {"maps": x, "theta": example["theta"]}
 
     def augmentation_flip(example):
@@ -1249,6 +1278,8 @@ def main():
             f"to match selected bins {tomo_bin_indices}."
         )
         args.nbins = len(tomo_bin_indices)
+    if args.apply_bnt:
+        validate_bnt_configuration(args.nbins, tomo_bin_indices)
     setup_environment(args.cuda_visible_devices)
     rng = jax.random.PRNGKey(args.seed)
     rng, rng_obs, rng_sample = jax.random.split(rng, 3)
@@ -1287,6 +1318,7 @@ def main():
         args.field_size, args.field_npix, args.nside, args.nbins,
         tomo_bin_indices,
         args.sigma_e, args.galaxy_density, rng_obs,
+        apply_bnt=args.apply_bnt,
     )
 
     # ------------------------------------------------------------------
@@ -1301,6 +1333,7 @@ def main():
     augmentation = build_augmentation(
         args.map_kind, args.sigma_e, args.galaxy_density,
         args.field_size, args.field_npix, args.nbins, tomo_bin_indices,
+        apply_bnt=args.apply_bnt,
     )
 
     if args.train_compressor:
@@ -1628,6 +1661,8 @@ def main():
                 if standardization_applied and summary_stats_path.exists()
                 else None
             ),
+            "apply_bnt": bool(args.apply_bnt),
+            "bnt_matrix_version": BNT_MATRIX_VERSION if args.apply_bnt else "none",
         }
         if flow_summary_path.exists():
             metadata["flow_training_summary"] = json.loads(
