@@ -1,0 +1,134 @@
+{
+  "name": "nde_capacity_l10h320_flow12k",
+  "seeds": [
+    41,
+    42,
+    43,
+    44,
+    45
+  ],
+  "rows": [
+    {
+      "condition": "nobnt",
+      "seed": 41,
+      "file": "scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_losslessness_campaign/nde_capacity_l10h320_flow12k/posteriors/cnn_tomo4_20deg160_nobnt_ndeL10H320_s41.npy",
+      "std_sum": 0.18853184580802917,
+      "bias_l2": 0.08629514296043546,
+      "fom3": 494743.73327325,
+      "logdet_cov3": -26.223590393866708,
+      "valid_fom3": true
+    },
+    {
+      "condition": "nobnt",
+      "seed": 42,
+      "file": "scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_losslessness_campaign/nde_capacity_l10h320_flow12k/posteriors/cnn_tomo4_20deg160_nobnt_ndeL10H320_s42.npy",
+      "std_sum": 0.1834927648305893,
+      "bias_l2": 0.07638165467195447,
+      "fom3": 389893.4659889876,
+      "logdet_cov3": -25.747257633317822,
+      "valid_fom3": true
+    },
+    {
+      "condition": "nobnt",
+      "seed": 43,
+      "file": "scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_losslessness_campaign/nde_capacity_l10h320_flow12k/posteriors/cnn_tomo4_20deg160_nobnt_ndeL10H320_s43.npy",
+      "std_sum": 0.18514510989189148,
+      "bias_l2": 0.07030652383287243,
+      "fom3": 511679.41242930805,
+      "logdet_cov3": -26.290907120620723,
+      "valid_fom3": true
+    },
+    {
+      "condition": "nobnt",
+      "seed": 44,
+      "file": "scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_losslessness_campaign/nde_capacity_l10h320_flow12k/posteriors/cnn_tomo4_20deg160_nobnt_ndeL10H320_s44.npy",
+      "std_sum": 0.18084365129470825,
+      "bias_l2": 0.04874624285023832,
+      "fom3": 522528.211543061,
+      "logdet_cov3": -26.332868509494723,
+      "valid_fom3": true
+    },
+    {
+      "condition": "nobnt",
+      "seed": 45,
+      "file": "scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_losslessness_campaign/nde_capacity_l10h320_flow12k/posteriors/cnn_tomo4_20deg160_nobnt_ndeL10H320_s45.npy",
+      "std_sum": 0.1845661848783493,
+      "bias_l2": 0.09056020750957824,
+      "fom3": 533238.377993315,
+      "logdet_cov3": -26.373447682856277,
+      "valid_fom3": true
+    },
+    {
+      "condition": "bnt",
+      "seed": 41,
+      "file": "scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_losslessness_campaign/nde_capacity_l10h320_flow12k/posteriors/cnn_tomo4_20deg160_bnt_ndeL10H320_s41.npy",
+      "std_sum": 0.19435448944568634,
+      "bias_l2": 0.08205062688884433,
+      "fom3": 422920.3518904513,
+      "logdet_cov3": -25.909878293791596,
+      "valid_fom3": true
+    },
+    {
+      "condition": "bnt",
+      "seed": 42,
+      "file": "scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_losslessness_campaign/nde_capacity_l10h320_flow12k/posteriors/cnn_tomo4_20deg160_bnt_ndeL10H320_s42.npy",
+      "std_sum": 0.20102670788764954,
+      "bias_l2": 0.07924689269869441,
+      "fom3": 313153.11401854426,
+      "logdet_cov3": -25.308895064159145,
+      "valid_fom3": true
+    },
+    {
+      "condition": "bnt",
+      "seed": 43,
+      "file": "scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_losslessness_campaign/nde_capacity_l10h320_flow12k/posteriors/cnn_tomo4_20deg160_bnt_ndeL10H320_s43.npy",
+      "std_sum": 0.1916537582874298,
+      "bias_l2": 0.07290953704748686,
+      "fom3": 366848.2068932364,
+      "logdet_cov3": -25.62540687256589,
+      "valid_fom3": true
+    },
+    {
+      "condition": "bnt",
+      "seed": 44,
+      "file": "scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_losslessness_campaign/nde_capacity_l10h320_flow12k/posteriors/cnn_tomo4_20deg160_bnt_ndeL10H320_s44.npy",
+      "std_sum": 0.19632452726364136,
+      "bias_l2": 0.07730229227016158,
+      "fom3": 370268.6910365408,
+      "logdet_cov3": -25.643968426122477,
+      "valid_fom3": true
+    },
+    {
+      "condition": "bnt",
+      "seed": 45,
+      "file": "scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_losslessness_campaign/nde_capacity_l10h320_flow12k/posteriors/cnn_tomo4_20deg160_bnt_ndeL10H320_s45.npy",
+      "std_sum": 0.18685899674892426,
+      "bias_l2": 0.09959801197588417,
+      "fom3": 350525.501866292,
+      "logdet_cov3": -25.53437748268873,
+      "valid_fom3": true
+    }
+  ],
+  "nobnt": {
+    "n": 5,
+    "std_sum_mean": 0.1845159113407135,
+    "std_sum_std": 0.002786506348361274,
+    "bias_l2_mean": 0.07445795436501579,
+    "bias_l2_std": 0.016442541603477648,
+    "fom3_mean": 490416.6402455844,
+    "fom3_std": 57966.78361906383,
+    "valid_fom3_count": 5
+  },
+  "bnt": {
+    "n": 5,
+    "std_sum_mean": 0.19404369592666626,
+    "std_sum_std": 0.00527714279796638,
+    "bias_l2_mean": 0.08222147217621427,
+    "bias_l2_std": 0.010268056210641219,
+    "fom3_mean": 364743.17314101296,
+    "fom3_std": 39633.391916071654,
+    "valid_fom3_count": 5
+  },
+  "inflation_std_sum_bnt_over_nobnt": 1.0516366557047727,
+  "fom3_ratio_bnt_over_nobnt": 0.7437414296512485
+}

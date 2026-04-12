@@ -1,0 +1,23 @@
+{
+  "method": "cnn",
+  "posterior_file": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_losslessness_campaign/advanced_arch64_dense256_nostd/posteriors/cnn_tomo4_20deg160_nobnt_advanced_arch64_dense256_nostd_s43.npy",
+  "flow_params_source": "trained_best_val_in_memory",
+  "total_steps": 8000,
+  "save_every": 500,
+  "patience": 40,
+  "npe_samples": 100000,
+  "summary_standardized": false,
+  "summary_standardization_file": null,
+  "apply_bnt": false,
+  "bnt_matrix_version": "none",
+  "flow_training_summary": {
+    "best_val_loss": -15.351593017578125,
+    "best_step": 6500,
+    "final_step": 8000,
+    "best_at_final_step": false,
+    "total_steps_requested": 8000,
+    "save_every": 500,
+    "patience": 40,
+    "n_val_checks": 16
+  }
+}
