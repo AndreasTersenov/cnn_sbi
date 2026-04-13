@@ -210,6 +210,30 @@ def parse_args() -> argparse.Namespace:
         help="TFDS dataset name/config for training and validation maps",
     )
     p.add_argument(
+        "--compressor-train-split",
+        type=str,
+        default="train",
+        help="TFDS split used to train the compressor",
+    )
+    p.add_argument(
+        "--compressor-val-split",
+        type=str,
+        default="test",
+        help="TFDS split used for compressor validation/test loss",
+    )
+    p.add_argument(
+        "--nde-train-split",
+        type=str,
+        default="train",
+        help="TFDS split used to build NDE training summaries",
+    )
+    p.add_argument(
+        "--nde-val-split",
+        type=str,
+        default="test",
+        help="TFDS split used to build NDE validation summaries",
+    )
+    p.add_argument(
         "--tomo-bin-indices",
         type=str,
         default="1,2,3,4",
@@ -485,6 +509,10 @@ def build_cnn_cache_metadata(
         "compressor_pool_window": int(args.compressor_pool_window),
         "compressor_pool_stride": int(args.compressor_pool_stride),
         "tfds_name": str(args.tfds_name),
+        "compressor_train_split": str(args.compressor_train_split),
+        "compressor_val_split": str(args.compressor_val_split),
+        "nde_train_split": str(args.nde_train_split),
+        "nde_val_split": str(args.nde_val_split),
         "tomo_bin_indices": ",".join(str(b) for b in tomo_bin_indices),
         "map_kind": str(args.map_kind),
         "field_size": int(args.field_size),
@@ -587,6 +615,8 @@ def train_compressor_vmim(
     truth: np.ndarray,
     param_names: list[str],
     tfds_name: str,
+    compressor_train_split: str,
+    compressor_val_split: str,
     plot_contours: bool = False,
 ) -> Tuple[hk.Params, hk.State]:
     """Train the CNN compressor from scratch using VMIM loss.
@@ -656,14 +686,14 @@ def train_compressor_vmim(
     update = jax.jit(model.update)
 
     # --- Streaming datasets ---
-    ds_tr = tfds.load(tfds_name, split="train")
+    ds_tr = tfds.load(tfds_name, split=compressor_train_split)
     ds_tr = ds_tr.repeat().shuffle(800)
     ds_tr = ds_tr.map(augmentation_fn, num_parallel_calls=tf.data.AUTOTUNE)
     ds_tr = ds_tr.batch(batch_size)
     ds_tr = ds_tr.prefetch(tf.data.AUTOTUNE)
     ds_train_iter = iter(tfds.as_numpy(ds_tr))
 
-    ds_te = tfds.load(tfds_name, split="test")
+    ds_te = tfds.load(tfds_name, split=compressor_val_split)
     ds_te = ds_te.repeat().shuffle(200)
     ds_te = ds_te.map(augmentation_fn, num_parallel_calls=tf.data.AUTOTUNE)
     ds_te = ds_te.batch(batch_size)
@@ -1411,6 +1441,11 @@ def main():
         f"dense={args.compressor_dense_width}, "
         f"pool=({args.compressor_pool_window},{args.compressor_pool_stride})"
     )
+    print(
+        "  Split config: "
+        f"compressor[{args.compressor_train_split}/{args.compressor_val_split}] "
+        f"NDE[{args.nde_train_split}/{args.nde_val_split}]"
+    )
     compressor = build_compressor(
         args.compressor_dim,
         conv_channels=compressor_conv_channels,
@@ -1451,6 +1486,8 @@ def main():
             truth=truth,
             param_names=param_names,
             tfds_name=args.tfds_name,
+            compressor_train_split=args.compressor_train_split,
+            compressor_val_split=args.compressor_val_split,
             plot_contours=args.compressor_plot_contours,
         )
         # Invalidate any cached compressed datasets
@@ -1528,12 +1565,12 @@ def main():
 
     if not cache_ok:
         dataset_train = compress_dataset(
-            args.tfds_name, "train",
+            args.tfds_name, args.nde_train_split,
             augmentation, compressor, comp_params, comp_state,
             args.ds_batch_size,
         )
         dataset_val = compress_dataset(
-            args.tfds_name, "test",
+            args.tfds_name, args.nde_val_split,
             augmentation, compressor, comp_params, comp_state,
             args.ds_batch_size,
         )
@@ -1753,6 +1790,10 @@ def main():
                 if standardization_applied and summary_stats_path.exists()
                 else None
             ),
+            "compressor_train_split": str(args.compressor_train_split),
+            "compressor_val_split": str(args.compressor_val_split),
+            "nde_train_split": str(args.nde_train_split),
+            "nde_val_split": str(args.nde_val_split),
             "apply_bnt": bool(args.apply_bnt),
             "bnt_matrix_version": BNT_MATRIX_VERSION if args.apply_bnt else "none",
         }

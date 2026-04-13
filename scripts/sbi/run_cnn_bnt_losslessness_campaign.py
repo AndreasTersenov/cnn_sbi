@@ -74,6 +74,30 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--gpus", type=str, default="0,1,2,3")
     p.add_argument("--map-kind", type=str, default="nbody")
     p.add_argument("--tfds-name", type=str, default="NbodyCosmogridDatasetTomo/grid_20deg_160px")
+    p.add_argument(
+        "--compressor-train-split",
+        type=str,
+        default="train",
+        help="TFDS split used to train compressor checkpoints.",
+    )
+    p.add_argument(
+        "--compressor-val-split",
+        type=str,
+        default="test",
+        help="TFDS split used for compressor validation/test loss.",
+    )
+    p.add_argument(
+        "--nde-train-split",
+        type=str,
+        default="train",
+        help="TFDS split used to build NDE training summaries.",
+    )
+    p.add_argument(
+        "--nde-val-split",
+        type=str,
+        default="test",
+        help="TFDS split used to build NDE validation summaries.",
+    )
     p.add_argument("--field-size", type=int, default=20)
     p.add_argument("--field-npix", type=int, default=160)
     p.add_argument("--nbins", type=int, default=4)
@@ -470,6 +494,10 @@ def main() -> None:
         "baseline_root": str(baseline_root),
         "gpus": gpus,
         "tfds_name": args.tfds_name,
+        "compressor_train_split": args.compressor_train_split,
+        "compressor_val_split": args.compressor_val_split,
+        "nde_train_split": args.nde_train_split,
+        "nde_val_split": args.nde_val_split,
         "field_size": int(args.field_size),
         "field_npix": int(args.field_npix),
         "nbins": int(args.nbins),
@@ -563,6 +591,14 @@ def main() -> None:
                         args.map_kind,
                         "--tfds-name",
                         args.tfds_name,
+                        "--compressor-train-split",
+                        args.compressor_train_split,
+                        "--compressor-val-split",
+                        args.compressor_val_split,
+                        "--nde-train-split",
+                        args.nde_train_split,
+                        "--nde-val-split",
+                        args.nde_val_split,
                         "--field-size",
                         str(args.field_size),
                         "--field-npix",
@@ -641,6 +677,14 @@ def main() -> None:
                     str(seed),
                     "--tfds-name",
                     args.tfds_name,
+                    "--compressor-train-split",
+                    args.compressor_train_split,
+                    "--compressor-val-split",
+                    args.compressor_val_split,
+                    "--nde-train-split",
+                    args.nde_train_split,
+                    "--nde-val-split",
+                    args.nde_val_split,
                     "--field-size",
                     str(args.field_size),
                     "--field-npix",
