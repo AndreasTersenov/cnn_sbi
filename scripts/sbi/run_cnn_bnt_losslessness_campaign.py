@@ -153,6 +153,22 @@ def _default_configs() -> Dict[str, CampaignConfig]:
             batch_size=256,
             patience=40,
         ),
+        "advanced_arch64_dense256_nostd_long": CampaignConfig(
+            name="advanced_arch64_dense256_nostd_long",
+            seeds=(41, 42, 43, 44, 45),
+            compressor_steps=120000,
+            compressor_conv_channels="64,128,256",
+            compressor_dense_width=256,
+            compressor_pool_window=16,
+            compressor_pool_stride=8,
+            standardize_summary=False,
+            summary_clip_value=5.0,
+            flow_steps=10000,
+            nvp_layers=8,
+            nvp_hidden=256,
+            batch_size=256,
+            patience=50,
+        ),
     }
 
 
@@ -208,6 +224,51 @@ def run_jobs_parallel(
     for t in threads:
         t.join()
     return results
+
+
+def ensure_tfds_prepared(
+    tfds_name: str,
+    repo_root: Path,
+    log_path: Path,
+    dry_run: bool = False,
+) -> None:
+    """Prepare TFDS dataset once to avoid parallel builder races in worker jobs."""
+    if dry_run:
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        log_path.write_text(
+            f"[dry-run] prepare tfds: {tfds_name}\n",
+            encoding="utf-8",
+        )
+        return
+    cmd = [
+        "conda",
+        "run",
+        "--no-capture-output",
+        "-n",
+        "jaxili",
+        "python",
+        "-c",
+        (
+            "import tensorflow_datasets as tfds; "
+            "import scripts.sbi.tf_dataset_nbody_tomo as _; "
+            f"b=tfds.builder('{tfds_name}'); "
+            "b.download_and_prepare(); "
+            "print('TFDS prepared:', b.name, b.builder_config.name, b.version)"
+        ),
+    ]
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(log_path, "w", encoding="utf-8") as logf:
+        proc = subprocess.run(
+            cmd,
+            cwd=str(repo_root),
+            stdout=logf,
+            stderr=subprocess.STDOUT,
+        )
+    if proc.returncode != 0:
+        raise RuntimeError(
+            "TFDS preparation failed for "
+            f"{tfds_name}. See log: {log_path}"
+        )
 
 
 def require_success(results: List[Dict[str, object]], context: str) -> None:
@@ -437,6 +498,12 @@ def main() -> None:
     }
     (out_root / "campaign_manifest.json").write_text(
         json.dumps(manifest, indent=2), encoding="utf-8"
+    )
+    ensure_tfds_prepared(
+        args.tfds_name,
+        repo_root=repo_root,
+        log_path=out_root / "logs" / "tfds_prepare.log",
+        dry_run=args.dry_run,
     )
 
     all_job_results: List[Dict[str, object]] = []
