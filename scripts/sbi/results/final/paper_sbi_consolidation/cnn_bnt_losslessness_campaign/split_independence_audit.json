@@ -1,0 +1,31 @@
+{
+  "dataset": "NbodyCosmogridDatasetTomo/grid_20deg_160px_nonoverlap48",
+  "split_compressor_train": "train[:70%]",
+  "split_nde_train": "train[70%:]",
+  "example_counts": {
+    "compressor_train_examples": 211445,
+    "nde_train_examples": 90619
+  },
+  "example_level_overlap": {
+    "overlap_count": 0,
+    "overlap_fraction_vs_nde": 0.0
+  },
+  "cosmology_level_overlap_via_theta": {
+    "unique_theta_compressor": 899,
+    "unique_theta_nde": 899,
+    "unique_theta_overlap": 899,
+    "unique_theta_only_compressor": 0,
+    "unique_theta_only_nde": 0,
+    "examples_per_theta_compressor_min_max_mean": [
+      205,
+      256,
+      235.20022246941045
+    ],
+    "examples_per_theta_nde_min_max_mean": [
+      80,
+      131,
+      100.79977753058954
+    ]
+  },
+  "note": "Splits are disjoint at example/record level but not disjoint in theta (cosmology parameters)."
+}

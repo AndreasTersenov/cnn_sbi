@@ -1,0 +1,26 @@
+{
+  "no-split multipatch cdim10": {
+    "std_sum": 0.1973835676908493,
+    "fom3": 369344.18378874747,
+    "sigma8_std": 0.015532528050243855,
+    "omega_m_sigma8_area": 0.00018801291220188465,
+    "sigma8_std_ratio_vs_nonsplit": 1.0,
+    "omega_m_sigma8_area_ratio_vs_nonsplit": 1.0
+  },
+  "split70/30 cdim10": {
+    "std_sum": 0.19529107213020325,
+    "fom3": 388679.78277368296,
+    "sigma8_std": 0.01476280391216278,
+    "omega_m_sigma8_area": 0.00018042980765804232,
+    "sigma8_std_ratio_vs_nonsplit": 0.9504443748248058,
+    "omega_m_sigma8_area_ratio_vs_nonsplit": 0.9596671076734361
+  },
+  "split70/30 cdim10 long120k": {
+    "std_sum": 0.1957707703113556,
+    "fom3": 333365.6213282863,
+    "sigma8_std": 0.015038365498185158,
+    "omega_m_sigma8_area": 0.00019074297146652768,
+    "sigma8_std_ratio_vs_nonsplit": 0.9681853108225393,
+    "omega_m_sigma8_area_ratio_vs_nonsplit": 1.0145205945308242
+  }
+}

@@ -72,6 +72,54 @@ Interpretation of multipatch results:
 2. Longer and/or larger-capacity multipatch training does reduce sigma8 broadening, but this comes with a clear global FoM retention penalty.
 3. For paper baseline conclusions, the best retained setup remains `advanced_arch64_dense256_nostd` with cdim=10 on the prior random25 dataset; multipatch is kept as a systematic negative-result diagnostic.
 
+## Independent compressor/NDE split update (multipatch, disjoint train subsets)
+
+Split policy used for all runs in this block:
+
+- compressor train split: `train[:70%]`
+- NDE train split: `train[70%:]`
+- shared validation split: `test`
+- TFDS: `NbodyCosmogridDatasetTomo/grid_20deg_160px_nonoverlap48`
+
+| Setup | std inflation (BNT/noBNT) | FoM ratio (BNT/noBNT) | sigma8 std ratio (BNT/noBNT, combined) |
+|---|---:|---:|---:|
+| old_best_cdim10_random25 (reference) | **1.0297** | **0.9065** | 1.2647 |
+| multipatch_advanced_cdim10 (no split) | 1.0409 | 0.8433 | 1.3549 |
+| indep_split_advanced_cdim10_long120k | 1.0369 | 0.8462 | **1.0966** |
+| indep_split_stagej_cdim6 | 1.0398 | 0.8129 | 1.3046 |
+| indep_split_advanced_cdim12 | **1.0169** | 0.7943 | 1.3046 |
+| indep_split_advanced_cdim10 | 1.0520 | 0.7699 | 1.4071 |
+
+Interpretation of independent-split results:
+
+1. Split-only runs at standard budget (`indep_split_stagej_cdim6`, `indep_split_advanced_cdim10`, `indep_split_advanced_cdim12`) do **not** outperform the non-split multipatch cdim10 reference in global FoM retention.
+2. With increased training budget (`indep_split_advanced_cdim10_long120k`), split training becomes slightly better than non-split multipatch cdim10 on global score (FoM ratio 0.8462 vs 0.8433, with similar inflation) and substantially better on sigma8 broadening (1.0966 vs 1.3549).
+3. Best width inflation within split runs is still cdim12 (~1.0169), but best split tradeoff is long120k cdim10.
+4. Overall, independent split alone is not a silver bullet, but with enough training it can recover most of the multipatch gap; the random25 best reference remains strongest on global retention (0.9065).
+
+### Split-independence audit (what is and is not independent)
+
+For `train[:70%]` vs `train[70%:]` on `grid_20deg_160px_nonoverlap48`:
+
+- compressor-train examples: **211,445**
+- NDE-train examples: **90,619**
+- overlap in TFDS record IDs: **0** (example-level disjoint)
+- overlap in unique `theta` values: **899 / 899** (all cosmologies appear in both subsets)
+
+So this split is disjoint at **example/patch level**, but **not** disjoint at cosmology/simulation-parameter level.
+
+### No-BNT comparison: non-split vs split overlays
+
+Combined-seed no-BNT overlay (non-split vs split cdim10 variants):
+
+- `scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_losslessness_campaign/figures/overlay_nobnt_nonsplit_vs_split_cdim10_combined.png`
+- `scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_losslessness_campaign/figures/overlay_nobnt_nonsplit_vs_split_cdim10_long120k_combined.png`
+- `scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_losslessness_campaign/figures/overlay_nobnt_nonsplit_vs_split_cdim10_vs_split_cdim10_long120k_combined.png`
+
+Quantitative no-BNT summary used for that overlay:
+
+- `scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_losslessness_campaign/figures/nobnt_split_vs_nonsplit_summary.json`
+
 ## Key artifacts
 
 - Original campaign summary:
@@ -86,6 +134,11 @@ Interpretation of multipatch results:
   - `scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_losslessness_campaign/comparison_multipatch_summary.csv`
   - `scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_losslessness_campaign/comparison_multipatch_summary.json`
   - `scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_losslessness_campaign/sigma8_multipatch_diagnosis.json`
+- Independent-split comparison/diagnostics:
+  - `scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_losslessness_campaign/comparison_indep_split_summary.csv`
+  - `scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_losslessness_campaign/comparison_indep_split_summary.json`
+  - `scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_losslessness_campaign/sigma8_indep_split_diagnosis.json`
+  - `scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_losslessness_campaign/split_independence_audit.json`
 - Full run manifests/results:
   - `scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_losslessness_campaign/campaign_manifest.json`
   - `scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_losslessness_campaign/job_results.json`
