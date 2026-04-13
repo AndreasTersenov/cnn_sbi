@@ -1,0 +1,38 @@
+{
+  "repo_root": "/mnt/home/tersenov/software/cnn_sbi",
+  "output_root": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_losslessness_campaign_multipatch_advanced96_cdim10_v1",
+  "baseline_root": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/bnt_comparison_tomo4",
+  "gpus": [
+    "2",
+    "3"
+  ],
+  "tfds_name": "NbodyCosmogridDatasetTomo/grid_20deg_160px_nonoverlap48",
+  "field_size": 20,
+  "field_npix": 160,
+  "nbins": 4,
+  "tomo_bin_indices": "1,2,3,4",
+  "npe_samples": 100000,
+  "compressor_dim": 10,
+  "configs": [
+    {
+      "name": "advanced_arch96_nostd",
+      "seeds": [
+        41,
+        42,
+        43
+      ],
+      "compressor_steps": 70000,
+      "compressor_conv_channels": "96,192,384",
+      "compressor_dense_width": 192,
+      "compressor_pool_window": 16,
+      "compressor_pool_stride": 8,
+      "standardize_summary": false,
+      "summary_clip_value": 5.0,
+      "flow_steps": 7000,
+      "nvp_layers": 6,
+      "nvp_hidden": 192,
+      "batch_size": 256,
+      "patience": 35
+    }
+  ]
+}

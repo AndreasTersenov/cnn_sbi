@@ -53,6 +53,25 @@ All optimized runs retrained **separate BNT/noBNT compressors** with matched set
 4. Compression-side refinement is the effective lever here: with the same architecture/training recipe, moving from cdim=6 to **cdim=10** improves both global BNT/noBNT agreement and sigma8-specific agreement.
 5. Current best result is `advanced_arch64_dense256_nostd` with **summary dim 10**, giving near-lossless width behavior (inflation ~1.03) and the strongest FoM retention among tested refined variants.
 
+## Multipatch expansion update (nonoverlap48)
+
+The multipatch campaign (deterministic non-overlapping 48 projections per sphere) is complete, including additional long-training and higher-capacity variants.
+
+| Setup | std inflation (BNT/noBNT) | FoM ratio (BNT/noBNT) | sigma8 std ratio (BNT/noBNT, combined) |
+|---|---:|---:|---:|
+| old_best_cdim10_random25 (reference) | **1.0297** | **0.9065** | 1.2647 |
+| multipatch_stagej_cdim6 | 1.0335 | 0.8476 | 1.4288 |
+| multipatch_advanced_cdim10 | 1.0409 | 0.8433 | 1.3549 |
+| multipatch_advanced_cdim12 | 1.0280 | 0.7481 | 1.2129 |
+| multipatch_advanced_cdim10_long120k | 1.0771 | 0.7494 | **1.1703** |
+| multipatch_advanced96_cdim10 | 1.0528 | 0.7783 | 1.2304 |
+
+Interpretation of multipatch results:
+
+1. Multipatch did **not** improve global BNT/noBNT agreement versus the current best random25 cdim10 reference (all multipatch FoM ratios are lower).
+2. Longer and/or larger-capacity multipatch training does reduce sigma8 broadening, but this comes with a clear global FoM retention penalty.
+3. For paper baseline conclusions, the best retained setup remains `advanced_arch64_dense256_nostd` with cdim=10 on the prior random25 dataset; multipatch is kept as a systematic negative-result diagnostic.
+
 ## Key artifacts
 
 - Original campaign summary:
@@ -63,6 +82,10 @@ All optimized runs retrained **separate BNT/noBNT compressors** with matched set
   - `scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_losslessness_campaign/comparison_refinement_summary.json`
 - Sigma8 diagnostics (updated):
   - `scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_losslessness_campaign/sigma8_diagnosis.json`
+- Multipatch comparison/diagnostics (updated with long120k + advanced96):
+  - `scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_losslessness_campaign/comparison_multipatch_summary.csv`
+  - `scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_losslessness_campaign/comparison_multipatch_summary.json`
+  - `scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_losslessness_campaign/sigma8_multipatch_diagnosis.json`
 - Full run manifests/results:
   - `scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_losslessness_campaign/campaign_manifest.json`
   - `scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_losslessness_campaign/job_results.json`
@@ -73,3 +96,5 @@ All optimized runs retrained **separate BNT/noBNT compressors** with matched set
   - advanced (cdim=8): `scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_losslessness_campaign_cdim8/advanced_arch64_dense256_nostd/figures/overlay_advanced_arch64_dense256_nostd_combined_bnt_vs_nobnt.png`
   - advanced (**cdim=10, best**): `scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_losslessness_campaign_cdim10/advanced_arch64_dense256_nostd/figures/overlay_advanced_arch64_dense256_nostd_combined_bnt_vs_nobnt.png`
   - NDE-capacity diagnostic: `scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_losslessness_campaign/nde_capacity_l10h320_flow12k/figures/overlay_ndeL10H320_flow12k_combined_bnt_vs_nobnt.png`
+  - multipatch long120k: `scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_losslessness_campaign_multipatch_advanced_cdim10_long120k_v1/advanced_arch64_dense256_nostd_long/figures/overlay_advanced_arch64_dense256_nostd_long_combined_bnt_vs_nobnt.png`
+  - multipatch advanced96: `scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_losslessness_campaign_multipatch_advanced96_cdim10_v1/advanced_arch96_nostd/figures/overlay_advanced_arch96_nostd_combined_bnt_vs_nobnt.png`
