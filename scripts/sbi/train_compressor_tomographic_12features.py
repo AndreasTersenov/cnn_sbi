@@ -56,7 +56,7 @@ nbins = 4
 # Immutable dimensionality of cosmological parameter vector (theta)
 param_dim = 6
 # Default output (summary) dimensionality, overridden by argument
-output_dim = 12
+output_dim = 200
 
 # script arguments
 
@@ -80,8 +80,8 @@ elif args.loss == "vmim":
 
 # Add output_dim to directory and filenames
 feature_tag = f"{output_dim}features"
-save_dir = f"./save_params/{args.loss}/{args.map_kind}/{feature_tag}/sigma_{sigma_e}/gal_density_{int(galaxy_density*4)}/bin_{bin_number}"
-fig_dir = f"./fig/{args.loss}/{args.map_kind}/{feature_tag}/sigma_{sigma_e}/gal_density_{int(galaxy_density*4)}/bin_{bin_number}"
+save_dir = f"./save_params/{args.loss}/{args.map_kind}/{feature_tag}/sigma_{sigma_e}/gal_density_{int(galaxy_density*4)}"
+fig_dir = f"./fig/{args.loss}/{args.map_kind}/{feature_tag}/sigma_{sigma_e}/gal_density_{int(galaxy_density*4)}"
 os.makedirs(save_dir, exist_ok=True)
 os.makedirs(fig_dir, exist_ok=True)
 
