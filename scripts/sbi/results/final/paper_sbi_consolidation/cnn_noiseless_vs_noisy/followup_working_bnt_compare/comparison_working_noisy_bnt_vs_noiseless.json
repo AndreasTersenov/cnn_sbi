@@ -1,0 +1,95 @@
+{
+  "seeds": [
+    41,
+    42,
+    43
+  ],
+  "paths": {
+    "noiseless_bnt": [
+      "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/cnn_noiseless_vs_noisy/posteriors/cnn_tomo4_20deg160_bnt_noiseless_s41.npy",
+      "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/cnn_noiseless_vs_noisy/posteriors/cnn_tomo4_20deg160_bnt_noiseless_s42.npy",
+      "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/cnn_noiseless_vs_noisy/posteriors/cnn_tomo4_20deg160_bnt_noiseless_s43.npy"
+    ],
+    "noiseless_nobnt": [
+      "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/cnn_noiseless_vs_noisy/posteriors/cnn_tomo4_20deg160_nobnt_noiseless_s41.npy",
+      "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/cnn_noiseless_vs_noisy/posteriors/cnn_tomo4_20deg160_nobnt_noiseless_s42.npy",
+      "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/cnn_noiseless_vs_noisy/posteriors/cnn_tomo4_20deg160_nobnt_noiseless_s43.npy"
+    ],
+    "noisy_working_bnt": [
+      "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_losslessness_campaign_cdim10/advanced_arch64_dense256_nostd/posteriors/cnn_tomo4_20deg160_bnt_advanced_arch64_dense256_nostd_s41.npy",
+      "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_losslessness_campaign_cdim10/advanced_arch64_dense256_nostd/posteriors/cnn_tomo4_20deg160_bnt_advanced_arch64_dense256_nostd_s42.npy",
+      "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_losslessness_campaign_cdim10/advanced_arch64_dense256_nostd/posteriors/cnn_tomo4_20deg160_bnt_advanced_arch64_dense256_nostd_s43.npy"
+    ],
+    "noisy_working_nobnt": [
+      "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_losslessness_campaign_cdim10/advanced_arch64_dense256_nostd/posteriors/cnn_tomo4_20deg160_nobnt_advanced_arch64_dense256_nostd_s41.npy",
+      "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_losslessness_campaign_cdim10/advanced_arch64_dense256_nostd/posteriors/cnn_tomo4_20deg160_nobnt_advanced_arch64_dense256_nostd_s42.npy",
+      "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_losslessness_campaign_cdim10/advanced_arch64_dense256_nostd/posteriors/cnn_tomo4_20deg160_nobnt_advanced_arch64_dense256_nostd_s43.npy"
+    ]
+  },
+  "metrics": {
+    "noiseless_bnt": {
+      "n": 3,
+      "std_sum_mean": 0.14381681879361471,
+      "std_sum_std": 0.0013994086223907863,
+      "sigma8_std_mean": 0.008639903739094734,
+      "sigma8_std_std": 0.00022187861566213426,
+      "fom3_mean": 1821071.4238731463,
+      "fom3_std": 89621.28872404444,
+      "om_s8_area_mean": 0.00021521416075225624,
+      "om_s8_area_std": 4.1895415885535665e-06
+    },
+    "noiseless_nobnt": {
+      "n": 3,
+      "std_sum_mean": 0.14479718605677286,
+      "std_sum_std": 0.001840110798967811,
+      "sigma8_std_mean": 0.00920509391774734,
+      "sigma8_std_std": 0.000138344165922231,
+      "fom3_mean": 1729732.0559273425,
+      "fom3_std": 85357.75097571006,
+      "om_s8_area_mean": 0.0002314486163397828,
+      "om_s8_area_std": 6.805906983379372e-06
+    },
+    "noisy_working_bnt": {
+      "n": 3,
+      "std_sum_mean": 0.18740863601366678,
+      "std_sum_std": 0.0026589699135511026,
+      "sigma8_std_mean": 0.01672309885422389,
+      "sigma8_std_std": 0.0003475375416671071,
+      "fom3_mean": 456675.7378075312,
+      "fom3_std": 42140.43391202636,
+      "om_s8_area_mean": 0.0005985473598589809,
+      "om_s8_area_std": 2.8297940074835197e-05
+    },
+    "noisy_working_nobnt": {
+      "n": 3,
+      "std_sum_mean": 0.18087907632191977,
+      "std_sum_std": 0.0008312306527027433,
+      "sigma8_std_mean": 0.014266548057397207,
+      "sigma8_std_std": 0.00023960975204156425,
+      "fom3_mean": 503013.1293325696,
+      "fom3_std": 31118.40959583666,
+      "om_s8_area_mean": 0.0004908461821541194,
+      "om_s8_area_std": 8.2513685162213e-06
+    }
+  },
+  "comparisons": {
+    "noiseless_bnt_vs_noisy_working_bnt": {
+      "std_sum_ratio_noiseless_over_noisy_working": 0.7673969666111164,
+      "fom3_ratio_noiseless_over_noisy_working": 3.9876684332213155,
+      "sigma8_std_ratio_noiseless_over_noisy_working": 0.5166449002310648,
+      "om_s8_area_ratio_noiseless_over_noisy_working": 0.359560788644964
+    },
+    "noisy_working_bnt_vs_noisy_working_nobnt": {
+      "std_sum_ratio_bnt_over_nobnt": 1.0360990327047337,
+      "fom3_ratio_bnt_over_nobnt": 0.9078803537662687,
+      "sigma8_std_ratio_bnt_over_nobnt": 1.1721895715027546,
+      "om_s8_area_ratio_bnt_over_nobnt": 1.219419405957699
+    },
+    "noiseless_bnt_vs_noiseless_nobnt": {
+      "std_sum_ratio_bnt_over_nobnt": 0.9932293762754909,
+      "fom3_ratio_bnt_over_nobnt": 1.0528055010790875,
+      "sigma8_std_ratio_bnt_over_nobnt": 0.9386002811374989,
+      "om_s8_area_ratio_bnt_over_nobnt": 0.9298571931676911
+    }
+  }
+}

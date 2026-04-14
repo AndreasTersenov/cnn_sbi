@@ -1,0 +1,69 @@
+{
+  "seeds": [
+    41,
+    42,
+    43
+  ],
+  "conditions": {
+    "nobnt": {
+      "noisy": {
+        "n": 3,
+        "std_sum_mean": 0.22492395341396332,
+        "std_sum_std": 0.002756775286976315,
+        "fom3_mean": 221867.46235312996,
+        "fom3_std": 8024.70443213635,
+        "sigma8_std_mean": 0.0220017172396183,
+        "sigma8_std_std": 0.001192694403655734,
+        "om_s8_area_mean": 0.0010218321933778028,
+        "om_s8_area_std": 2.420542414988424e-05
+      },
+      "noiseless": {
+        "n": 3,
+        "std_sum_mean": 0.14479718605677286,
+        "std_sum_std": 0.001840110798967811,
+        "fom3_mean": 1729732.0559273425,
+        "fom3_std": 85357.75097571006,
+        "sigma8_std_mean": 0.00920509391774734,
+        "sigma8_std_std": 0.000138344165922231,
+        "om_s8_area_mean": 0.0002314486163397828,
+        "om_s8_area_std": 6.805906983379372e-06
+      },
+      "ratios": {
+        "std_sum_ratio_noiseless_over_noisy": 0.6437606304664206,
+        "fom3_ratio_noiseless_over_noisy": 7.796240321053731,
+        "sigma8_std_ratio_noiseless_over_noisy": 0.4183807026286024,
+        "om_s8_area_ratio_noiseless_over_noisy": 0.2265035470987643
+      }
+    },
+    "bnt": {
+      "noisy": {
+        "n": 3,
+        "std_sum_mean": 0.4059671064217885,
+        "std_sum_std": 0.005672567685290232,
+        "fom3_mean": 21030.3577028243,
+        "fom3_std": 788.2194162796222,
+        "sigma8_std_mean": 0.20743987957636514,
+        "sigma8_std_std": 0.007414474881031167,
+        "om_s8_area_mean": 0.00966376759621545,
+        "om_s8_area_std": 0.00026389127845056077
+      },
+      "noiseless": {
+        "n": 3,
+        "std_sum_mean": 0.14381681879361471,
+        "std_sum_std": 0.0013994086223907863,
+        "fom3_mean": 1821071.4238731463,
+        "fom3_std": 89621.28872404444,
+        "sigma8_std_mean": 0.008639903739094734,
+        "sigma8_std_std": 0.00022187861566213426,
+        "om_s8_area_mean": 0.00021521416075225624,
+        "om_s8_area_std": 4.1895415885535665e-06
+      },
+      "ratios": {
+        "std_sum_ratio_noiseless_over_noisy": 0.35425731917352205,
+        "fom3_ratio_noiseless_over_noisy": 86.59250829711674,
+        "sigma8_std_ratio_noiseless_over_noisy": 0.04165015789991391,
+        "om_s8_area_ratio_noiseless_over_noisy": 0.022270212793252496
+      }
+    }
+  }
+}
