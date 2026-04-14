@@ -13,7 +13,7 @@ Main stages:
  3. Compute L1-norm summary for the observed map (PyTorch / GPU)
  4. Load TFDS tomographic dataset, apply augmentation, compute L1-norm
     summaries for train/test (PyTorch / GPU)
- 5. Standardize summaries (zero-mean, unit-variance)
+ 5. Preprocess summaries (configurable log1p/z-score/clipping)
  6. Define & train conditional RealNVP normalizing flow for p(theta | y)
  7. Sample the posterior and produce contour plots
 
@@ -137,6 +137,18 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--no-subtract-coarse-mean", dest="subtract_coarse_mean", action="store_false",
                     help="Disable coarse-scale mean subtraction before SNR")
     p.set_defaults(subtract_coarse_mean=True)
+    p.add_argument(
+        "--l1-implementation",
+        type=str,
+        default="cnn_sbi",
+        choices=["cnn_sbi", "cosmoford"],
+        help=(
+            "How to compute L1 data vectors. "
+            "'cnn_sbi' uses local implementation knobs; "
+            "'cosmoford' mirrors CosmOrford extraction (float32, default "
+            "wavelet transform settings, clamp_overflow=False)."
+        ),
+    )
 
     # Map kind
     p.add_argument("--map-kind", type=str, default="nbody",
@@ -170,6 +182,24 @@ def parse_args() -> argparse.Namespace:
     # Dimensionality reduction
     p.add_argument("--pca-components", type=int, default=50,
                     help="Number of PCA components for summary reduction (0 = no PCA)")
+    p.add_argument(
+        "--summary-transform",
+        type=str,
+        default="log1p-zscore",
+        choices=[
+            "log1p-zscore",
+            "log10p-zscore",
+            "zscore",
+            "log1p",
+            "log10p",
+            "none",
+        ],
+        help=(
+            "Summary preprocessing before optional PCA: "
+            "'log1p-zscore' (default), 'log10p-zscore' (CosmOrford-style), "
+            "'zscore', 'log1p', 'log10p', or 'none'."
+        ),
+    )
 
     # Flow training hyperparameters
     p.add_argument("--total-steps", type=int, default=50_000)
@@ -306,10 +336,12 @@ def build_l1_computer(
     n_scales: int,
     pixel_arcmin: float,
     torch_device: torch.device,
+    l1_implementation: str = "cnn_sbi",
 ) -> WLStatistics:
     """Instantiate the wavelet L1-norm computer."""
+    dtype = torch.float32 if l1_implementation == "cosmoford" else torch.float64
     return WLStatistics(n_scales=n_scales, device=torch_device,
-                        pixel_arcmin=pixel_arcmin, dtype=torch.float64)
+                        pixel_arcmin=pixel_arcmin, dtype=dtype)
 
 
 def calibrate_snr_range(
@@ -318,6 +350,7 @@ def calibrate_snr_range(
     tfds_name: str,
     noise_sigma: float,
     nbins: int,
+    l1_implementation: str = "cnn_sbi",
     n_calibration: int = 512,
     ds_batch_size: int = 64,
     subtract_coarse_mean: bool = True,
@@ -348,13 +381,17 @@ def calibrate_snr_range(
         if np.isnan(maps_np).any():
             continue
         for b in range(nbins):
+            map_dtype = np.float32 if l1_implementation == "cosmoford" else np.float64
             img_batch = torch.from_numpy(
-                maps_np[:, :, :, b].astype(np.float64)
+                maps_np[:, :, :, b].astype(map_dtype)
             ).to(device)
-            stats.compute_wavelet_transform(
-                img_batch, noise_sigma,
-                subtract_coarse_mean=subtract_coarse_mean,
-            )
+            if l1_implementation == "cosmoford":
+                stats.compute_wavelet_transform(img_batch.float(), float(noise_sigma))
+            else:
+                stats.compute_wavelet_transform(
+                    img_batch, noise_sigma,
+                    subtract_coarse_mean=subtract_coarse_mean,
+                )
             # Read SNR coefficients directly
             snr = stats.snr_coeffs  # (B, n_scales, H, W)
             batch_min = snr.min().item()
@@ -383,6 +420,7 @@ def compute_l1_single_map(
     l1_max_snr: float,
     clamp_overflow: bool = False,
     subtract_coarse_mean: bool = True,
+    l1_implementation: str = "cnn_sbi",
 ) -> np.ndarray:
     """
     Compute L1-norm summary vector for a single (H, W, nbins) map.
@@ -395,12 +433,19 @@ def compute_l1_single_map(
     device = stats.device
     all_l1 = []
     for b in range(nbins):
-        img = torch.from_numpy(kappa[:, :, b].astype(np.float64)).to(device)
-        stats.compute_wavelet_transform(img, noise_sigma,
-                                        subtract_coarse_mean=subtract_coarse_mean)
+        map_dtype = np.float32 if l1_implementation == "cosmoford" else np.float64
+        img = torch.from_numpy(kappa[:, :, b].astype(map_dtype)).to(device)
+        if l1_implementation == "cosmoford":
+            stats.compute_wavelet_transform(img.float(), float(noise_sigma))
+            clamp_this = False
+        else:
+            stats.compute_wavelet_transform(
+                img, noise_sigma, subtract_coarse_mean=subtract_coarse_mean
+            )
+            clamp_this = clamp_overflow
         _, l1_norms = stats.compute_wavelet_l1_norms(
             n_bins=l1_nbins, min_snr=l1_min_snr, max_snr=l1_max_snr,
-            clamp_overflow=clamp_overflow,
+            clamp_overflow=clamp_this,
         )
         # l1_norms is a list of (l1_nbins,) tensors, one per scale
         bin_vec = torch.cat(l1_norms, dim=-1)  # (n_scales * l1_nbins,)
@@ -418,6 +463,7 @@ def compute_l1_batch(
     l1_max_snr: float,
     clamp_overflow: bool = False,
     subtract_coarse_mean: bool = True,
+    l1_implementation: str = "cnn_sbi",
 ) -> np.ndarray:
     """
     Compute L1-norm summary vectors for a batch of (B, H, W, nbins) maps.
@@ -432,14 +478,21 @@ def compute_l1_batch(
     all_l1 = []
     for b in range(nbins):
         # (B, H, W) for this tomographic bin
+        map_dtype = np.float32 if l1_implementation == "cosmoford" else np.float64
         img_batch = torch.from_numpy(
-            maps_batch[:, :, :, b].astype(np.float64)
+            maps_batch[:, :, :, b].astype(map_dtype)
         ).to(device)
-        stats.compute_wavelet_transform(img_batch, noise_sigma,
-                                        subtract_coarse_mean=subtract_coarse_mean)
+        if l1_implementation == "cosmoford":
+            stats.compute_wavelet_transform(img_batch.float(), float(noise_sigma))
+            clamp_this = False
+        else:
+            stats.compute_wavelet_transform(
+                img_batch, noise_sigma, subtract_coarse_mean=subtract_coarse_mean
+            )
+            clamp_this = clamp_overflow
         _, l1_norms = stats.compute_wavelet_l1_norms(
             n_bins=l1_nbins, min_snr=l1_min_snr, max_snr=l1_max_snr,
-            clamp_overflow=clamp_overflow,
+            clamp_overflow=clamp_this,
         )
         # l1_norms: list of (B, l1_nbins) per scale
         bin_vec = torch.cat(l1_norms, dim=-1)  # (B, n_scales * l1_nbins)
@@ -510,6 +563,7 @@ def compute_l1_dataset(
     l1_max_snr: float,
     clamp_overflow: bool = False,
     subtract_coarse_mean: bool = True,
+    l1_implementation: str = "cnn_sbi",
 ) -> Dict[str, np.ndarray]:
     """
     Load TFDS dataset, apply augmentation, compute L1-norm summaries.
@@ -546,6 +600,7 @@ def compute_l1_dataset(
             l1_min_snr=l1_min_snr, l1_max_snr=l1_max_snr,
             clamp_overflow=clamp_overflow,
             subtract_coarse_mean=subtract_coarse_mean,
+            l1_implementation=l1_implementation,
         )
         x_list.append(l1_vec)
         theta_list.append(theta_np)
@@ -656,45 +711,106 @@ def log_l1_health_diagnostics(
 
 
 # =============================================================================
-# Summary standardization
+# Summary preprocessing
 # =============================================================================
 
-def standardize(
+def _summary_transform_flags(summary_transform: str) -> tuple[bool, bool, str]:
+    if summary_transform == "log1p-zscore":
+        return True, True, "log1p"
+    if summary_transform == "log10p-zscore":
+        return True, True, "log10p"
+    if summary_transform == "zscore":
+        return False, True, "none"
+    if summary_transform == "log1p":
+        return True, False, "log1p"
+    if summary_transform == "log10p":
+        return True, False, "log10p"
+    if summary_transform == "none":
+        return False, False, "none"
+    raise ValueError(
+        f"Unknown summary transform '{summary_transform}'. "
+        "Expected one of: log1p-zscore, log10p-zscore, zscore, log1p, "
+        "log10p, none."
+    )
+
+
+def preprocess_summaries(
     train_x: np.ndarray,
     val_x: np.ndarray,
     obs_x: np.ndarray,
-    clip_value: float = 5.0,
+    summary_transform: str = "log1p-zscore",
+    clip_value: Optional[float] = 5.0,
+    mean: Optional[np.ndarray] = None,
+    std: Optional[np.ndarray] = None,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """Log1p + zero-mean unit-variance standardization + clipping.
+    """Apply configurable summary preprocessing to train/val/obs.
 
-    L1-norms are non-negative sums of absolute values with heavy right tails.
-    Plain mean/std standardization leaves extreme outliers (>200 sigma) that
-    cause NaN in the normalizing flow's affine coupling layers.
-
-    The log1p transform compresses the right tail, and clipping at ±clip_value
-    bounds any remaining outliers.
+    Supported transforms:
+      - log1p-zscore: log1p then train-set z-score
+      - log10p-zscore: log10(1+x) then train-set z-score
+      - zscore: train-set z-score only
+      - log1p: log1p only
+      - log10p: log10(1+x) only
+      - none: identity
     """
-    # 1. Log-transform (L1-norms are strictly non-negative)
-    train_log = np.log1p(train_x)
-    val_log = np.log1p(val_x)
-    obs_log = np.log1p(obs_x)
+    apply_log, apply_standardize, log_kind = _summary_transform_flags(summary_transform)
 
-    # 2. Zero-mean, unit-variance from training set
-    mean = train_log.mean(axis=0)
-    std = train_log.std(axis=0)
-    std[std < 1e-12] = 1.0  # avoid division by zero for dead features
+    if apply_log:
+        for arr_name, arr in (("train_x", train_x), ("val_x", val_x), ("obs_x", obs_x)):
+            if np.any(arr < -1.0):
+                raise ValueError(
+                    f"{arr_name} contains values < -1, cannot apply {log_kind} safely "
+                    f"(minimum={arr.min():.6e})."
+                )
+        if log_kind == "log1p":
+            train_proc = np.log1p(train_x)
+            val_proc = np.log1p(val_x)
+            obs_proc = np.log1p(obs_x)
+        elif log_kind == "log10p":
+            train_proc = np.log10(train_x + 1.0)
+            val_proc = np.log10(val_x + 1.0)
+            obs_proc = np.log10(obs_x + 1.0)
+        else:
+            raise ValueError(f"Unexpected log kind: {log_kind}")
+    else:
+        train_proc = train_x
+        val_proc = val_x
+        obs_proc = obs_x
 
-    train_std = (train_log - mean) / std
-    val_std = (val_log - mean) / std
-    obs_std = (obs_log - mean) / std
+    if apply_standardize:
+        if (mean is None) ^ (std is None):
+            raise ValueError("Both mean and std must be provided together.")
+        if mean is None or std is None:
+            mean = train_proc.mean(axis=0)
+            std = train_proc.std(axis=0)
+        else:
+            mean = np.asarray(mean)
+            std = np.asarray(std)
+            if mean.shape != (train_proc.shape[1],) or std.shape != (train_proc.shape[1],):
+                raise ValueError(
+                    "Loaded standardization stats have incompatible shape: "
+                    f"mean={mean.shape}, std={std.shape}, expected={(train_proc.shape[1],)}."
+                )
+        std = std.copy()
+        std[std < 1e-12] = 1.0  # avoid division by zero for dead features
 
-    # 3. Clip to ±clip_value to prevent flow overflow
+        train_out = (train_proc - mean) / std
+        val_out = (val_proc - mean) / std
+        obs_out = (obs_proc - mean) / std
+    else:
+        mean = np.zeros(train_proc.shape[1], dtype=train_proc.dtype)
+        std = np.ones(train_proc.shape[1], dtype=train_proc.dtype)
+        train_out = train_proc
+        val_out = val_proc
+        obs_out = obs_proc
+
+    # Optional clipping to suppress extreme tails.
     if clip_value is not None and clip_value > 0:
-        train_std = np.clip(train_std, -clip_value, clip_value)
-        val_std = np.clip(val_std, -clip_value, clip_value)
-        obs_std = np.clip(obs_std, -clip_value, clip_value)
+        train_out = np.clip(train_out, -clip_value, clip_value)
+        val_out = np.clip(val_out, -clip_value, clip_value)
+        obs_out = np.clip(obs_out, -clip_value, clip_value)
 
-    return train_std, val_std, obs_std, mean, std
+    return train_out, val_out, obs_out, mean, std
 
 
 # =============================================================================
@@ -722,6 +838,46 @@ def fit_pca(
     print(f"  PCA: {train_x.shape[1]} → {n_components} components "
           f"({explained:.1f}% variance explained)")
     return train_pca, val_pca, obs_pca, pca
+
+
+def apply_saved_pca(
+    train_x: np.ndarray,
+    val_x: np.ndarray,
+    obs_x: np.ndarray,
+    pca_components: np.ndarray,
+    pca_mean: np.ndarray,
+    pca_explained_variance: Optional[np.ndarray] = None,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Apply a previously fitted (whitened) PCA transform."""
+    pca_components = np.asarray(pca_components)
+    pca_mean = np.asarray(pca_mean)
+    if pca_components.ndim != 2:
+        raise ValueError(f"pca_components must be 2D, got shape {pca_components.shape}.")
+    if pca_mean.shape != (pca_components.shape[1],):
+        raise ValueError(
+            f"pca_mean shape {pca_mean.shape} incompatible with "
+            f"pca_components shape {pca_components.shape}."
+        )
+    if pca_explained_variance is None:
+        raise ValueError("Missing pca_explained_variance for whitening.")
+    pca_explained_variance = np.asarray(pca_explained_variance)
+    if pca_explained_variance.shape != (pca_components.shape[0],):
+        raise ValueError(
+            f"pca_explained_variance shape {pca_explained_variance.shape} incompatible with "
+            f"number of PCA components {pca_components.shape[0]}."
+        )
+
+    whitening = np.sqrt(np.maximum(pca_explained_variance, 1e-12))
+
+    def _transform(x: np.ndarray) -> np.ndarray:
+        centered = x - pca_mean
+        projected = centered @ pca_components.T
+        return (projected / whitening).astype(np.float32)
+
+    train_pca = _transform(train_x)
+    val_pca = _transform(val_x)
+    obs_pca = _transform(obs_x.reshape(1, -1)).squeeze(0)
+    return train_pca, val_pca, obs_pca
 
 
 # =============================================================================
@@ -774,6 +930,55 @@ def make_update_fn(nf_logp, optimizer):
         return loss, new_params, new_opt_state
 
     return update
+
+
+def validate_flow_inputs(
+    dataset_train: Dict[str, np.ndarray],
+    dataset_val: Dict[str, np.ndarray],
+    obs_summary: np.ndarray,
+    n_cosmo: int,
+) -> None:
+    """Validate flow conditioning arrays and fail fast on malformed inputs."""
+    for split_name, dataset in (("train", dataset_train), ("val", dataset_val)):
+        if "theta" not in dataset or "x" not in dataset:
+            raise ValueError(
+                f"{split_name} dataset must contain 'theta' and 'x' keys."
+            )
+        theta = np.asarray(dataset["theta"])
+        x = np.asarray(dataset["x"])
+        if theta.ndim != 2:
+            raise ValueError(f"{split_name} theta must be 2D, got shape {theta.shape}.")
+        if x.ndim != 2:
+            raise ValueError(f"{split_name} x must be 2D, got shape {x.shape}.")
+        if theta.shape[0] != x.shape[0]:
+            raise ValueError(
+                f"{split_name} theta/x size mismatch: theta={theta.shape}, x={x.shape}."
+            )
+        if theta.shape[1] != n_cosmo:
+            raise ValueError(
+                f"{split_name} theta second dim must be {n_cosmo}, got {theta.shape[1]}."
+            )
+        if x.shape[1] <= 0:
+            raise ValueError(f"{split_name} summary dim must be > 0, got {x.shape[1]}.")
+        if not np.isfinite(theta).all():
+            raise ValueError(f"{split_name} theta contains non-finite values.")
+        if not np.isfinite(x).all():
+            raise ValueError(f"{split_name} x contains non-finite values.")
+
+    train_dim = int(np.asarray(dataset_train["x"]).shape[1])
+    val_dim = int(np.asarray(dataset_val["x"]).shape[1])
+    if train_dim != val_dim:
+        raise ValueError(f"train/val summary dim mismatch: {train_dim} vs {val_dim}.")
+
+    obs_summary = np.asarray(obs_summary)
+    if obs_summary.ndim != 1:
+        raise ValueError(f"Observed summary must be 1D, got shape {obs_summary.shape}.")
+    if obs_summary.shape[0] != train_dim:
+        raise ValueError(
+            f"Observed summary dim mismatch: obs={obs_summary.shape[0]} vs train={train_dim}."
+        )
+    if not np.isfinite(obs_summary).all():
+        raise ValueError("Observed summary contains non-finite values.")
 
 
 def train_flow(
@@ -841,14 +1046,20 @@ def train_flow(
     for step in range(1, total_steps + 1):
         idx = np.random.randint(0, n_train, batch_size)
         loss, params, opt_state = update(params, opt_state, theta_train[idx], x_train[idx])
-        batch_losses.append(float(loss))
+        loss_f = float(loss)
+        if not np.isfinite(loss_f):
+            raise FloatingPointError(
+                f"Non-finite train loss at step {step}: {loss_f}. "
+                "Check summary preprocessing and clip/PCA settings."
+            )
+        batch_losses.append(loss_f)
 
         if step % 100 == 0:
-            log_dict = {"train/loss": float(loss), "step": step}
+            log_dict = {"train/loss": loss_f, "step": step}
             if lr_schedule_fn is not None:
                 log_dict["train/lr"] = float(lr_schedule_fn(step))
             wandb.log(log_dict, step=step)
-            print(f"  Step {step:6d} | train loss {loss:.4f}")
+            print(f"  Step {step:6d} | train loss {loss_f:.4f}")
 
         if step % save_every == 0 or step == total_steps:
             save_dir.mkdir(parents=True, exist_ok=True)
@@ -856,6 +1067,11 @@ def train_flow(
             # Validation loss (larger batch for stability)
             vidx = np.random.randint(0, n_val, val_batch_size)
             val_l = float(-jnp.mean(nf_logp.apply(params, theta_val[vidx], x_val[vidx])))
+            if not np.isfinite(val_l):
+                raise FloatingPointError(
+                    f"Non-finite validation loss at step {step}: {val_l}. "
+                    "Flow training diverged; check summary preprocessing and clipping."
+                )
             val_losses.append(val_l)
             val_steps.append(step)
 
@@ -940,6 +1156,8 @@ def sample_posterior(
     # Remove NaN samples
     nan_rows = jnp.any(jnp.isnan(samples), axis=-1)
     samples = samples[~nan_rows]
+    if len(samples) == 0:
+        raise FloatingPointError("All posterior samples are non-finite (NaN).")
     print(f"  Generated {len(samples)} valid posterior samples.")
     return np.array(samples)
 
@@ -1016,15 +1234,18 @@ def main():
         args.sigma_e, args.galaxy_density, args.field_size, args.field_npix
     )
     raw_summary_dim = args.n_scales * args.l1_nbins * args.nbins
-    summary_dim = args.pca_components if args.pca_components > 0 else raw_summary_dim
+    requested_summary_dim = args.pca_components if args.pca_components > 0 else raw_summary_dim
     print(f"  pixel_arcmin   = {pixel_arcmin:.2f}")
     print(f"  noise_sigma    = {noise_sigma:.6f}")
     print(f"  raw_summary    = {raw_summary_dim}  "
           f"({args.n_scales} scales × {args.l1_nbins} bins × {args.nbins} tomo bins)")
-    print(f"  summary_dim    = {summary_dim}  "
+    print(f"  summary_dim    = {requested_summary_dim}  "
           f"({'PCA-' + str(args.pca_components) if args.pca_components > 0 else 'no PCA'})")
 
     param_names = [r"\Omega_m", r"\sigma_8", r"w_0", r"h_0", r"n_s", r"\Omega_b"]
+    save_path = Path(args.save_dir) / "l1norm" / args.map_kind
+    flow_summary_path = save_path / "flow_training_summary.json"
+    preprocessing_stats_path = save_path / "l1_standardization.npz"
 
     # ------------------------------------------------------------------
     # 0. Initialize Weights & Biases
@@ -1053,7 +1274,22 @@ def main():
     # ------------------------------------------------------------------
     # 2. L1-norm computer + SNR calibration
     # ------------------------------------------------------------------
-    stats = build_l1_computer(args.n_scales, pixel_arcmin, torch_device)
+    stats = build_l1_computer(
+        args.n_scales, pixel_arcmin, torch_device,
+        l1_implementation=args.l1_implementation,
+    )
+    effective_l1_clamp = args.l1_clamp_overflow
+    effective_subtract_coarse_mean = args.subtract_coarse_mean
+    if args.l1_implementation == "cosmoford":
+        if args.l1_clamp_overflow:
+            print("  CosmOrford L1 mode: forcing clamp_overflow=False.")
+        if args.subtract_coarse_mean:
+            print(
+                "  CosmOrford L1 mode: using WLStatistics default coarse-mean handling "
+                "(ignoring --subtract-coarse-mean)."
+            )
+        effective_l1_clamp = False
+        effective_subtract_coarse_mean = False
 
     augmentation = build_augmentation(
         args.map_kind, args.sigma_e, args.galaxy_density,
@@ -1081,9 +1317,10 @@ def main():
                 stats, augmentation,
                 args.tfds_name,
                 noise_sigma, args.nbins,
+                l1_implementation=args.l1_implementation,
                 n_calibration=args.calibration_samples,
                 ds_batch_size=args.ds_batch_size,
-                subtract_coarse_mean=args.subtract_coarse_mean,
+                subtract_coarse_mean=effective_subtract_coarse_mean,
                 margin=args.calibration_margin,
             )
             if calib_cache is not None:
@@ -1094,9 +1331,10 @@ def main():
     wandb.config.update({
         "l1_min_snr_calibrated": l1_min_snr,
         "l1_max_snr_calibrated": l1_max_snr,
-        "l1_clamp_overflow": args.l1_clamp_overflow,
+        "l1_implementation": args.l1_implementation,
+        "l1_clamp_overflow": effective_l1_clamp,
         "l1_auto_calibrate_snr": args.auto_calibrate_snr,
-        "l1_subtract_coarse_mean": args.subtract_coarse_mean,
+        "l1_subtract_coarse_mean": effective_subtract_coarse_mean,
     }, allow_val_change=True)
 
     # 2a. L1-norm for observed map
@@ -1104,8 +1342,9 @@ def main():
     obs_l1 = compute_l1_single_map(
         m_data, noise_sigma, stats, args.l1_nbins, args.nbins,
         l1_min_snr=l1_min_snr, l1_max_snr=l1_max_snr,
-        clamp_overflow=args.l1_clamp_overflow,
-        subtract_coarse_mean=args.subtract_coarse_mean,
+        clamp_overflow=effective_l1_clamp,
+        subtract_coarse_mean=effective_subtract_coarse_mean,
+        l1_implementation=args.l1_implementation,
     )
     print(f"  Observed L1-norm vector shape = {obs_l1.shape}")
 
@@ -1126,7 +1365,7 @@ def main():
             required_meta = {
                 "l1_min_snr", "l1_max_snr", "l1_nbins",
                 "l1_clamp_overflow", "subtract_coarse_mean", "n_scales",
-                "tfds_name", "tomo_bin_indices",
+                "tfds_name", "tomo_bin_indices", "l1_implementation",
             }
             if not required_meta.issubset(set(meta.files)):
                 print("  Cache metadata is missing newer L1 settings; recomputing ...")
@@ -1139,13 +1378,15 @@ def main():
                 cached_n_scales = int(meta["n_scales"])
                 cached_tfds_name = str(meta["tfds_name"])
                 cached_tomo_bins = str(meta["tomo_bin_indices"])
+                cached_impl = str(meta["l1_implementation"])
                 if (abs(cached_min - l1_min_snr) < 1e-6 and
                         abs(cached_max - l1_max_snr) < 1e-6 and
                         cached_nbins == args.l1_nbins and
-                        cached_clamp == args.l1_clamp_overflow and
-                        cached_subtract == args.subtract_coarse_mean and
+                        cached_clamp == effective_l1_clamp and
+                        cached_subtract == effective_subtract_coarse_mean and
                         cached_n_scales == args.n_scales and
                         cached_tfds_name == args.tfds_name and
+                        cached_impl == args.l1_implementation and
                         cached_tomo_bins == ",".join(str(b) for b in tomo_bin_indices)):
                     print("  Loading cached L1-norm datasets (metadata matches) ...")
                     d_tr = np.load(train_cache)
@@ -1165,15 +1406,17 @@ def main():
             args.tfds_name, "train", augmentation, stats,
             noise_sigma, args.l1_nbins, args.nbins, args.ds_batch_size,
             l1_min_snr=l1_min_snr, l1_max_snr=l1_max_snr,
-            clamp_overflow=args.l1_clamp_overflow,
-            subtract_coarse_mean=args.subtract_coarse_mean,
+            clamp_overflow=effective_l1_clamp,
+            subtract_coarse_mean=effective_subtract_coarse_mean,
+            l1_implementation=args.l1_implementation,
         )
         dataset_val = compute_l1_dataset(
             args.tfds_name, "test", augmentation, stats,
             noise_sigma, args.l1_nbins, args.nbins, args.ds_batch_size,
             l1_min_snr=l1_min_snr, l1_max_snr=l1_max_snr,
-            clamp_overflow=args.l1_clamp_overflow,
-            subtract_coarse_mean=args.subtract_coarse_mean,
+            clamp_overflow=effective_l1_clamp,
+            subtract_coarse_mean=effective_subtract_coarse_mean,
+            l1_implementation=args.l1_implementation,
         )
         # Save cache with metadata
         if cache_dir is not None:
@@ -1185,8 +1428,9 @@ def main():
             np.savez(cache_dir / "l1_cache_meta.npz",
                      l1_min_snr=l1_min_snr, l1_max_snr=l1_max_snr,
                      l1_nbins=args.l1_nbins,
-                     l1_clamp_overflow=args.l1_clamp_overflow,
-                     subtract_coarse_mean=args.subtract_coarse_mean,
+                     l1_clamp_overflow=effective_l1_clamp,
+                     subtract_coarse_mean=effective_subtract_coarse_mean,
+                     l1_implementation=args.l1_implementation,
                      n_scales=args.n_scales,
                      tfds_name=args.tfds_name,
                      tomo_bin_indices=",".join(str(b) for b in tomo_bin_indices))
@@ -1206,19 +1450,66 @@ def main():
     )
 
     # ------------------------------------------------------------------
-    # 4. Standardize summaries
+    # 4. Preprocess summaries
     # ------------------------------------------------------------------
-    print("######## STANDARDIZE ########")
+    print("######## SUMMARY PREPROCESSING ########")
     train_x_raw = dataset_train["x"]
     obs_l1_raw = obs_l1
-    clip_val = args.clip_value if args.clip_value > 0 else None
-    dataset_train["x"], dataset_val["x"], obs_l1_std, mean, std = standardize(
-        dataset_train["x"], dataset_val["x"], obs_l1, clip_value=clip_val,
+    requested_clip_val = args.clip_value if args.clip_value > 0 else None
+    effective_clip_val = requested_clip_val
+    requested_transform = args.summary_transform
+    effective_transform = requested_transform
+    loaded_stats: Optional[dict[str, np.ndarray]] = None
+
+    if args.no_train:
+        if not preprocessing_stats_path.exists():
+            raise FileNotFoundError(
+                f"--no-train requires preprocessing stats at {preprocessing_stats_path}, "
+                "but the file does not exist."
+            )
+        with np.load(preprocessing_stats_path, allow_pickle=False) as saved:
+            loaded_stats = {k: np.array(saved[k]) for k in saved.files}
+        if "summary_transform" in loaded_stats:
+            effective_transform = str(loaded_stats["summary_transform"])
+        else:
+            effective_transform = "log1p-zscore"
+            print("  Legacy preprocessing stats detected; assuming summary_transform=log1p-zscore.")
+        if "clip_value" in loaded_stats:
+            clip_raw = float(loaded_stats["clip_value"])
+            effective_clip_val = None if np.isnan(clip_raw) else clip_raw
+        if effective_transform != requested_transform:
+            print(
+                f"  Overriding requested --summary-transform={requested_transform} "
+                f"with saved transform '{effective_transform}' for flow compatibility."
+            )
+        if effective_clip_val != requested_clip_val:
+            print(
+                f"  Overriding requested clip_value={requested_clip_val} "
+                f"with saved clip_value={effective_clip_val} for flow compatibility."
+            )
+        print(f"  Loaded preprocessing stats from {preprocessing_stats_path}")
+
+    loaded_mean = None if loaded_stats is None else loaded_stats.get("mean")
+    loaded_std = None if loaded_stats is None else loaded_stats.get("std")
+    dataset_train["x"], dataset_val["x"], obs_l1_std, mean, std = preprocess_summaries(
+        dataset_train["x"],
+        dataset_val["x"],
+        obs_l1,
+        summary_transform=effective_transform,
+        clip_value=effective_clip_val,
+        mean=loaded_mean,
+        std=loaded_std,
     )
-    print(f"  Summary mean range = [{mean.min():.4f}, {mean.max():.4f}]")
-    print(f"  Summary std  range = [{std.min():.4f}, {std.max():.4f}]")
+    apply_log, apply_standardize, log_kind = _summary_transform_flags(effective_transform)
+    print(
+        f"  Summary transform = {effective_transform} "
+        f"(log={log_kind}, zscore={int(apply_standardize)}, clip={effective_clip_val})"
+    )
+    if apply_standardize:
+        print(f"  Summary mean range = [{mean.min():.4f}, {mean.max():.4f}]")
+        print(f"  Summary std  range = [{std.min():.4f}, {std.max():.4f}]")
     log_l1_health_diagnostics(
-        train_x_raw, obs_l1_raw, dataset_train["x"], obs_l1_std, clip_val
+        train_x_raw, obs_l1_raw, dataset_train["x"], obs_l1_std, effective_clip_val
     )
 
     # Log dataset & summary statistics to wandb
@@ -1226,6 +1517,12 @@ def main():
         "data/train_size": len(dataset_train["theta"]),
         "data/val_size": len(dataset_val["theta"]),
         "data/raw_summary_dim": raw_summary_dim,
+        "data/summary_transform": effective_transform,
+        "data/summary_log_transform": log_kind,
+        "data/summary_standardized": int(apply_standardize),
+        "data/summary_clip_value": (
+            float(effective_clip_val) if effective_clip_val is not None else -1.0
+        ),
         "data/summary_mean_min": float(mean.min()),
         "data/summary_mean_max": float(mean.max()),
         "data/summary_std_min": float(std.min()),
@@ -1249,13 +1546,49 @@ def main():
     # 4b. PCA dimensionality reduction
     # ------------------------------------------------------------------
     pca_model = None
-    if args.pca_components > 0:
+    pca_applied = False
+    pca_source = "none"
+    saved_has_pca = (
+        loaded_stats is not None and
+        {"pca_components", "pca_mean", "pca_explained_variance"}.issubset(loaded_stats.keys())
+    )
+    if args.no_train and saved_has_pca:
+        print("######## PCA REDUCTION (LOADED) ########")
+        saved_n_components = int(loaded_stats["pca_components"].shape[0])
+        if args.pca_components != saved_n_components:
+            print(
+                f"  Overriding requested --pca-components={args.pca_components} "
+                f"with saved PCA components={saved_n_components} for flow compatibility."
+            )
+        dataset_train["x"], dataset_val["x"], obs_l1_std = apply_saved_pca(
+            dataset_train["x"],
+            dataset_val["x"],
+            obs_l1_std,
+            pca_components=loaded_stats["pca_components"],
+            pca_mean=loaded_stats["pca_mean"],
+            pca_explained_variance=loaded_stats["pca_explained_variance"],
+        )
+        pca_applied = True
+        pca_source = str(preprocessing_stats_path.resolve())
+        print(f"  Train x shape after loaded PCA = {dataset_train['x'].shape}")
+    elif args.no_train and args.pca_components > 0:
+        raise ValueError(
+            f"--no-train with --pca-components={args.pca_components} requires saved PCA stats in "
+            f"{preprocessing_stats_path}, but no PCA entries were found."
+        )
+    elif args.pca_components > 0:
         print("######## PCA REDUCTION ########")
         dataset_train["x"], dataset_val["x"], obs_l1_std, pca_model = fit_pca(
             dataset_train["x"], dataset_val["x"], obs_l1_std,
             n_components=args.pca_components,
         )
+        pca_applied = True
+        pca_source = "fitted_current_run"
         print(f"  Train x shape after PCA = {dataset_train['x'].shape}")
+
+    summary_dim = int(dataset_train["x"].shape[1])
+    print(f"  Final summary_dim used by flow = {summary_dim}")
+    validate_flow_inputs(dataset_train, dataset_val, obs_l1_std, args.n_cosmo)
 
     # ------------------------------------------------------------------
     # 5. Build & train flow
@@ -1266,8 +1599,6 @@ def main():
         hidden=args.nvp_hidden,
     )
 
-    save_path = Path(args.save_dir) / "l1norm" / args.map_kind
-    flow_summary_path = save_path / "flow_training_summary.json"
     flow_params = None
     flow_params_source = "unknown"
 
@@ -1313,14 +1644,28 @@ def main():
         )
         flow_params_source = "trained_best_val_in_memory"
 
-    # Save preprocessing artifacts alongside flow params
-    save_path.mkdir(parents=True, exist_ok=True)
-    save_dict = {"mean": mean, "std": std}
-    if pca_model is not None:
-        save_dict["pca_components"] = pca_model.components_
-        save_dict["pca_mean"] = pca_model.mean_
-        save_dict["pca_explained_variance"] = pca_model.explained_variance_
-    np.savez(save_path / "l1_standardization.npz", **save_dict)
+    preprocessing_stats_source = (
+        str(preprocessing_stats_path.resolve())
+        if args.no_train else "runtime_unpersisted"
+    )
+    if not args.no_train:
+        # Save preprocessing artifacts alongside flow params for exact reuse in --no-train mode.
+        save_path.mkdir(parents=True, exist_ok=True)
+        save_dict = {
+            "mean": mean,
+            "std": std,
+            "summary_transform": np.array(effective_transform),
+            "clip_value": np.array(
+                np.nan if effective_clip_val is None else float(effective_clip_val),
+                dtype=np.float64,
+            ),
+        }
+        if pca_model is not None:
+            save_dict["pca_components"] = pca_model.components_
+            save_dict["pca_mean"] = pca_model.mean_
+            save_dict["pca_explained_variance"] = pca_model.explained_variance_
+        np.savez(preprocessing_stats_path, **save_dict)
+        preprocessing_stats_source = str(preprocessing_stats_path.resolve())
 
     # ------------------------------------------------------------------
     # 6. Posterior sampling
@@ -1337,6 +1682,14 @@ def main():
             "method": "l1norm",
             "posterior_file": str(out.resolve()),
             "flow_params_source": flow_params_source,
+            "preprocessing_stats_source": preprocessing_stats_source,
+            "l1_implementation": args.l1_implementation,
+            "summary_transform": effective_transform,
+            "summary_clip_value": (
+                None if effective_clip_val is None else float(effective_clip_val)
+            ),
+            "pca_applied": bool(pca_applied),
+            "pca_source": pca_source,
             "total_steps": int(args.total_steps),
             "save_every": int(args.save_every),
             "patience": int(args.patience),
