@@ -149,6 +149,23 @@ def parse_tomo_bin_indices(spec: str) -> tuple[int, ...]:
     return tuple(deduped)
 
 
+def parse_positive_int_list(spec: str, arg_name: str) -> tuple[int, ...]:
+    values = []
+    for token in spec.split(","):
+        token = token.strip()
+        if not token:
+            continue
+        value = int(token)
+        if value < 1:
+            raise ValueError(
+                f"Invalid value '{value}' in {arg_name}. Values must be >= 1."
+            )
+        values.append(value)
+    if not values:
+        raise ValueError(f"{arg_name} must contain at least one integer.")
+    return tuple(values)
+
+
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(
         description="CNN-compressed summaries + jaxili NPE for tomographic weak lensing"
@@ -187,6 +204,30 @@ def parse_args() -> argparse.Namespace:
 
     # Compressor configuration
     p.add_argument("--compressor-dim", type=int, default=6, help="CNN compressor output dim")
+    p.add_argument(
+        "--compressor-conv-channels",
+        type=str,
+        default="32,64,128",
+        help="Comma-separated Conv2D channel widths for compressor trunk",
+    )
+    p.add_argument(
+        "--compressor-dense-width",
+        type=int,
+        default=64,
+        help="Hidden width of the compressor dense head",
+    )
+    p.add_argument(
+        "--compressor-pool-window",
+        type=int,
+        default=16,
+        help="AvgPool window size in compressor head",
+    )
+    p.add_argument(
+        "--compressor-pool-stride",
+        type=int,
+        default=8,
+        help="AvgPool stride in compressor head",
+    )
     p.add_argument(
         "--compressor-params",
         type=str,
@@ -235,6 +276,18 @@ def parse_args() -> argparse.Namespace:
         type=str,
         default="NbodyCosmogridDatasetTomo/grid",
         help="TFDS dataset name/config for training and validation maps",
+    )
+    p.add_argument(
+        "--npe-train-split",
+        type=str,
+        default="train",
+        help="TFDS split used to build NPE training summaries.",
+    )
+    p.add_argument(
+        "--npe-val-split",
+        type=str,
+        default="test",
+        help="TFDS split used to build NPE validation summaries.",
     )
     p.add_argument(
         "--tomo-bin-indices",
@@ -312,6 +365,14 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--no-train", action="store_true")
     p.add_argument("--no-sample", action="store_true")
     p.add_argument("--plot", action="store_true")
+    p.add_argument(
+        "--shuffle-theta-train",
+        action="store_true",
+        help=(
+            "Control test: shuffle training theta labels before NPE training "
+            "(should strongly degrade posterior quality)."
+        ),
+    )
     p.add_argument("--wandb-project", type=str, default="cnn-jaxili-npe-tomo")
     p.add_argument("--wandb-entity", type=str, default=None)
     p.add_argument("--wandb-run-name", type=str, default=None)
@@ -350,6 +411,16 @@ def parse_args() -> argparse.Namespace:
         raise ValueError("--npe-warmup-steps must be > 0.")
     if args.npe_decay_steps <= 0:
         raise ValueError("--npe-decay-steps must be > 0.")
+    if not str(args.npe_train_split).strip():
+        raise ValueError("--npe-train-split must be non-empty.")
+    if not str(args.npe_val_split).strip():
+        raise ValueError("--npe-val-split must be non-empty.")
+    if args.compressor_dense_width < 1:
+        raise ValueError("--compressor-dense-width must be >= 1.")
+    if args.compressor_pool_window < 1:
+        raise ValueError("--compressor-pool-window must be >= 1.")
+    if args.compressor_pool_stride < 1:
+        raise ValueError("--compressor-pool-stride must be >= 1.")
     return args
 
 
@@ -433,7 +504,13 @@ def load_observed_map(
     return m_data, cosmo_params, truth
 
 
-def build_compressor(dim: int):
+def build_compressor(
+    dim: int,
+    conv_channels: tuple[int, ...] = (32, 64, 128),
+    dense_width: int = 64,
+    pool_window: int = 16,
+    pool_stride: int = 8,
+):
     hk = _import_haiku()
 
     class CompressorCNN2D(hk.Module):
@@ -444,15 +521,15 @@ def build_compressor(dim: int):
             self.output_dim = output_dim
 
         def __call__(self, x):
-            net_x = hk.Conv2D(32, 3, 2)(x)
+            net_x = hk.Conv2D(conv_channels[0], 3, 2)(x)
             net_x = jax.nn.leaky_relu(net_x)
-            net_x = hk.Conv2D(64, 3, 2)(net_x)
+            net_x = hk.Conv2D(conv_channels[1], 3, 2)(net_x)
             net_x = jax.nn.leaky_relu(net_x)
-            net_x = hk.Conv2D(128, 3, 2)(net_x)
+            net_x = hk.Conv2D(conv_channels[2], 3, 2)(net_x)
             net_x = jax.nn.leaky_relu(net_x)
-            net_x = hk.AvgPool(16, 8, "SAME")(net_x)
+            net_x = hk.AvgPool(pool_window, pool_stride, "SAME")(net_x)
             net_x = hk.Flatten()(net_x)
-            net_x = hk.Linear(64)(net_x)
+            net_x = hk.Linear(dense_width)(net_x)
             net_x = jax.nn.leaky_relu(net_x)
             net_x = hk.Linear(self.output_dim)(net_x)
             return net_x.squeeze()
@@ -488,7 +565,13 @@ def build_cnn_cache_metadata(
     state_path = Path(compressor_state_path).resolve()
     return {
         "compressor_dim": int(args.compressor_dim),
+        "compressor_conv_channels": str(args.compressor_conv_channels),
+        "compressor_dense_width": int(args.compressor_dense_width),
+        "compressor_pool_window": int(args.compressor_pool_window),
+        "compressor_pool_stride": int(args.compressor_pool_stride),
         "tfds_name": str(args.tfds_name),
+        "npe_train_split": str(args.npe_train_split),
+        "npe_val_split": str(args.npe_val_split),
         "tomo_bin_indices": ",".join(str(b) for b in tomo_bin_indices),
         "map_kind": str(args.map_kind),
         "field_size": int(args.field_size),
@@ -873,6 +956,16 @@ def main() -> None:
     args = parse_args()
 
     tomo_bin_indices = parse_tomo_bin_indices(args.tomo_bin_indices)
+    compressor_conv_channels = parse_positive_int_list(
+        args.compressor_conv_channels,
+        "--compressor-conv-channels",
+    )
+    if len(compressor_conv_channels) != 3:
+        raise ValueError(
+            "--compressor-conv-channels must contain exactly 3 integers "
+            "(one per conv block)."
+        )
+    args.compressor_conv_channels = ",".join(str(v) for v in compressor_conv_channels)
     if args.nbins != len(tomo_bin_indices):
         print(
             f"  Overriding nbins from {args.nbins} to {len(tomo_bin_indices)} "
@@ -938,7 +1031,19 @@ def main() -> None:
 
     # Compressor
     print("######## CNN COMPRESSOR ########")
-    compressor = build_compressor(args.compressor_dim)
+    print(
+        "  Compressor architecture: "
+        f"conv={compressor_conv_channels}, "
+        f"dense={args.compressor_dense_width}, "
+        f"pool=({args.compressor_pool_window},{args.compressor_pool_stride})"
+    )
+    compressor = build_compressor(
+        args.compressor_dim,
+        conv_channels=compressor_conv_channels,
+        dense_width=args.compressor_dense_width,
+        pool_window=args.compressor_pool_window,
+        pool_stride=args.compressor_pool_stride,
+    )
     comp_params, comp_state = load_compressor_params(
         args.compressor_params, args.compressor_state
     )
@@ -999,9 +1104,13 @@ def main() -> None:
                 )
 
     if not cache_ok:
+        print(
+            "  Building compressed datasets from splits: "
+            f"train='{args.npe_train_split}' val='{args.npe_val_split}'"
+        )
         dataset_train = compress_dataset(
             args.tfds_name,
-            "train",
+            args.npe_train_split,
             augmentation,
             compressor,
             comp_params,
@@ -1010,7 +1119,7 @@ def main() -> None:
         )
         dataset_val = compress_dataset(
             args.tfds_name,
-            "test",
+            args.npe_val_split,
             augmentation,
             compressor,
             comp_params,
@@ -1125,6 +1234,15 @@ def main() -> None:
     obs_compressed = obs_compressed[valid_mask]
     print(f"  Final summary_dim used by jaxili NPE = {dataset_train['x'].shape[1]}")
 
+    if args.shuffle_theta_train:
+        shuffle_rng = np.random.default_rng(int(args.seed) + 9173)
+        perm = shuffle_rng.permutation(dataset_train["theta"].shape[0])
+        dataset_train["theta"] = dataset_train["theta"][perm]
+        print(
+            "  Applied training-theta shuffle control "
+            f"(n={dataset_train['theta'].shape[0]})."
+        )
+
     validate_npe_inputs(dataset_train, dataset_val, obs_compressed, args.n_cosmo)
     if wandb_enabled:
         wandb.log(
@@ -1135,6 +1253,7 @@ def main() -> None:
                 "data/summary_standardized": int(standardization_applied),
                 "data/apply_bnt": int(args.apply_bnt),
                 "data/min_feature_variance": float(args.min_feature_variance),
+                "control/shuffle_theta_train": int(args.shuffle_theta_train),
             }
         )
 
@@ -1188,6 +1307,9 @@ def main() -> None:
             "npe_warmup_steps": int(args.npe_warmup_steps),
             "npe_decay_steps": int(args.npe_decay_steps),
             "npe_split_seed": split_seed,
+            "npe_train_split": str(args.npe_train_split),
+            "npe_val_split": str(args.npe_val_split),
+            "shuffle_theta_train": bool(args.shuffle_theta_train),
             "checkpoint_path": str(checkpoint_path),
         }
         if metrics is not None:
@@ -1271,14 +1393,21 @@ def main() -> None:
         "compressor_state_path": str(comp_state_path),
         "compressor_params_sha256": file_sha256(comp_params_path),
         "compressor_state_sha256": file_sha256(comp_state_path),
+        "compressor_conv_channels": str(args.compressor_conv_channels),
+        "compressor_dense_width": int(args.compressor_dense_width),
+        "compressor_pool_window": int(args.compressor_pool_window),
+        "compressor_pool_stride": int(args.compressor_pool_stride),
         "npe_samples_requested": int(args.npe_samples),
         "npe_samples_finite": int(samples_np.shape[0]),
         "npe_epochs": int(args.epochs),
         "npe_batch_size": int(args.batch_size),
         "npe_learning_rate": float(args.learning_rate),
+        "npe_train_split": str(args.npe_train_split),
+        "npe_val_split": str(args.npe_val_split),
         "npe_warmup_steps": int(args.npe_warmup_steps),
         "npe_decay_steps": int(args.npe_decay_steps),
         "npe_split_seed": split_seed,
+        "shuffle_theta_train": bool(args.shuffle_theta_train),
         "min_feature_variance": float(args.min_feature_variance),
         "truth_parameters": [float(v) for v in np.asarray(truth).ravel()],
         "tomo_bin_indices": list(tomo_bin_indices),
