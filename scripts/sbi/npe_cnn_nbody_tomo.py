@@ -153,6 +153,18 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--compressor-dim", type=int, default=6,
                     help="CNN compressor output dimension")
     p.add_argument(
+        "--compressor-arch",
+        type=str,
+        default="plain",
+        choices=["plain", "resnet_small", "resnet50"],
+        help=(
+            "Compressor architecture family: "
+            "'plain' (existing 3-conv CNN), "
+            "'resnet_small' (handcrafted residual CNN), "
+            "'resnet50' (canonical Haiku ResNet50)."
+        ),
+    )
+    p.add_argument(
         "--compressor-conv-channels",
         type=str,
         default="32,64,128",
@@ -175,6 +187,29 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=8,
         help="AvgPool stride in compressor head",
+    )
+    p.add_argument(
+        "--resnet-small-channels",
+        type=str,
+        default="64,128,256",
+        help="Comma-separated stage channels for --compressor-arch=resnet_small",
+    )
+    p.add_argument(
+        "--resnet-small-blocks",
+        type=str,
+        default="2,2,2",
+        help="Comma-separated residual blocks per stage for resnet_small",
+    )
+    p.add_argument(
+        "--resnet-head-width",
+        type=int,
+        default=256,
+        help="Dense head width used by ResNet compressors before output projection",
+    )
+    p.add_argument(
+        "--resnet-v2",
+        action="store_true",
+        help="Use ResNet-v2 variant for --compressor-arch=resnet50",
     )
     p.add_argument("--compressor-params", type=str,
                     default="/home/tersenov/software/cnn_sbi/tomo/save_params/"
@@ -232,6 +267,15 @@ def parse_args() -> argparse.Namespace:
         type=str,
         default="test",
         help="TFDS split used to build NDE validation summaries",
+    )
+    p.add_argument(
+        "--require-disjoint-train-examples",
+        action="store_true",
+        help=(
+            "Require zero overlap of exact training examples between "
+            "--compressor-train-split and --nde-train-split "
+            "(example identity = (cosmology, patch))."
+        ),
     )
     p.add_argument(
         "--tomo-bin-indices",
@@ -449,23 +493,160 @@ class CompressorCNN2D(hk.Module):
         return net_x.squeeze()
 
 
-def build_compressor(
+class ResidualBlock2D(hk.Module):
+    """Simple residual block used by handcrafted resnet_small compressor."""
+
+    def __init__(self, channels: int, stride: int = 1, name: str | None = None):
+        super().__init__(name=name)
+        self.channels = channels
+        self.stride = stride
+
+    def __call__(self, x):
+        shortcut = x
+        y = hk.Conv2D(self.channels, 3, stride=self.stride, padding="SAME")(x)
+        y = jax.nn.leaky_relu(y)
+        y = hk.Conv2D(self.channels, 3, stride=1, padding="SAME")(y)
+
+        if self.stride != 1 or x.shape[-1] != self.channels:
+            shortcut = hk.Conv2D(
+                self.channels, 1, stride=self.stride, padding="SAME"
+            )(shortcut)
+        return jax.nn.leaky_relu(y + shortcut)
+
+
+class CompressorResNetSmall(hk.Module):
+    """Handcrafted residual CNN compressor for (B, H, W, nbins) maps."""
+
+    def __init__(
+        self,
+        output_dim: int,
+        stage_channels: tuple[int, ...],
+        blocks_per_stage: tuple[int, ...],
+        head_width: int,
+        name: str | None = None,
+    ):
+        super().__init__(name=name)
+        self.output_dim = output_dim
+        self.stage_channels = stage_channels
+        self.blocks_per_stage = blocks_per_stage
+        self.head_width = head_width
+
+    def __call__(self, x):
+        y = hk.Conv2D(self.stage_channels[0], 7, stride=2, padding="SAME")(x)
+        y = jax.nn.leaky_relu(y)
+        y = hk.max_pool(y, window_shape=3, strides=2, padding="SAME")
+
+        for stage_idx, (channels, n_blocks) in enumerate(
+            zip(self.stage_channels, self.blocks_per_stage)
+        ):
+            for block_idx in range(n_blocks):
+                stride = 2 if (stage_idx > 0 and block_idx == 0) else 1
+                y = ResidualBlock2D(channels=channels, stride=stride)(
+                    y
+                )
+
+        y = jnp.mean(y, axis=(1, 2))
+        y = hk.Linear(self.head_width)(y)
+        y = jax.nn.leaky_relu(y)
+        y = hk.Linear(self.output_dim)(y)
+        return y.squeeze()
+
+
+class CompressorResNet50(hk.Module):
+    """Heavy canonical ResNet50 compressor based on Haiku's reference model."""
+
+    def __init__(
+        self,
+        output_dim: int,
+        head_width: int,
+        resnet_v2: bool,
+        name: str | None = None,
+    ):
+        super().__init__(name=name)
+        self.output_dim = output_dim
+        self.head_width = head_width
+        self.resnet_v2 = resnet_v2
+
+    def __call__(self, x, is_training: bool):
+        backbone = hk.nets.ResNet50(
+            num_classes=self.head_width,
+            resnet_v2=self.resnet_v2,
+            initial_conv_config={
+                "output_channels": 64,
+                "kernel_shape": 7,
+                "stride": 2,
+                "padding": "SAME",
+            },
+            name="resnet50_backbone",
+        )
+        y = backbone(x, is_training=is_training)
+        y = jax.nn.leaky_relu(y)
+        y = hk.Linear(self.output_dim)(y)
+        return y.squeeze()
+
+
+def build_compressors(
     dim: int,
+    arch: str,
     conv_channels: tuple[int, ...],
     dense_width: int,
     pool_window: int,
     pool_stride: int,
+    resnet_small_channels: tuple[int, ...],
+    resnet_small_blocks: tuple[int, ...],
+    resnet_head_width: int,
+    resnet_v2: bool,
 ):
-    """Build the Haiku compressor transform."""
-    return hk.transform_with_state(
-        lambda y: CompressorCNN2D(
-            dim,
-            conv_channels=conv_channels,
-            dense_width=dense_width,
-            pool_window=pool_window,
-            pool_stride=pool_stride,
-        )(y)
-    )
+    """Build train/eval Haiku compressor transforms for selected architecture."""
+    if arch == "plain":
+        def _forward(y):
+            return CompressorCNN2D(
+                dim,
+                conv_channels=conv_channels,
+                dense_width=dense_width,
+                pool_window=pool_window,
+                pool_stride=pool_stride,
+                name="compressor_plain",
+            )(y)
+        compressor_train = hk.transform_with_state(_forward)
+        compressor_eval = hk.transform_with_state(_forward)
+        return compressor_train, compressor_eval
+
+    if arch == "resnet_small":
+        def _forward(y):
+            return CompressorResNetSmall(
+                dim,
+                stage_channels=resnet_small_channels,
+                blocks_per_stage=resnet_small_blocks,
+                head_width=resnet_head_width,
+                name="compressor_resnet_small",
+            )(y)
+        compressor_train = hk.transform_with_state(_forward)
+        compressor_eval = hk.transform_with_state(_forward)
+        return compressor_train, compressor_eval
+
+    if arch == "resnet50":
+        def _forward_train(y):
+            return CompressorResNet50(
+                dim,
+                head_width=resnet_head_width,
+                resnet_v2=resnet_v2,
+                name="compressor_resnet50",
+            )(y, is_training=True)
+
+        def _forward_eval(y):
+            return CompressorResNet50(
+                dim,
+                head_width=resnet_head_width,
+                resnet_v2=resnet_v2,
+                name="compressor_resnet50",
+            )(y, is_training=False)
+
+        compressor_train = hk.transform_with_state(_forward_train)
+        compressor_eval = hk.transform_with_state(_forward_eval)
+        return compressor_train, compressor_eval
+
+    raise ValueError(f"Unknown --compressor-arch '{arch}'")
 
 
 def load_compressor_params(
@@ -503,16 +684,22 @@ def build_cnn_cache_metadata(
 
     meta: Dict[str, object] = {
         "compressor_source": compressor_source,
+        "compressor_arch": str(args.compressor_arch),
         "compressor_dim": int(args.compressor_dim),
         "compressor_conv_channels": str(args.compressor_conv_channels),
         "compressor_dense_width": int(args.compressor_dense_width),
         "compressor_pool_window": int(args.compressor_pool_window),
         "compressor_pool_stride": int(args.compressor_pool_stride),
+        "resnet_small_channels": str(args.resnet_small_channels),
+        "resnet_small_blocks": str(args.resnet_small_blocks),
+        "resnet_head_width": int(args.resnet_head_width),
+        "resnet_v2": int(bool(args.resnet_v2)),
         "tfds_name": str(args.tfds_name),
         "compressor_train_split": str(args.compressor_train_split),
         "compressor_val_split": str(args.compressor_val_split),
         "nde_train_split": str(args.nde_train_split),
         "nde_val_split": str(args.nde_val_split),
+        "require_disjoint_train_examples": int(bool(args.require_disjoint_train_examples)),
         "tomo_bin_indices": ",".join(str(b) for b in tomo_bin_indices),
         "map_kind": str(args.map_kind),
         "field_size": int(args.field_size),
@@ -565,6 +752,57 @@ def compare_cache_metadata(
                 )
 
     return len(mismatches) == 0, mismatches
+
+
+def _normalize_tfds_id(raw_id: object) -> str:
+    if isinstance(raw_id, bytes):
+        return raw_id.decode("utf-8")
+    return str(raw_id)
+
+
+def _collect_split_identity(
+    tfds_name: str,
+    split: str,
+    theta_decimals: int = 8,
+) -> Tuple[set[str], set[tuple[float, ...]]]:
+    import tensorflow_datasets as tfds
+
+    ds = tfds.load(
+        tfds_name,
+        split=split,
+        read_config=tfds.ReadConfig(add_tfds_id=True),
+    )
+    id_set: set[str] = set()
+    theta_set: set[tuple[float, ...]] = set()
+    for ex in tfds.as_numpy(ds):
+        id_set.add(_normalize_tfds_id(ex["tfds_id"]))
+        theta = np.asarray(ex["theta"], dtype=np.float64).copy()
+        # Match pipeline convention where H0 is expressed as h0.
+        theta[3] = theta[3] / 100.0
+        theta_set.add(tuple(np.round(theta, theta_decimals).tolist()))
+    return id_set, theta_set
+
+
+def audit_train_split_overlap(
+    tfds_name: str,
+    compressor_train_split: str,
+    nde_train_split: str,
+) -> Dict[str, object]:
+    """Audit overlap of exact examples between compressor and NDE train splits."""
+    ids_comp, theta_comp = _collect_split_identity(tfds_name, compressor_train_split)
+    ids_nde, theta_nde = _collect_split_identity(tfds_name, nde_train_split)
+    shared_ids = ids_comp.intersection(ids_nde)
+    shared_theta = theta_comp.intersection(theta_nde)
+    return {
+        "compressor_train_split": str(compressor_train_split),
+        "nde_train_split": str(nde_train_split),
+        "compressor_train_examples": int(len(ids_comp)),
+        "nde_train_examples": int(len(ids_nde)),
+        "shared_example_count": int(len(shared_ids)),
+        "compressor_theta_count": int(len(theta_comp)),
+        "nde_theta_count": int(len(theta_nde)),
+        "shared_theta_count": int(len(shared_theta)),
+    }
 
 
 def log_compressor_checkpoint_provenance(
@@ -705,6 +943,8 @@ def train_compressor_vmim(
     loss_train_hist = []
     loss_test_hist = []
 
+    last_step = 0
+    last_saved_step = 0
     for step in tqdm(range(1, total_steps + 1), desc="Compressor"):
         ex = next(ds_train_iter)
         if jnp.isnan(ex["maps"]).any():
@@ -722,6 +962,7 @@ def train_compressor_vmim(
         if jnp.isnan(b_loss):
             print("  [!] NaN loss — stopping compressor training")
             break
+        last_step = step
 
         # Log to wandb every 100 steps
         if step % 100 == 0:
@@ -738,6 +979,7 @@ def train_compressor_vmim(
             ckpt_state = save_dir / f"opt_state_resnet_batch{step}.pkl"
             with open(ckpt_state, "wb") as f:
                 pickle.dump(state_cnn, f)
+            last_saved_step = step
 
             # Test loss
             ex_test = next(ds_test_iter)
@@ -773,6 +1015,15 @@ def train_compressor_vmim(
                     m_data_obs, field_npix, nbins, n_cosmo, compressor_dim,
                     truth, param_names, save_dir, step,
                 )
+
+    if last_step > 0 and last_saved_step != last_step:
+        ckpt_params = save_dir / f"params_nd_compressor_batch{last_step}.pkl"
+        with open(ckpt_params, "wb") as f:
+            pickle.dump(params_merged, f)
+        ckpt_state = save_dir / f"opt_state_resnet_batch{last_step}.pkl"
+        with open(ckpt_state, "wb") as f:
+            pickle.dump(state_cnn, f)
+        print(f"  Saved final checkpoint @ step {last_step}.")
 
     print(f"  Compressor training done ({len(store_loss)} steps).")
     wandb.run.summary["compressor/total_steps"] = len(store_loss)
@@ -1375,13 +1626,28 @@ def main():
     compressor_conv_channels = parse_positive_int_list(
         args.compressor_conv_channels, "--compressor-conv-channels",
     )
+    resnet_small_channels = parse_positive_int_list(
+        args.resnet_small_channels, "--resnet-small-channels",
+    )
+    resnet_small_blocks = parse_positive_int_list(
+        args.resnet_small_blocks, "--resnet-small-blocks",
+    )
     args.compressor_conv_channels = ",".join(str(v) for v in compressor_conv_channels)
+    args.resnet_small_channels = ",".join(str(v) for v in resnet_small_channels)
+    args.resnet_small_blocks = ",".join(str(v) for v in resnet_small_blocks)
     if args.compressor_dense_width < 1:
         raise ValueError("--compressor-dense-width must be >= 1.")
     if args.compressor_pool_window < 1:
         raise ValueError("--compressor-pool-window must be >= 1.")
     if args.compressor_pool_stride < 1:
         raise ValueError("--compressor-pool-stride must be >= 1.")
+    if args.resnet_head_width < 1:
+        raise ValueError("--resnet-head-width must be >= 1.")
+    if len(resnet_small_channels) != len(resnet_small_blocks):
+        raise ValueError(
+            "--resnet-small-channels and --resnet-small-blocks must have "
+            "the same number of entries."
+        )
     if args.nbins != len(tomo_bin_indices):
         print(
             f"  Overriding nbins from {args.nbins} to {len(tomo_bin_indices)} "
@@ -1435,23 +1701,71 @@ def main():
     # 2. CNN compressor
     # ------------------------------------------------------------------
     print("######## CNN COMPRESSOR ########")
-    print(
-        "  Compressor architecture: "
-        f"conv={compressor_conv_channels}, "
-        f"dense={args.compressor_dense_width}, "
-        f"pool=({args.compressor_pool_window},{args.compressor_pool_stride})"
-    )
+    if args.compressor_arch == "plain":
+        arch_desc = (
+            f"plain conv={compressor_conv_channels} "
+            f"dense={args.compressor_dense_width} "
+            f"pool=({args.compressor_pool_window},{args.compressor_pool_stride})"
+        )
+    elif args.compressor_arch == "resnet_small":
+        arch_desc = (
+            "resnet_small "
+            f"channels={resnet_small_channels} "
+            f"blocks={resnet_small_blocks} "
+            f"head={args.resnet_head_width}"
+        )
+    else:
+        arch_desc = (
+            "resnet50 "
+            f"head={args.resnet_head_width} "
+            f"resnet_v2={bool(args.resnet_v2)}"
+        )
+    print(f"  Compressor architecture: {arch_desc}")
     print(
         "  Split config: "
         f"compressor[{args.compressor_train_split}/{args.compressor_val_split}] "
         f"NDE[{args.nde_train_split}/{args.nde_val_split}]"
     )
-    compressor = build_compressor(
+
+    split_overlap_info = None
+    if args.require_disjoint_train_examples:
+        print(
+            "  Auditing train-split overlap (example identity = "
+            "(cosmology, patch)) ..."
+        )
+        split_overlap_info = audit_train_split_overlap(
+            args.tfds_name,
+            args.compressor_train_split,
+            args.nde_train_split,
+        )
+        print(
+            "  Train overlap audit | "
+            f"comp_examples={split_overlap_info['compressor_train_examples']} "
+            f"nde_examples={split_overlap_info['nde_train_examples']} "
+            f"shared_examples={split_overlap_info['shared_example_count']} "
+            f"shared_theta={split_overlap_info['shared_theta_count']}"
+        )
+        if int(split_overlap_info["shared_example_count"]) > 0:
+            raise ValueError(
+                "Detected shared training examples between compressor and NDE "
+                f"splits: {split_overlap_info['shared_example_count']}."
+            )
+        wandb.config.update(
+            {"data/train_split_overlap": split_overlap_info},
+            allow_val_change=True,
+        )
+
+    compressor_train, compressor_eval = build_compressors(
         args.compressor_dim,
+        arch=args.compressor_arch,
         conv_channels=compressor_conv_channels,
         dense_width=args.compressor_dense_width,
         pool_window=args.compressor_pool_window,
         pool_stride=args.compressor_pool_stride,
+        resnet_small_channels=resnet_small_channels,
+        resnet_small_blocks=resnet_small_blocks,
+        resnet_head_width=args.resnet_head_width,
+        resnet_v2=bool(args.resnet_v2),
     )
     compressor_source = "train_compressor" if args.train_compressor else "pretrained"
     compressor_params_ref: Optional[str] = None
@@ -1471,7 +1785,7 @@ def main():
             / f"bin_{args.nbins}"
         )
         comp_params, comp_state = train_compressor_vmim(
-            compressor=compressor,
+            compressor=compressor_train,
             augmentation_fn=augmentation,
             n_cosmo=args.n_cosmo,
             compressor_dim=args.compressor_dim,
@@ -1510,7 +1824,7 @@ def main():
 
     # 2a. Compress observed map
     print("######## COMPRESS: OBSERVED MAP ########")
-    obs_compressed, _ = compressor.apply(
+    obs_compressed, _ = compressor_eval.apply(
         comp_params, comp_state, None,
         m_data.reshape([1, args.field_npix, args.field_npix, args.nbins]),
     )
@@ -1566,12 +1880,12 @@ def main():
     if not cache_ok:
         dataset_train = compress_dataset(
             args.tfds_name, args.nde_train_split,
-            augmentation, compressor, comp_params, comp_state,
+            augmentation, compressor_eval, comp_params, comp_state,
             args.ds_batch_size,
         )
         dataset_val = compress_dataset(
             args.tfds_name, args.nde_val_split,
-            augmentation, compressor, comp_params, comp_state,
+            augmentation, compressor_eval, comp_params, comp_state,
             args.ds_batch_size,
         )
         # Save cache
@@ -1674,6 +1988,8 @@ def main():
         "data/train_size": len(dataset_train["theta"]),
         "data/val_size": len(dataset_val["theta"]),
         "data/summary_dim": summary_dim,
+        "data/compressor_arch": args.compressor_arch,
+        "data/require_disjoint_train_examples": int(args.require_disjoint_train_examples),
         "data/train_x_min": float(dataset_train["x"].min()),
         "data/train_x_max": float(dataset_train["x"].max()),
         "data/train_x_mean": float(dataset_train["x"].mean()),
@@ -1681,6 +1997,16 @@ def main():
         "data/summary_standardized": int(standardization_applied),
         "data/summary_clip_value": (
             float(summary_clip_value) if summary_clip_value is not None else 0.0
+        ),
+        "data/shared_train_examples": (
+            int(split_overlap_info["shared_example_count"])
+            if split_overlap_info is not None
+            else -1
+        ),
+        "data/shared_train_theta": (
+            int(split_overlap_info["shared_theta_count"])
+            if split_overlap_info is not None
+            else -1
         ),
     })
 
@@ -1780,6 +2106,15 @@ def main():
             "method": "cnn",
             "posterior_file": str(out.resolve()),
             "flow_params_source": flow_params_source,
+            "compressor_arch": str(args.compressor_arch),
+            "compressor_conv_channels": str(args.compressor_conv_channels),
+            "compressor_dense_width": int(args.compressor_dense_width),
+            "compressor_pool_window": int(args.compressor_pool_window),
+            "compressor_pool_stride": int(args.compressor_pool_stride),
+            "resnet_small_channels": str(args.resnet_small_channels),
+            "resnet_small_blocks": str(args.resnet_small_blocks),
+            "resnet_head_width": int(args.resnet_head_width),
+            "resnet_v2": bool(args.resnet_v2),
             "total_steps": int(args.total_steps),
             "save_every": int(args.save_every),
             "patience": int(args.patience),
@@ -1794,6 +2129,8 @@ def main():
             "compressor_val_split": str(args.compressor_val_split),
             "nde_train_split": str(args.nde_train_split),
             "nde_val_split": str(args.nde_val_split),
+            "require_disjoint_train_examples": bool(args.require_disjoint_train_examples),
+            "train_split_overlap": split_overlap_info,
             "apply_bnt": bool(args.apply_bnt),
             "bnt_matrix_version": BNT_MATRIX_VERSION if args.apply_bnt else "none",
         }

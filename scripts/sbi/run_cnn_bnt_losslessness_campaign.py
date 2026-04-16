@@ -4,7 +4,9 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
 import queue
+import re
 import subprocess
 import threading
 import time
@@ -23,7 +25,7 @@ DEFAULT_OUTPUT_ROOT = (
     / "results"
     / "final"
     / "paper_sbi_consolidation"
-    / "cnn_bnt_losslessness_campaign"
+    / "cnn_bnt_resnet_split_campaign"
 )
 DEFAULT_BASELINE_ROOT = (
     Path(DEFAULT_REPO_ROOT)
@@ -49,11 +51,16 @@ class Job:
 class CampaignConfig:
     name: str
     seeds: Tuple[int, ...]
+    compressor_arch: str
     compressor_steps: int
     compressor_conv_channels: str
     compressor_dense_width: int
     compressor_pool_window: int
     compressor_pool_stride: int
+    resnet_small_channels: str
+    resnet_small_blocks: str
+    resnet_head_width: int
+    resnet_v2: bool
     standardize_summary: bool
     summary_clip_value: float
     flow_steps: int
@@ -71,13 +78,19 @@ def parse_args() -> argparse.Namespace:
         )
     )
     p.add_argument("--repo-root", type=str, default=DEFAULT_REPO_ROOT)
+    p.add_argument("--conda-env", type=str, default="jaxili")
     p.add_argument("--gpus", type=str, default="0,1,2,3")
+    p.add_argument("--xla-mem-fraction", type=float, default=0.5)
     p.add_argument("--map-kind", type=str, default="nbody")
-    p.add_argument("--tfds-name", type=str, default="NbodyCosmogridDatasetTomo/grid_20deg_160px")
+    p.add_argument(
+        "--tfds-name",
+        type=str,
+        default="NbodyCosmogridDatasetTomo/grid_20deg_160px_nonoverlap48",
+    )
     p.add_argument(
         "--compressor-train-split",
         type=str,
-        default="train",
+        default="train[:70%]",
         help="TFDS split used to train compressor checkpoints.",
     )
     p.add_argument(
@@ -89,7 +102,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--nde-train-split",
         type=str,
-        default="train",
+        default="train[70%:]",
         help="TFDS split used to build NDE training summaries.",
     )
     p.add_argument(
@@ -115,9 +128,25 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--dpi", type=int, default=150)
     p.add_argument("--dry-run", action="store_true")
     p.add_argument(
+        "--require-disjoint-train-examples",
+        dest="require_disjoint_train_examples",
+        action="store_true",
+        help=(
+            "Require disjoint exact training examples between compressor and NDE "
+            "splits (no shared (cosmology, patch) combinations)."
+        ),
+    )
+    p.add_argument(
+        "--allow-overlap-train-examples",
+        dest="require_disjoint_train_examples",
+        action="store_false",
+        help="Disable strict disjoint-example check in the CNN pipeline.",
+    )
+    p.set_defaults(require_disjoint_train_examples=True)
+    p.add_argument(
         "--run-names",
         type=str,
-        default="stagej_repro,advanced_arch96_nostd,advanced_arch64_dense256_nostd",
+        default="control_plain_split,resnet_small_split,resnet50_split",
         help="Comma-separated subset of configs to run.",
     )
     return p.parse_args()
@@ -129,75 +158,78 @@ def _csv_tokens(value: str) -> List[str]:
 
 def _default_configs() -> Dict[str, CampaignConfig]:
     return {
-        "stagej_repro": CampaignConfig(
-            name="stagej_repro",
+        "control_plain_split": CampaignConfig(
+            name="control_plain_split",
             seeds=(41, 42, 43, 44, 45),
-            compressor_steps=60000,
+            compressor_arch="plain",
+            compressor_steps=30000,
             compressor_conv_channels="64,128,256",
-            compressor_dense_width=128,
+            compressor_dense_width=256,
             compressor_pool_window=16,
             compressor_pool_stride=8,
+            resnet_small_channels="64,128,256",
+            resnet_small_blocks="2,2,2",
+            resnet_head_width=256,
+            resnet_v2=False,
             standardize_summary=False,
             summary_clip_value=5.0,
-            flow_steps=5000,
-            nvp_layers=4,
-            nvp_hidden=128,
-            batch_size=256,
-            patience=30,
-        ),
-        "advanced_arch96_nostd": CampaignConfig(
-            name="advanced_arch96_nostd",
-            seeds=(41, 42, 43),
-            compressor_steps=70000,
-            compressor_conv_channels="96,192,384",
-            compressor_dense_width=192,
-            compressor_pool_window=16,
-            compressor_pool_stride=8,
-            standardize_summary=False,
-            summary_clip_value=5.0,
-            flow_steps=7000,
-            nvp_layers=6,
-            nvp_hidden=192,
+            flow_steps=6000,
+            nvp_layers=8,
+            nvp_hidden=256,
             batch_size=256,
             patience=35,
         ),
-        "advanced_arch64_dense256_nostd": CampaignConfig(
-            name="advanced_arch64_dense256_nostd",
+        "resnet_small_split": CampaignConfig(
+            name="resnet_small_split",
             seeds=(41, 42, 43, 44, 45),
-            compressor_steps=80000,
+            compressor_arch="resnet_small",
+            compressor_steps=30000,
             compressor_conv_channels="64,128,256",
             compressor_dense_width=256,
             compressor_pool_window=16,
             compressor_pool_stride=8,
+            resnet_small_channels="64,128,256",
+            resnet_small_blocks="2,2,2",
+            resnet_head_width=256,
+            resnet_v2=False,
             standardize_summary=False,
             summary_clip_value=5.0,
-            flow_steps=8000,
+            flow_steps=6000,
             nvp_layers=8,
             nvp_hidden=256,
             batch_size=256,
-            patience=40,
+            patience=35,
         ),
-        "advanced_arch64_dense256_nostd_long": CampaignConfig(
-            name="advanced_arch64_dense256_nostd_long",
-            seeds=(41, 42, 43, 44, 45),
-            compressor_steps=120000,
+        "resnet50_split": CampaignConfig(
+            name="resnet50_split",
+            seeds=(41, 42, 43),
+            compressor_arch="resnet50",
+            compressor_steps=5000,
             compressor_conv_channels="64,128,256",
             compressor_dense_width=256,
             compressor_pool_window=16,
             compressor_pool_stride=8,
+            resnet_small_channels="64,128,256",
+            resnet_small_blocks="2,2,2",
+            resnet_head_width=256,
+            resnet_v2=False,
             standardize_summary=False,
             summary_clip_value=5.0,
-            flow_steps=10000,
+            flow_steps=6000,
             nvp_layers=8,
             nvp_hidden=256,
             batch_size=256,
-            patience=50,
+            patience=35,
         ),
     }
 
 
 def run_jobs_parallel(
-    jobs: List[Job], gpus: List[str], cwd: Path, dry_run: bool = False
+    jobs: List[Job],
+    gpus: List[str],
+    cwd: Path,
+    xla_mem_fraction: float,
+    dry_run: bool = False,
 ) -> List[Dict[str, object]]:
     q: queue.Queue[Job] = queue.Queue()
     for job in jobs:
@@ -220,10 +252,13 @@ def run_jobs_parallel(
                 rc = 0
                 job.log_path.write_text(f"[dry-run] {' '.join(cmd)}\n", encoding="utf-8")
             else:
+                env = dict(os.environ)
+                env["XLA_PYTHON_CLIENT_MEM_FRACTION"] = str(xla_mem_fraction)
                 with open(job.log_path, "w", encoding="utf-8") as logf:
                     proc = subprocess.run(
                         cmd,
                         cwd=str(cwd),
+                        env=env,
                         stdout=logf,
                         stderr=subprocess.STDOUT,
                     )
@@ -252,6 +287,7 @@ def run_jobs_parallel(
 
 def ensure_tfds_prepared(
     tfds_name: str,
+    conda_env: str,
     repo_root: Path,
     log_path: Path,
     dry_run: bool = False,
@@ -269,7 +305,7 @@ def ensure_tfds_prepared(
         "run",
         "--no-capture-output",
         "-n",
-        "jaxili",
+        conda_env,
         "python",
         "-c",
         (
@@ -319,6 +355,56 @@ def _compressor_paths(config_root: Path, condition: str, compressor_steps: int) 
     return {
         "params": base / f"params_nd_compressor_batch{compressor_steps}.pkl",
         "state": base / f"opt_state_resnet_batch{compressor_steps}.pkl",
+    }
+
+
+def _resolve_compressor_paths(
+    config_root: Path,
+    condition: str,
+    compressor_steps: int,
+) -> Dict[str, object]:
+    requested = _compressor_paths(config_root, condition, compressor_steps)
+    params = requested["params"]
+    state = requested["state"]
+    if params.exists() and state.exists():
+        return {
+            "params": params,
+            "state": state,
+            "resolved_step": int(compressor_steps),
+            "requested_step": int(compressor_steps),
+            "used_fallback": False,
+        }
+
+    base = params.parent
+    pattern = re.compile(r"params_nd_compressor_batch(\d+)\.pkl$")
+    candidates: List[Tuple[int, Path, Path]] = []
+    for p in base.glob("params_nd_compressor_batch*.pkl"):
+        m = pattern.match(p.name)
+        if m is None:
+            continue
+        step = int(m.group(1))
+        s = base / f"opt_state_resnet_batch{step}.pkl"
+        if not s.exists():
+            continue
+        candidates.append((step, p, s))
+
+    if not candidates:
+        return {
+            "params": params,
+            "state": state,
+            "resolved_step": int(compressor_steps),
+            "requested_step": int(compressor_steps),
+            "used_fallback": False,
+        }
+
+    within = [row for row in candidates if row[0] <= compressor_steps]
+    chosen = max(within if within else candidates, key=lambda row: row[0])
+    return {
+        "params": chosen[1],
+        "state": chosen[2],
+        "resolved_step": int(chosen[0]),
+        "requested_step": int(compressor_steps),
+        "used_fallback": int(chosen[0]) != int(compressor_steps),
     }
 
 
@@ -476,6 +562,8 @@ def main() -> None:
     gpus = _csv_tokens(args.gpus)
     if not gpus:
         raise ValueError("--gpus cannot be empty.")
+    if args.xla_mem_fraction <= 0.0 or args.xla_mem_fraction > 1.0:
+        raise ValueError("--xla-mem-fraction must be in (0, 1].")
 
     configs_by_name = _default_configs()
     requested = _csv_tokens(args.run_names)
@@ -492,12 +580,15 @@ def main() -> None:
         "repo_root": str(repo_root),
         "output_root": str(out_root),
         "baseline_root": str(baseline_root),
+        "conda_env": args.conda_env,
         "gpus": gpus,
+        "xla_mem_fraction": float(args.xla_mem_fraction),
         "tfds_name": args.tfds_name,
         "compressor_train_split": args.compressor_train_split,
         "compressor_val_split": args.compressor_val_split,
         "nde_train_split": args.nde_train_split,
         "nde_val_split": args.nde_val_split,
+        "require_disjoint_train_examples": bool(args.require_disjoint_train_examples),
         "field_size": int(args.field_size),
         "field_npix": int(args.field_npix),
         "nbins": int(args.nbins),
@@ -508,11 +599,16 @@ def main() -> None:
             {
                 "name": c.name,
                 "seeds": list(c.seeds),
+                "compressor_arch": c.compressor_arch,
                 "compressor_steps": c.compressor_steps,
                 "compressor_conv_channels": c.compressor_conv_channels,
                 "compressor_dense_width": c.compressor_dense_width,
                 "compressor_pool_window": c.compressor_pool_window,
                 "compressor_pool_stride": c.compressor_pool_stride,
+                "resnet_small_channels": c.resnet_small_channels,
+                "resnet_small_blocks": c.resnet_small_blocks,
+                "resnet_head_width": c.resnet_head_width,
+                "resnet_v2": bool(c.resnet_v2),
                 "standardize_summary": c.standardize_summary,
                 "summary_clip_value": c.summary_clip_value,
                 "flow_steps": c.flow_steps,
@@ -529,6 +625,7 @@ def main() -> None:
     )
     ensure_tfds_prepared(
         args.tfds_name,
+        args.conda_env,
         repo_root=repo_root,
         log_path=out_root / "logs" / "tfds_prepare.log",
         dry_run=args.dry_run,
@@ -583,7 +680,7 @@ def main() -> None:
                         "run",
                         "--no-capture-output",
                         "-n",
-                        "jaxili",
+                        args.conda_env,
                         "python",
                         cnn_script,
                         "--no-wandb",
@@ -614,6 +711,8 @@ def main() -> None:
                         "--train-compressor",
                         "--compressor-dim",
                         str(args.compressor_dim),
+                        "--compressor-arch",
+                        config.compressor_arch,
                         "--compressor-conv-channels",
                         config.compressor_conv_channels,
                         "--compressor-dense-width",
@@ -622,6 +721,12 @@ def main() -> None:
                         str(config.compressor_pool_window),
                         "--compressor-pool-stride",
                         str(config.compressor_pool_stride),
+                        "--resnet-small-channels",
+                        config.resnet_small_channels,
+                        "--resnet-small-blocks",
+                        config.resnet_small_blocks,
+                        "--resnet-head-width",
+                        str(config.resnet_head_width),
                         "--compressor-steps",
                         str(config.compressor_steps),
                         "--compressor-save-every",
@@ -636,21 +741,47 @@ def main() -> None:
                         "1",
                         "--no-sample",
                     ]
+                    + (["--resnet-v2"] if config.resnet_v2 else [])
+                    + (
+                        ["--require-disjoint-train-examples"]
+                        if args.require_disjoint_train_examples
+                        else []
+                    )
                     + cond_flag,
                 )
             )
 
         if train_jobs:
-            train_results = run_jobs_parallel(train_jobs, gpus, repo_root, args.dry_run)
+            train_results = run_jobs_parallel(
+                train_jobs,
+                gpus,
+                repo_root,
+                xla_mem_fraction=args.xla_mem_fraction,
+                dry_run=args.dry_run,
+            )
             all_job_results.extend(train_results)
             require_success(train_results, f"Compressor training ({config.name})")
 
         eval_jobs: List[Job] = []
+        resolved_compressor_steps: Dict[str, int] = {}
         for cond in ("nobnt", "bnt"):
-            comp_paths = _compressor_paths(cfg_root, cond, config.compressor_steps)
-            if not comp_paths["params"].exists() or not comp_paths["state"].exists():
+            comp_paths = _resolve_compressor_paths(cfg_root, cond, config.compressor_steps)
+            resolved_compressor_steps[cond] = int(comp_paths["resolved_step"])
+            if (
+                not args.dry_run
+                and (
+                    not Path(comp_paths["params"]).exists()
+                    or not Path(comp_paths["state"]).exists()
+                )
+            ):
                 raise FileNotFoundError(
                     f"Missing compressor checkpoint for {config.name}/{cond}: {comp_paths}"
+                )
+            if bool(comp_paths["used_fallback"]):
+                print(
+                    f"[{config.name}/{cond}] requested compressor step "
+                    f"{comp_paths['requested_step']} not found; using step "
+                    f"{comp_paths['resolved_step']} checkpoint."
                 )
             for seed in config.seeds:
                 posterior_out = _posterior_path(cfg_root, config.name, cond, seed)
@@ -667,7 +798,7 @@ def main() -> None:
                     "run",
                     "--no-capture-output",
                     "-n",
-                    "jaxili",
+                    args.conda_env,
                     "python",
                     cnn_script,
                     "--no-wandb",
@@ -699,6 +830,8 @@ def main() -> None:
                     str(cfg_root / "eval" / cond / f"seed_{seed}"),
                     "--compressor-dim",
                     str(args.compressor_dim),
+                    "--compressor-arch",
+                    config.compressor_arch,
                     "--compressor-conv-channels",
                     config.compressor_conv_channels,
                     "--compressor-dense-width",
@@ -707,6 +840,12 @@ def main() -> None:
                     str(config.compressor_pool_window),
                     "--compressor-pool-stride",
                     str(config.compressor_pool_stride),
+                    "--resnet-small-channels",
+                    config.resnet_small_channels,
+                    "--resnet-small-blocks",
+                    config.resnet_small_blocks,
+                    "--resnet-head-width",
+                    str(config.resnet_head_width),
                     "--compressor-params",
                     str(comp_paths["params"]),
                     "--compressor-state",
@@ -731,7 +870,13 @@ def main() -> None:
                     str(posterior_out),
                     "--ds-batch-size",
                     str(args.ds_batch_size),
-                ] + std_flag + cond_flag
+                ] + std_flag + (
+                    ["--resnet-v2"] if config.resnet_v2 else []
+                ) + (
+                    ["--require-disjoint-train-examples"]
+                    if args.require_disjoint_train_examples
+                    else []
+                ) + cond_flag
                 if args.plot:
                     cmd.extend(
                         [
@@ -753,9 +898,18 @@ def main() -> None:
                 )
 
         if eval_jobs:
-            eval_results = run_jobs_parallel(eval_jobs, gpus, repo_root, args.dry_run)
+            eval_results = run_jobs_parallel(
+                eval_jobs,
+                gpus,
+                repo_root,
+                xla_mem_fraction=args.xla_mem_fraction,
+                dry_run=args.dry_run,
+            )
             all_job_results.extend(eval_results)
             require_success(eval_results, f"Posterior evaluation ({config.name})")
+
+        if args.dry_run:
+            continue
 
         paths = {
             "nobnt": [
@@ -774,11 +928,17 @@ def main() -> None:
         metric_block["name"] = config.name
         metric_block["seeds"] = list(config.seeds)
         metric_block["config"] = {
+            "compressor_arch": config.compressor_arch,
             "compressor_steps": config.compressor_steps,
+            "resolved_compressor_steps": resolved_compressor_steps,
             "compressor_conv_channels": config.compressor_conv_channels,
             "compressor_dense_width": config.compressor_dense_width,
             "compressor_pool_window": config.compressor_pool_window,
             "compressor_pool_stride": config.compressor_pool_stride,
+            "resnet_small_channels": config.resnet_small_channels,
+            "resnet_small_blocks": config.resnet_small_blocks,
+            "resnet_head_width": config.resnet_head_width,
+            "resnet_v2": bool(config.resnet_v2),
             "standardize_summary": config.standardize_summary,
             "summary_clip_value": config.summary_clip_value,
             "flow_steps": config.flow_steps,
