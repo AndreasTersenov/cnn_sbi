@@ -156,12 +156,12 @@ def parse_args() -> argparse.Namespace:
         "--compressor-arch",
         type=str,
         default="plain",
-        choices=["plain", "resnet_small", "resnet50"],
+        choices=["plain", "resnet_small", "resnet18", "resnet34", "resnet50"],
         help=(
             "Compressor architecture family: "
             "'plain' (existing 3-conv CNN), "
             "'resnet_small' (handcrafted residual CNN), "
-            "'resnet50' (canonical Haiku ResNet50)."
+            "'resnet18'/'resnet34'/'resnet50' (canonical Haiku ResNets)."
         ),
     )
     p.add_argument(
@@ -209,7 +209,10 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--resnet-v2",
         action="store_true",
-        help="Use ResNet-v2 variant for --compressor-arch=resnet50",
+        help=(
+            "Use ResNet-v2 variant for canonical ResNets "
+            "(--compressor-arch=resnet18/resnet34/resnet50)"
+        ),
     )
     p.add_argument("--compressor-params", type=str,
                     default="/home/tersenov/software/cnn_sbi/tomo/save_params/"
@@ -552,23 +555,34 @@ class CompressorResNetSmall(hk.Module):
         return y.squeeze()
 
 
-class CompressorResNet50(hk.Module):
-    """Heavy canonical ResNet50 compressor based on Haiku's reference model."""
+class CompressorCanonicalResNet(hk.Module):
+    """Canonical Haiku ResNet compressor for selected depth."""
 
     def __init__(
         self,
         output_dim: int,
+        arch: str,
         head_width: int,
         resnet_v2: bool,
         name: str | None = None,
     ):
         super().__init__(name=name)
         self.output_dim = output_dim
+        self.arch = arch
         self.head_width = head_width
         self.resnet_v2 = resnet_v2
 
     def __call__(self, x, is_training: bool):
-        backbone = hk.nets.ResNet50(
+        if self.arch == "resnet18":
+            backbone_cls = hk.nets.ResNet18
+        elif self.arch == "resnet34":
+            backbone_cls = hk.nets.ResNet34
+        elif self.arch == "resnet50":
+            backbone_cls = hk.nets.ResNet50
+        else:
+            raise ValueError(f"Unsupported canonical ResNet arch '{self.arch}'")
+
+        backbone = backbone_cls(
             num_classes=self.head_width,
             resnet_v2=self.resnet_v2,
             initial_conv_config={
@@ -577,7 +591,7 @@ class CompressorResNet50(hk.Module):
                 "stride": 2,
                 "padding": "SAME",
             },
-            name="resnet50_backbone",
+            name=f"{self.arch}_backbone",
         )
         y = backbone(x, is_training=is_training)
         y = jax.nn.leaky_relu(y)
@@ -625,21 +639,23 @@ def build_compressors(
         compressor_eval = hk.transform_with_state(_forward)
         return compressor_train, compressor_eval
 
-    if arch == "resnet50":
+    if arch in ("resnet18", "resnet34", "resnet50"):
         def _forward_train(y):
-            return CompressorResNet50(
+            return CompressorCanonicalResNet(
                 dim,
+                arch=arch,
                 head_width=resnet_head_width,
                 resnet_v2=resnet_v2,
-                name="compressor_resnet50",
+                name=f"compressor_{arch}",
             )(y, is_training=True)
 
         def _forward_eval(y):
-            return CompressorResNet50(
+            return CompressorCanonicalResNet(
                 dim,
+                arch=arch,
                 head_width=resnet_head_width,
                 resnet_v2=resnet_v2,
-                name="compressor_resnet50",
+                name=f"compressor_{arch}",
             )(y, is_training=False)
 
         compressor_train = hk.transform_with_state(_forward_train)
@@ -1714,12 +1730,14 @@ def main():
             f"blocks={resnet_small_blocks} "
             f"head={args.resnet_head_width}"
         )
-    else:
+    elif args.compressor_arch in ("resnet18", "resnet34", "resnet50"):
         arch_desc = (
-            "resnet50 "
+            f"{args.compressor_arch} "
             f"head={args.resnet_head_width} "
             f"resnet_v2={bool(args.resnet_v2)}"
         )
+    else:
+        raise ValueError(f"Unsupported --compressor-arch '{args.compressor_arch}'")
     print(f"  Compressor architecture: {arch_desc}")
     print(
         "  Split config: "
