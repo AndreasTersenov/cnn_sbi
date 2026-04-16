@@ -1,0 +1,101 @@
+{
+  "output_root": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_resnet_split_campaign/resnet_extended_tuning_v2/backbones",
+  "generated_at_utc": "2026-04-16T15:17:41.507343+00:00",
+  "rank_score_formula": "abs(inflation_std_sum_bnt_over_nobnt-1)+abs(fom3_ratio_bnt_over_nobnt-1)",
+  "best_per_arch": {
+    "resnet18": "resnet18_long15k_std10k_l10h320",
+    "resnet34": "resnet34_long15k_std10k_l10h320"
+  },
+  "arch_variants": {
+    "resnet18": [
+      {
+        "rank_within_arch": 1,
+        "variant": "resnet18_long15k_std10k_l10h320",
+        "inflation_std_sum_bnt_over_nobnt": 1.034815893593816,
+        "fom3_ratio_bnt_over_nobnt": 1.0048823406562362,
+        "nobnt_fom3_mean": 231794.37095165878,
+        "bnt_fom3_mean": 232926.07003284278,
+        "rank_score": 0.039698234250052256,
+        "metrics_file": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_resnet_split_campaign/resnet_extended_tuning_v2/backbones/resnet18/resnet18_long15k_std10k_l10h320/metrics.json"
+      },
+      {
+        "rank_within_arch": 2,
+        "variant": "resnet18_long15k_nostd6k_l8h256",
+        "inflation_std_sum_bnt_over_nobnt": 1.0559385410469861,
+        "fom3_ratio_bnt_over_nobnt": 0.7807088607434439,
+        "nobnt_fom3_mean": 359617.4051327754,
+        "bnt_fom3_mean": 280756.49466472265,
+        "rank_score": 0.2752296803035422,
+        "metrics_file": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_resnet_split_campaign/resnet_extended_tuning_v2/backbones/resnet18/resnet18_long15k_nostd6k_l8h256/metrics.json"
+      }
+    ],
+    "resnet34": [
+      {
+        "rank_within_arch": 1,
+        "variant": "resnet34_long15k_std10k_l10h320",
+        "inflation_std_sum_bnt_over_nobnt": 0.831785687810776,
+        "fom3_ratio_bnt_over_nobnt": 1.6840260557240776,
+        "nobnt_fom3_mean": 164492.64284792024,
+        "bnt_fom3_mean": 277009.89653081255,
+        "rank_score": 0.8522403679133016,
+        "metrics_file": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_resnet_split_campaign/resnet_extended_tuning_v2/backbones/resnet34/resnet34_long15k_std10k_l10h320/metrics.json"
+      },
+      {
+        "rank_within_arch": 2,
+        "variant": "resnet34_long15k_nostd6k_l8h256",
+        "inflation_std_sum_bnt_over_nobnt": 0.7715508379379132,
+        "fom3_ratio_bnt_over_nobnt": 1.9285972476167759,
+        "nobnt_fom3_mean": 146916.92201970113,
+        "bnt_fom3_mean": 283343.5714355241,
+        "rank_score": 1.1570464096788626,
+        "metrics_file": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_resnet_split_campaign/resnet_extended_tuning_v2/backbones/resnet34/resnet34_long15k_nostd6k_l8h256/metrics.json"
+      }
+    ]
+  },
+  "global_ranking": [
+    {
+      "rank_global": 1,
+      "arch": "resnet18",
+      "variant": "resnet18_long15k_std10k_l10h320",
+      "inflation_std_sum_bnt_over_nobnt": 1.034815893593816,
+      "fom3_ratio_bnt_over_nobnt": 1.0048823406562362,
+      "nobnt_fom3_mean": 231794.37095165878,
+      "bnt_fom3_mean": 232926.07003284278,
+      "rank_score": 0.039698234250052256,
+      "metrics_file": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_resnet_split_campaign/resnet_extended_tuning_v2/backbones/resnet18/resnet18_long15k_std10k_l10h320/metrics.json"
+    },
+    {
+      "rank_global": 2,
+      "arch": "resnet18",
+      "variant": "resnet18_long15k_nostd6k_l8h256",
+      "inflation_std_sum_bnt_over_nobnt": 1.0559385410469861,
+      "fom3_ratio_bnt_over_nobnt": 0.7807088607434439,
+      "nobnt_fom3_mean": 359617.4051327754,
+      "bnt_fom3_mean": 280756.49466472265,
+      "rank_score": 0.2752296803035422,
+      "metrics_file": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_resnet_split_campaign/resnet_extended_tuning_v2/backbones/resnet18/resnet18_long15k_nostd6k_l8h256/metrics.json"
+    },
+    {
+      "rank_global": 3,
+      "arch": "resnet34",
+      "variant": "resnet34_long15k_std10k_l10h320",
+      "inflation_std_sum_bnt_over_nobnt": 0.831785687810776,
+      "fom3_ratio_bnt_over_nobnt": 1.6840260557240776,
+      "nobnt_fom3_mean": 164492.64284792024,
+      "bnt_fom3_mean": 277009.89653081255,
+      "rank_score": 0.8522403679133016,
+      "metrics_file": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_resnet_split_campaign/resnet_extended_tuning_v2/backbones/resnet34/resnet34_long15k_std10k_l10h320/metrics.json"
+    },
+    {
+      "rank_global": 4,
+      "arch": "resnet34",
+      "variant": "resnet34_long15k_nostd6k_l8h256",
+      "inflation_std_sum_bnt_over_nobnt": 0.7715508379379132,
+      "fom3_ratio_bnt_over_nobnt": 1.9285972476167759,
+      "nobnt_fom3_mean": 146916.92201970113,
+      "bnt_fom3_mean": 283343.5714355241,
+      "rank_score": 1.1570464096788626,
+      "metrics_file": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_resnet_split_campaign/resnet_extended_tuning_v2/backbones/resnet34/resnet34_long15k_nostd6k_l8h256/metrics.json"
+    }
+  ]
+}

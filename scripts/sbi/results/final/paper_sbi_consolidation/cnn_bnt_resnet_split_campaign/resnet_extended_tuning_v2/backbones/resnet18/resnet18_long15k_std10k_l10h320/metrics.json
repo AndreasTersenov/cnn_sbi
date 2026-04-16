@@ -1,0 +1,85 @@
+{
+  "variant": "resnet18_long15k_std10k_l10h320",
+  "seeds": [
+    41,
+    42,
+    43
+  ],
+  "inflation_std_sum_bnt_over_nobnt": 1.034815893593816,
+  "fom3_ratio_bnt_over_nobnt": 1.0048823406562362,
+  "nobnt_fom3_mean": 231794.37095165878,
+  "bnt_fom3_mean": 232926.07003284278,
+  "rank_score": 0.039698234250052256,
+  "nobnt": {
+    "n": 3.0,
+    "std_sum_mean": 0.18984843293825784,
+    "std_sum_std": 0.0021818864771022623,
+    "fom3_mean": 231794.37095165878,
+    "fom3_std": 31999.144484283413,
+    "valid_fom3_count": 3.0
+  },
+  "bnt": {
+    "n": 3.0,
+    "std_sum_mean": 0.19645817577838898,
+    "std_sum_std": 0.004842685103977821,
+    "fom3_mean": 232926.07003284278,
+    "fom3_std": 46381.17227839216,
+    "valid_fom3_count": 3.0
+  },
+  "per_seed": {
+    "nobnt": [
+      {
+        "seed": 41.0,
+        "std_sum": 0.19096940755844116,
+        "fom3": 229243.0063058735
+      },
+      {
+        "seed": 42.0,
+        "std_sum": 0.18733392655849457,
+        "fom3": 201147.28472983988
+      },
+      {
+        "seed": 43.0,
+        "std_sum": 0.19124196469783783,
+        "fom3": 264992.8218192629
+      }
+    ],
+    "bnt": [
+      {
+        "seed": 41.0,
+        "std_sum": 0.20197725296020508,
+        "fom3": 234247.12869181522
+      },
+      {
+        "seed": 42.0,
+        "std_sum": 0.19291989505290985,
+        "fom3": 278632.600615891
+      },
+      {
+        "seed": 43.0,
+        "std_sum": 0.194477379322052,
+        "fom3": 185898.4807908221
+      }
+    ]
+  },
+  "rank_score_formula": "abs(inflation_std_sum_bnt_over_nobnt-1)+abs(fom3_ratio_bnt_over_nobnt-1)",
+  "arch": "resnet18",
+  "config": {
+    "compressor_arch": "resnet18",
+    "compressor_steps": 15000,
+    "compressor_lr": 0.0005,
+    "compressor_batch_size": 128,
+    "compressor_save_every": 3000,
+    "resnet_head_width": 256,
+    "batch_size": 256,
+    "patience": 35,
+    "save_every": 500,
+    "summary_clip_value": 5.0,
+    "npe_samples": 100000,
+    "ds_batch_size": 500,
+    "total_steps": 10000,
+    "nvp_layers": 10,
+    "nvp_hidden": 320,
+    "standardize_summary": true
+  }
+}

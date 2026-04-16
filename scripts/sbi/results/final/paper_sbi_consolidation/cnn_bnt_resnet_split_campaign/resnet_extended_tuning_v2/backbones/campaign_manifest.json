@@ -1,0 +1,82 @@
+{
+  "repo_root": "/mnt/home/tersenov/software/cnn_sbi",
+  "output_root": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_resnet_split_campaign/resnet_extended_tuning_v2/backbones",
+  "snapshot_script": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_resnet_split_campaign/resnet_extended_tuning_v2/backbones/tools/npe_cnn_nbody_tomo_snapshot.py",
+  "conda_env": "jaxili",
+  "gpus": [
+    "2",
+    "3"
+  ],
+  "xla_python_client_mem_fraction": 0.5,
+  "tfds_name": "NbodyCosmogridDatasetTomo/grid_20deg_160px_nonoverlap48",
+  "compressor_train_split": "train[:70%]",
+  "compressor_val_split": "test",
+  "nde_train_split": "train[70%:]",
+  "nde_val_split": "test",
+  "require_disjoint_train_examples": true,
+  "map_kind": "nbody",
+  "field_size": 20,
+  "field_npix": 160,
+  "nbins": 4,
+  "tomo_bin_indices": "1,2,3,4",
+  "compressor_dim": 6,
+  "resnet_head_width": 256,
+  "batch_size": 256,
+  "patience": 35,
+  "save_every": 500,
+  "summary_clip_value": 5.0,
+  "npe_samples": 100000,
+  "ds_batch_size": 500,
+  "compressor_steps": 15000,
+  "compressor_lr": 0.0005,
+  "compressor_batch_size": 128,
+  "compressor_save_every": 3000,
+  "seeds": [
+    41,
+    42,
+    43
+  ],
+  "conditions": [
+    "nobnt",
+    "bnt"
+  ],
+  "arches": [
+    "resnet18",
+    "resnet34"
+  ],
+  "variants": {
+    "resnet18": [
+      {
+        "name": "resnet18_long15k_nostd6k_l8h256",
+        "total_steps": 6000,
+        "nvp_layers": 8,
+        "nvp_hidden": 256,
+        "standardize": false
+      },
+      {
+        "name": "resnet18_long15k_std10k_l10h320",
+        "total_steps": 10000,
+        "nvp_layers": 10,
+        "nvp_hidden": 320,
+        "standardize": true
+      }
+    ],
+    "resnet34": [
+      {
+        "name": "resnet34_long15k_nostd6k_l8h256",
+        "total_steps": 6000,
+        "nvp_layers": 8,
+        "nvp_hidden": 256,
+        "standardize": false
+      },
+      {
+        "name": "resnet34_long15k_std10k_l10h320",
+        "total_steps": 10000,
+        "nvp_layers": 10,
+        "nvp_hidden": 320,
+        "standardize": true
+      }
+    ]
+  },
+  "generated_at_utc": "2026-04-16T13:48:02.987755+00:00"
+}

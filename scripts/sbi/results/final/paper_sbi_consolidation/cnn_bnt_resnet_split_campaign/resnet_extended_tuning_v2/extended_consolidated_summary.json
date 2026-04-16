@@ -1,0 +1,833 @@
+{
+  "analysis_id": "resnet-extended-analysis-v2",
+  "generated_at_utc": "2026-04-16T15:27:09.801733+00:00",
+  "target_branch_context": "l1-jax-resnet",
+  "inputs": {
+    "campaign_summary": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_resnet_split_campaign/campaign_summary.json",
+    "control_plain_split_metrics": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_resnet_split_campaign/control_plain_split/metrics.json",
+    "resnet50_split_metrics": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_resnet_split_campaign/resnet50_split/metrics.json",
+    "inflation_tuning_consolidated": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_resnet_split_campaign/resnet50_inflation_tuning/consolidated_summary.json",
+    "inflation_tuning_long_summary": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_resnet_split_campaign/resnet50_inflation_tuning/long_compressor/long_compressor_summary.json",
+    "inflation_tuning_nde_summary": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_resnet_split_campaign/resnet50_inflation_tuning/nde_variants/nde_variants_summary.json",
+    "resnet50_v2_summary": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_resnet_split_campaign/resnet_extended_tuning_v2/resnet50/resnet50_extended_summary.json",
+    "backbone_v2_summary": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_resnet_split_campaign/resnet_extended_tuning_v2/backbones/backbone_summary.json",
+    "advanced_plain_long_metrics": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_losslessness_campaign_indep_split_advanced_cdim10_long120k_v1/advanced_arch64_dense256_nostd_long/metrics.json"
+  },
+  "input_highlights": {
+    "prior_split_campaign_best_config": "control_plain_split",
+    "prior_split_campaign_ranked_configs": [
+      {
+        "name": "control_plain_split",
+        "rank_score": 0.4493205268307582,
+        "inflation_std_sum_bnt_over_nobnt": 1.0592058795031327,
+        "fom3_ratio_bnt_over_nobnt": 0.6098853526723745,
+        "nobnt_fom3_mean": 396125.3604983136,
+        "bnt_fom3_mean": 241591.0551899855,
+        "seeds": [
+          41,
+          42,
+          43,
+          44,
+          45
+        ]
+      },
+      {
+        "name": "resnet50_split",
+        "rank_score": 0.49118559603472256,
+        "inflation_std_sum_bnt_over_nobnt": 1.0702855555296191,
+        "fom3_ratio_bnt_over_nobnt": 0.5790999594948966,
+        "nobnt_fom3_mean": 165789.9379196576,
+        "bnt_fom3_mean": 96008.94633393512,
+        "seeds": [
+          41,
+          42,
+          43
+        ]
+      },
+      {
+        "name": "resnet_small_split",
+        "rank_score": 0.7104017838634511,
+        "inflation_std_sum_bnt_over_nobnt": 1.1222062743302539,
+        "fom3_ratio_bnt_over_nobnt": 0.4118044904668028,
+        "nobnt_fom3_mean": 393203.0293814241,
+        "bnt_fom3_mean": 161922.77316442062,
+        "seeds": [
+          41,
+          42,
+          43,
+          44,
+          45
+        ]
+      }
+    ],
+    "prior_tuning_best_variants": {
+      "nde_best_by_tradeoff_rank": "std10k_l10h320",
+      "nde_best_by_nobnt_retention": "std6k_l8h256",
+      "long_compressor_best_by_tradeoff_rank": "long15k_nostd6k_l8h256",
+      "long_compressor_best_by_nobnt_retention": "long15k_std6k_l8h256"
+    },
+    "prior_tuning_long_summary_best_variant": "long15k_nostd6k_l8h256",
+    "prior_tuning_nde_summary_best_variant": "std10k_l10h320",
+    "new_resnet50_v2_best_by_rank": "r50_long30k_std10k_l10h320",
+    "new_resnet50_v2_best_by_nobnt_retention": "r50_long30k_nostd6k_l8h256",
+    "new_backbone_best_per_arch": {
+      "resnet18": "resnet18_long15k_std10k_l10h320",
+      "resnet34": "resnet34_long15k_std10k_l10h320"
+    }
+  },
+  "rank_score_formula": "abs(inflation_std_sum_bnt_over_nobnt-1)+abs(fom3_ratio_bnt_over_nobnt-1)",
+  "comparison_table": [
+    {
+      "config_name": "control_plain_split",
+      "category": "prior_split_reference",
+      "selection_reason": "Required baseline plain split control from prior split campaign",
+      "metrics_file": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_resnet_split_campaign/control_plain_split/metrics.json",
+      "seeds": [
+        41,
+        42,
+        43,
+        44,
+        45
+      ],
+      "seed_count": 5,
+      "inflation_std_sum_bnt_over_nobnt": 1.0592058795031327,
+      "fom3_ratio_bnt_over_nobnt": 0.6098853526723745,
+      "nobnt_fom3_mean": 396125.3604983136,
+      "bnt_fom3_mean": 241591.0551899855,
+      "rank_score": 0.4493205268307582,
+      "retention_vs_control_plain": 1.0,
+      "retention_vs_advanced_plain_long": 0.7638504166871745,
+      "seed_matched_41_42_43": {
+        "matched_seeds": [
+          41,
+          42,
+          43
+        ],
+        "matched_seed_count": 3,
+        "inflation_std_sum_bnt_over_nobnt": 1.0579989858280388,
+        "fom3_ratio_bnt_over_nobnt": 0.6196066673183283,
+        "nobnt_fom3_mean": 396073.4303889777,
+        "bnt_fom3_mean": 245409.73821665233,
+        "rank_score": 0.4383923185097105,
+        "retention_vs_control_plain": 1.0,
+        "retention_vs_advanced_plain_long": 0.7600884232610411
+      }
+    },
+    {
+      "config_name": "advanced_arch64_dense256_nostd_long",
+      "category": "plain_cnn_reference",
+      "selection_reason": "Required strong plain-CNN long reference",
+      "metrics_file": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_losslessness_campaign_indep_split_advanced_cdim10_long120k_v1/advanced_arch64_dense256_nostd_long/metrics.json",
+      "seeds": [
+        41,
+        42,
+        43,
+        44,
+        45
+      ],
+      "seed_count": 5,
+      "inflation_std_sum_bnt_over_nobnt": 1.0368683812474226,
+      "fom3_ratio_bnt_over_nobnt": 0.8461610459388335,
+      "nobnt_fom3_mean": 518590.2263643614,
+      "bnt_fom3_mean": 438810.84835412446,
+      "rank_score": 0.1907073353085892,
+      "retention_vs_control_plain": 1.3091568429549443,
+      "retention_vs_advanced_plain_long": 1.0,
+      "seed_matched_41_42_43": {
+        "matched_seeds": [
+          41,
+          42,
+          43
+        ],
+        "matched_seed_count": 3,
+        "inflation_std_sum_bnt_over_nobnt": 1.0405000389296384,
+        "fom3_ratio_bnt_over_nobnt": 0.8129347631538947,
+        "nobnt_fom3_mean": 521088.62372838974,
+        "bnt_fom3_mean": 423611.0569128275,
+        "rank_score": 0.2275652757757437,
+        "retention_vs_control_plain": 1.3156364041300033,
+        "retention_vs_advanced_plain_long": 1.0
+      }
+    },
+    {
+      "config_name": "resnet50_split",
+      "category": "prior_split_reference",
+      "selection_reason": "Required baseline ResNet50 split from prior split campaign",
+      "metrics_file": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_resnet_split_campaign/resnet50_split/metrics.json",
+      "seeds": [
+        41,
+        42,
+        43
+      ],
+      "seed_count": 3,
+      "inflation_std_sum_bnt_over_nobnt": 1.0702855555296191,
+      "fom3_ratio_bnt_over_nobnt": 0.5790999594948966,
+      "nobnt_fom3_mean": 165789.9379196576,
+      "bnt_fom3_mean": 96008.94633393512,
+      "rank_score": 0.49118559603472256,
+      "retention_vs_control_plain": 0.418528966969191,
+      "retention_vs_advanced_plain_long": 0.31969352581506927,
+      "seed_matched_41_42_43": {
+        "matched_seeds": [
+          41,
+          42,
+          43
+        ],
+        "matched_seed_count": 3,
+        "inflation_std_sum_bnt_over_nobnt": 1.0702855555296191,
+        "fom3_ratio_bnt_over_nobnt": 0.5790999594948966,
+        "nobnt_fom3_mean": 165789.9379196576,
+        "bnt_fom3_mean": 96008.94633393512,
+        "rank_score": 0.49118559603472256,
+        "retention_vs_control_plain": 0.4185838412761942,
+        "retention_vs_advanced_plain_long": 0.31816073191817235
+      }
+    },
+    {
+      "config_name": "std10k_l10h320",
+      "category": "prior_resnet50_tuning",
+      "selection_reason": "Best prior NDE variant by parity tradeoff rank",
+      "metrics_file": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_resnet_split_campaign/resnet50_inflation_tuning/nde_variants/std10k_l10h320/metrics.json",
+      "seeds": [
+        41,
+        42,
+        43
+      ],
+      "seed_count": 3,
+      "inflation_std_sum_bnt_over_nobnt": 0.9369544462901666,
+      "fom3_ratio_bnt_over_nobnt": 0.8588482712333096,
+      "nobnt_fom3_mean": 109490.20793437981,
+      "bnt_fom3_mean": 94035.4758014177,
+      "rank_score": 0.2041972824765238,
+      "retention_vs_control_plain": 0.27640292405576977,
+      "retention_vs_advanced_plain_long": 0.2111304887135532,
+      "seed_matched_41_42_43": {
+        "matched_seeds": [
+          41,
+          42,
+          43
+        ],
+        "matched_seed_count": 3,
+        "inflation_std_sum_bnt_over_nobnt": 0.9369544462901666,
+        "fom3_ratio_bnt_over_nobnt": 0.8588482712333094,
+        "nobnt_fom3_mean": 109490.20793437983,
+        "bnt_fom3_mean": 94035.47580141769,
+        "rank_score": 0.20419728247652402,
+        "retention_vs_control_plain": 0.27643916388648226,
+        "retention_vs_advanced_plain_long": 0.21011820820607682
+      }
+    },
+    {
+      "config_name": "long15k_nostd6k_l8h256",
+      "category": "prior_resnet50_tuning",
+      "selection_reason": "Best prior long-compressor variant by parity tradeoff rank",
+      "metrics_file": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_resnet_split_campaign/resnet50_inflation_tuning/long_compressor/long15k_nostd6k_l8h256/metrics.json",
+      "seeds": [
+        41,
+        42,
+        43
+      ],
+      "seed_count": 3,
+      "inflation_std_sum_bnt_over_nobnt": 1.0257630200513963,
+      "fom3_ratio_bnt_over_nobnt": 0.8083885845626495,
+      "nobnt_fom3_mean": 323659.86491096596,
+      "bnt_fom3_mean": 261642.9400751141,
+      "rank_score": 0.2173744354887468,
+      "retention_vs_control_plain": 0.8170642356849148,
+      "retention_vs_advanced_plain_long": 0.62411485688811,
+      "seed_matched_41_42_43": {
+        "matched_seeds": [
+          41,
+          42,
+          43
+        ],
+        "matched_seed_count": 3,
+        "inflation_std_sum_bnt_over_nobnt": 1.0257630200513963,
+        "fom3_ratio_bnt_over_nobnt": 0.8083885845626495,
+        "nobnt_fom3_mean": 323659.8649109659,
+        "bnt_fom3_mean": 261642.94007511408,
+        "rank_score": 0.2173744354887468,
+        "retention_vs_control_plain": 0.8171713628786068,
+        "retention_vs_advanced_plain_long": 0.6211224927444763
+      }
+    },
+    {
+      "config_name": "long15k_std6k_l8h256",
+      "category": "prior_resnet50_tuning",
+      "selection_reason": "Best prior long-compressor variant by no-BNT retention",
+      "metrics_file": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_resnet_split_campaign/resnet50_inflation_tuning/long_compressor/long15k_std6k_l8h256/metrics.json",
+      "seeds": [
+        41,
+        42,
+        43
+      ],
+      "seed_count": 3,
+      "inflation_std_sum_bnt_over_nobnt": 1.0418357162494434,
+      "fom3_ratio_bnt_over_nobnt": 0.7560595009274144,
+      "nobnt_fom3_mean": 342639.50797151896,
+      "bnt_fom3_mean": 259055.85539496146,
+      "rank_score": 0.285776215322029,
+      "retention_vs_control_plain": 0.8649774595105169,
+      "retention_vs_advanced_plain_long": 0.6607133928721219,
+      "seed_matched_41_42_43": {
+        "matched_seeds": [
+          41,
+          42,
+          43
+        ],
+        "matched_seed_count": 3,
+        "inflation_std_sum_bnt_over_nobnt": 1.0418357162494434,
+        "fom3_ratio_bnt_over_nobnt": 0.7560595009274146,
+        "nobnt_fom3_mean": 342639.5079715189,
+        "bnt_fom3_mean": 259055.8553949615,
+        "rank_score": 0.2857762153220288,
+        "retention_vs_control_plain": 0.8650908687185047,
+        "retention_vs_advanced_plain_long": 0.6575455543817725
+      }
+    },
+    {
+      "config_name": "r50_long30k_std10k_l10h320",
+      "category": "resnet50_v2",
+      "selection_reason": "Best new ResNet50 v2 variant by parity tradeoff rank",
+      "metrics_file": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_resnet_split_campaign/resnet_extended_tuning_v2/resnet50/r50_long30k_std10k_l10h320/metrics.json",
+      "seeds": [
+        41,
+        42,
+        43
+      ],
+      "seed_count": 3,
+      "inflation_std_sum_bnt_over_nobnt": 0.9832322662281627,
+      "fom3_ratio_bnt_over_nobnt": 0.8027832405955488,
+      "nobnt_fom3_mean": 321064.69404795597,
+      "bnt_fom3_mean": 257745.35552863652,
+      "rank_score": 0.21398449317628843,
+      "retention_vs_control_plain": 0.8105128478622686,
+      "retention_vs_advanced_plain_long": 0.6191105765699023,
+      "seed_matched_41_42_43": {
+        "matched_seeds": [
+          41,
+          42,
+          43
+        ],
+        "matched_seed_count": 3,
+        "inflation_std_sum_bnt_over_nobnt": 0.9832322662281627,
+        "fom3_ratio_bnt_over_nobnt": 0.802783240595549,
+        "nobnt_fom3_mean": 321064.69404795597,
+        "bnt_fom3_mean": 257745.35552863654,
+        "rank_score": 0.21398449317628832,
+        "retention_vs_control_plain": 0.8106191160882547,
+        "retention_vs_advanced_plain_long": 0.6161422058127803
+      }
+    },
+    {
+      "config_name": "r50_long30k_nostd6k_l8h256",
+      "category": "resnet50_v2",
+      "selection_reason": "Best new ResNet50 v2 variant by no-BNT retention",
+      "metrics_file": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_resnet_split_campaign/resnet_extended_tuning_v2/resnet50/r50_long30k_nostd6k_l8h256/metrics.json",
+      "seeds": [
+        41,
+        42,
+        43
+      ],
+      "seed_count": 3,
+      "inflation_std_sum_bnt_over_nobnt": 1.0512219241525083,
+      "fom3_ratio_bnt_over_nobnt": 0.7810581611627813,
+      "nobnt_fom3_mean": 507302.4538402422,
+      "bnt_fom3_mean": 396232.7217498263,
+      "rank_score": 0.270163762989727,
+      "retention_vs_control_plain": 1.2806613876023265,
+      "retention_vs_advanced_plain_long": 0.9782337345552122,
+      "seed_matched_41_42_43": {
+        "matched_seeds": [
+          41,
+          42,
+          43
+        ],
+        "matched_seed_count": 3,
+        "inflation_std_sum_bnt_over_nobnt": 1.0512219241525083,
+        "fom3_ratio_bnt_over_nobnt": 0.7810581611627813,
+        "nobnt_fom3_mean": 507302.4538402422,
+        "bnt_fom3_mean": 396232.7217498263,
+        "rank_score": 0.270163762989727,
+        "retention_vs_control_plain": 1.2808292980976486,
+        "retention_vs_advanced_plain_long": 0.9735435216575877
+      }
+    },
+    {
+      "config_name": "resnet18_long15k_std10k_l10h320",
+      "category": "backbone_v2",
+      "selection_reason": "Best resnet18 variant in new v2 backbone sweep",
+      "metrics_file": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_resnet_split_campaign/resnet_extended_tuning_v2/backbones/resnet18/resnet18_long15k_std10k_l10h320/metrics.json",
+      "seeds": [
+        41,
+        42,
+        43
+      ],
+      "seed_count": 3,
+      "inflation_std_sum_bnt_over_nobnt": 1.034815893593816,
+      "fom3_ratio_bnt_over_nobnt": 1.0048823406562362,
+      "nobnt_fom3_mean": 231794.37095165878,
+      "bnt_fom3_mean": 232926.07003284278,
+      "rank_score": 0.039698234250052256,
+      "retention_vs_control_plain": 0.585154080163079,
+      "retention_vs_advanced_plain_long": 0.44697018795876825,
+      "seed_matched_41_42_43": {
+        "matched_seeds": [
+          41,
+          42,
+          43
+        ],
+        "matched_seed_count": 3,
+        "inflation_std_sum_bnt_over_nobnt": 1.034815893593816,
+        "fom3_ratio_bnt_over_nobnt": 1.0048823406562362,
+        "nobnt_fom3_mean": 231794.37095165878,
+        "bnt_fom3_mean": 232926.07003284278,
+        "rank_score": 0.039698234250052256,
+        "retention_vs_control_plain": 0.5852308010765,
+        "retention_vs_advanced_plain_long": 0.4448271568340329
+      }
+    },
+    {
+      "config_name": "resnet34_long15k_std10k_l10h320",
+      "category": "backbone_v2",
+      "selection_reason": "Best resnet34 variant in new v2 backbone sweep",
+      "metrics_file": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_resnet_split_campaign/resnet_extended_tuning_v2/backbones/resnet34/resnet34_long15k_std10k_l10h320/metrics.json",
+      "seeds": [
+        41,
+        42,
+        43
+      ],
+      "seed_count": 3,
+      "inflation_std_sum_bnt_over_nobnt": 0.831785687810776,
+      "fom3_ratio_bnt_over_nobnt": 1.6840260557240776,
+      "nobnt_fom3_mean": 164492.64284792024,
+      "bnt_fom3_mean": 277009.89653081255,
+      "rank_score": 0.8522403679133016,
+      "retention_vs_control_plain": 0.41525400605756096,
+      "retention_vs_advanced_plain_long": 0.31719194555808644,
+      "seed_matched_41_42_43": {
+        "matched_seeds": [
+          41,
+          42,
+          43
+        ],
+        "matched_seed_count": 3,
+        "inflation_std_sum_bnt_over_nobnt": 0.831785687810776,
+        "fom3_ratio_bnt_over_nobnt": 1.6840260557240776,
+        "nobnt_fom3_mean": 164492.64284792024,
+        "bnt_fom3_mean": 277009.89653081255,
+        "rank_score": 0.8522403679133016,
+        "retention_vs_control_plain": 0.4153084509768164,
+        "retention_vs_advanced_plain_long": 0.31567114566995375
+      }
+    }
+  ],
+  "seed_matched_reference_seeds": [
+    41,
+    42,
+    43
+  ],
+  "seed_matched_comparison": [
+    {
+      "config_name": "control_plain_split",
+      "category": "prior_split_reference",
+      "selection_reason": "Required baseline plain split control from prior split campaign",
+      "metrics_file": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_resnet_split_campaign/control_plain_split/metrics.json",
+      "matched_seeds": [
+        41,
+        42,
+        43
+      ],
+      "matched_seed_count": 3,
+      "inflation_std_sum_bnt_over_nobnt": 1.0579989858280388,
+      "fom3_ratio_bnt_over_nobnt": 0.6196066673183283,
+      "nobnt_fom3_mean": 396073.4303889777,
+      "bnt_fom3_mean": 245409.73821665233,
+      "rank_score": 0.4383923185097105,
+      "retention_vs_control_plain": 1.0,
+      "retention_vs_advanced_plain_long": 0.7600884232610411
+    },
+    {
+      "config_name": "advanced_arch64_dense256_nostd_long",
+      "category": "plain_cnn_reference",
+      "selection_reason": "Required strong plain-CNN long reference",
+      "metrics_file": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_losslessness_campaign_indep_split_advanced_cdim10_long120k_v1/advanced_arch64_dense256_nostd_long/metrics.json",
+      "matched_seeds": [
+        41,
+        42,
+        43
+      ],
+      "matched_seed_count": 3,
+      "inflation_std_sum_bnt_over_nobnt": 1.0405000389296384,
+      "fom3_ratio_bnt_over_nobnt": 0.8129347631538947,
+      "nobnt_fom3_mean": 521088.62372838974,
+      "bnt_fom3_mean": 423611.0569128275,
+      "rank_score": 0.2275652757757437,
+      "retention_vs_control_plain": 1.3156364041300033,
+      "retention_vs_advanced_plain_long": 1.0
+    },
+    {
+      "config_name": "resnet50_split",
+      "category": "prior_split_reference",
+      "selection_reason": "Required baseline ResNet50 split from prior split campaign",
+      "metrics_file": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_resnet_split_campaign/resnet50_split/metrics.json",
+      "matched_seeds": [
+        41,
+        42,
+        43
+      ],
+      "matched_seed_count": 3,
+      "inflation_std_sum_bnt_over_nobnt": 1.0702855555296191,
+      "fom3_ratio_bnt_over_nobnt": 0.5790999594948966,
+      "nobnt_fom3_mean": 165789.9379196576,
+      "bnt_fom3_mean": 96008.94633393512,
+      "rank_score": 0.49118559603472256,
+      "retention_vs_control_plain": 0.4185838412761942,
+      "retention_vs_advanced_plain_long": 0.31816073191817235
+    },
+    {
+      "config_name": "std10k_l10h320",
+      "category": "prior_resnet50_tuning",
+      "selection_reason": "Best prior NDE variant by parity tradeoff rank",
+      "metrics_file": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_resnet_split_campaign/resnet50_inflation_tuning/nde_variants/std10k_l10h320/metrics.json",
+      "matched_seeds": [
+        41,
+        42,
+        43
+      ],
+      "matched_seed_count": 3,
+      "inflation_std_sum_bnt_over_nobnt": 0.9369544462901666,
+      "fom3_ratio_bnt_over_nobnt": 0.8588482712333094,
+      "nobnt_fom3_mean": 109490.20793437983,
+      "bnt_fom3_mean": 94035.47580141769,
+      "rank_score": 0.20419728247652402,
+      "retention_vs_control_plain": 0.27643916388648226,
+      "retention_vs_advanced_plain_long": 0.21011820820607682
+    },
+    {
+      "config_name": "long15k_nostd6k_l8h256",
+      "category": "prior_resnet50_tuning",
+      "selection_reason": "Best prior long-compressor variant by parity tradeoff rank",
+      "metrics_file": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_resnet_split_campaign/resnet50_inflation_tuning/long_compressor/long15k_nostd6k_l8h256/metrics.json",
+      "matched_seeds": [
+        41,
+        42,
+        43
+      ],
+      "matched_seed_count": 3,
+      "inflation_std_sum_bnt_over_nobnt": 1.0257630200513963,
+      "fom3_ratio_bnt_over_nobnt": 0.8083885845626495,
+      "nobnt_fom3_mean": 323659.8649109659,
+      "bnt_fom3_mean": 261642.94007511408,
+      "rank_score": 0.2173744354887468,
+      "retention_vs_control_plain": 0.8171713628786068,
+      "retention_vs_advanced_plain_long": 0.6211224927444763
+    },
+    {
+      "config_name": "long15k_std6k_l8h256",
+      "category": "prior_resnet50_tuning",
+      "selection_reason": "Best prior long-compressor variant by no-BNT retention",
+      "metrics_file": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_resnet_split_campaign/resnet50_inflation_tuning/long_compressor/long15k_std6k_l8h256/metrics.json",
+      "matched_seeds": [
+        41,
+        42,
+        43
+      ],
+      "matched_seed_count": 3,
+      "inflation_std_sum_bnt_over_nobnt": 1.0418357162494434,
+      "fom3_ratio_bnt_over_nobnt": 0.7560595009274146,
+      "nobnt_fom3_mean": 342639.5079715189,
+      "bnt_fom3_mean": 259055.8553949615,
+      "rank_score": 0.2857762153220288,
+      "retention_vs_control_plain": 0.8650908687185047,
+      "retention_vs_advanced_plain_long": 0.6575455543817725
+    },
+    {
+      "config_name": "r50_long30k_std10k_l10h320",
+      "category": "resnet50_v2",
+      "selection_reason": "Best new ResNet50 v2 variant by parity tradeoff rank",
+      "metrics_file": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_resnet_split_campaign/resnet_extended_tuning_v2/resnet50/r50_long30k_std10k_l10h320/metrics.json",
+      "matched_seeds": [
+        41,
+        42,
+        43
+      ],
+      "matched_seed_count": 3,
+      "inflation_std_sum_bnt_over_nobnt": 0.9832322662281627,
+      "fom3_ratio_bnt_over_nobnt": 0.802783240595549,
+      "nobnt_fom3_mean": 321064.69404795597,
+      "bnt_fom3_mean": 257745.35552863654,
+      "rank_score": 0.21398449317628832,
+      "retention_vs_control_plain": 0.8106191160882547,
+      "retention_vs_advanced_plain_long": 0.6161422058127803
+    },
+    {
+      "config_name": "r50_long30k_nostd6k_l8h256",
+      "category": "resnet50_v2",
+      "selection_reason": "Best new ResNet50 v2 variant by no-BNT retention",
+      "metrics_file": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_resnet_split_campaign/resnet_extended_tuning_v2/resnet50/r50_long30k_nostd6k_l8h256/metrics.json",
+      "matched_seeds": [
+        41,
+        42,
+        43
+      ],
+      "matched_seed_count": 3,
+      "inflation_std_sum_bnt_over_nobnt": 1.0512219241525083,
+      "fom3_ratio_bnt_over_nobnt": 0.7810581611627813,
+      "nobnt_fom3_mean": 507302.4538402422,
+      "bnt_fom3_mean": 396232.7217498263,
+      "rank_score": 0.270163762989727,
+      "retention_vs_control_plain": 1.2808292980976486,
+      "retention_vs_advanced_plain_long": 0.9735435216575877
+    },
+    {
+      "config_name": "resnet18_long15k_std10k_l10h320",
+      "category": "backbone_v2",
+      "selection_reason": "Best resnet18 variant in new v2 backbone sweep",
+      "metrics_file": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_resnet_split_campaign/resnet_extended_tuning_v2/backbones/resnet18/resnet18_long15k_std10k_l10h320/metrics.json",
+      "matched_seeds": [
+        41,
+        42,
+        43
+      ],
+      "matched_seed_count": 3,
+      "inflation_std_sum_bnt_over_nobnt": 1.034815893593816,
+      "fom3_ratio_bnt_over_nobnt": 1.0048823406562362,
+      "nobnt_fom3_mean": 231794.37095165878,
+      "bnt_fom3_mean": 232926.07003284278,
+      "rank_score": 0.039698234250052256,
+      "retention_vs_control_plain": 0.5852308010765,
+      "retention_vs_advanced_plain_long": 0.4448271568340329
+    },
+    {
+      "config_name": "resnet34_long15k_std10k_l10h320",
+      "category": "backbone_v2",
+      "selection_reason": "Best resnet34 variant in new v2 backbone sweep",
+      "metrics_file": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_resnet_split_campaign/resnet_extended_tuning_v2/backbones/resnet34/resnet34_long15k_std10k_l10h320/metrics.json",
+      "matched_seeds": [
+        41,
+        42,
+        43
+      ],
+      "matched_seed_count": 3,
+      "inflation_std_sum_bnt_over_nobnt": 0.831785687810776,
+      "fom3_ratio_bnt_over_nobnt": 1.6840260557240776,
+      "nobnt_fom3_mean": 164492.64284792024,
+      "bnt_fom3_mean": 277009.89653081255,
+      "rank_score": 0.8522403679133016,
+      "retention_vs_control_plain": 0.4153084509768164,
+      "retention_vs_advanced_plain_long": 0.31567114566995375
+    }
+  ],
+  "rankings": {
+    "overall_by_rank_score": [
+      {
+        "rank": 1,
+        "config_name": "resnet18_long15k_std10k_l10h320",
+        "category": "backbone_v2",
+        "rank_score": 0.039698234250052256,
+        "retention_vs_advanced_plain_long": 0.44697018795876825
+      },
+      {
+        "rank": 2,
+        "config_name": "advanced_arch64_dense256_nostd_long",
+        "category": "plain_cnn_reference",
+        "rank_score": 0.1907073353085892,
+        "retention_vs_advanced_plain_long": 1.0
+      },
+      {
+        "rank": 3,
+        "config_name": "std10k_l10h320",
+        "category": "prior_resnet50_tuning",
+        "rank_score": 0.2041972824765238,
+        "retention_vs_advanced_plain_long": 0.2111304887135532
+      },
+      {
+        "rank": 4,
+        "config_name": "r50_long30k_std10k_l10h320",
+        "category": "resnet50_v2",
+        "rank_score": 0.21398449317628843,
+        "retention_vs_advanced_plain_long": 0.6191105765699023
+      },
+      {
+        "rank": 5,
+        "config_name": "long15k_nostd6k_l8h256",
+        "category": "prior_resnet50_tuning",
+        "rank_score": 0.2173744354887468,
+        "retention_vs_advanced_plain_long": 0.62411485688811
+      },
+      {
+        "rank": 6,
+        "config_name": "r50_long30k_nostd6k_l8h256",
+        "category": "resnet50_v2",
+        "rank_score": 0.270163762989727,
+        "retention_vs_advanced_plain_long": 0.9782337345552122
+      },
+      {
+        "rank": 7,
+        "config_name": "long15k_std6k_l8h256",
+        "category": "prior_resnet50_tuning",
+        "rank_score": 0.285776215322029,
+        "retention_vs_advanced_plain_long": 0.6607133928721219
+      },
+      {
+        "rank": 8,
+        "config_name": "control_plain_split",
+        "category": "prior_split_reference",
+        "rank_score": 0.4493205268307582,
+        "retention_vs_advanced_plain_long": 0.7638504166871745
+      },
+      {
+        "rank": 9,
+        "config_name": "resnet50_split",
+        "category": "prior_split_reference",
+        "rank_score": 0.49118559603472256,
+        "retention_vs_advanced_plain_long": 0.31969352581506927
+      },
+      {
+        "rank": 10,
+        "config_name": "resnet34_long15k_std10k_l10h320",
+        "category": "backbone_v2",
+        "rank_score": 0.8522403679133016,
+        "retention_vs_advanced_plain_long": 0.31719194555808644
+      }
+    ],
+    "seed_matched_by_rank_score": [
+      {
+        "rank": 1,
+        "config_name": "resnet18_long15k_std10k_l10h320",
+        "category": "backbone_v2",
+        "rank_score": 0.039698234250052256,
+        "retention_vs_advanced_plain_long": 0.4448271568340329
+      },
+      {
+        "rank": 2,
+        "config_name": "std10k_l10h320",
+        "category": "prior_resnet50_tuning",
+        "rank_score": 0.20419728247652402,
+        "retention_vs_advanced_plain_long": 0.21011820820607682
+      },
+      {
+        "rank": 3,
+        "config_name": "r50_long30k_std10k_l10h320",
+        "category": "resnet50_v2",
+        "rank_score": 0.21398449317628832,
+        "retention_vs_advanced_plain_long": 0.6161422058127803
+      },
+      {
+        "rank": 4,
+        "config_name": "long15k_nostd6k_l8h256",
+        "category": "prior_resnet50_tuning",
+        "rank_score": 0.2173744354887468,
+        "retention_vs_advanced_plain_long": 0.6211224927444763
+      },
+      {
+        "rank": 5,
+        "config_name": "advanced_arch64_dense256_nostd_long",
+        "category": "plain_cnn_reference",
+        "rank_score": 0.2275652757757437,
+        "retention_vs_advanced_plain_long": 1.0
+      },
+      {
+        "rank": 6,
+        "config_name": "r50_long30k_nostd6k_l8h256",
+        "category": "resnet50_v2",
+        "rank_score": 0.270163762989727,
+        "retention_vs_advanced_plain_long": 0.9735435216575877
+      },
+      {
+        "rank": 7,
+        "config_name": "long15k_std6k_l8h256",
+        "category": "prior_resnet50_tuning",
+        "rank_score": 0.2857762153220288,
+        "retention_vs_advanced_plain_long": 0.6575455543817725
+      },
+      {
+        "rank": 8,
+        "config_name": "control_plain_split",
+        "category": "prior_split_reference",
+        "rank_score": 0.4383923185097105,
+        "retention_vs_advanced_plain_long": 0.7600884232610411
+      },
+      {
+        "rank": 9,
+        "config_name": "resnet50_split",
+        "category": "prior_split_reference",
+        "rank_score": 0.49118559603472256,
+        "retention_vs_advanced_plain_long": 0.31816073191817235
+      },
+      {
+        "rank": 10,
+        "config_name": "resnet34_long15k_std10k_l10h320",
+        "category": "backbone_v2",
+        "rank_score": 0.8522403679133016,
+        "retention_vs_advanced_plain_long": 0.31567114566995375
+      }
+    ]
+  },
+  "advanced_plain_long_vs_resnet_assessment": {
+    "criterion": "ResNet beats advanced plain long iff (rank_score lower than advanced plain long) AND (retention_vs_advanced_plain_long > 1.0)",
+    "full_seed_result": {
+      "advanced_plain_long_rank_score": 0.1907073353085892,
+      "beats_found": 0,
+      "beaters": []
+    },
+    "seed_matched_41_42_43_result": {
+      "advanced_plain_long_rank_score": 0.2275652757757437,
+      "beats_found": 0,
+      "beaters": []
+    },
+    "if_none_tradeoff": {
+      "best_parity_resnet": {
+        "candidate": "resnet18_long15k_std10k_l10h320",
+        "rank_score": 0.039698234250052256,
+        "retention_vs_advanced_plain_long": 0.44697018795876825
+      },
+      "best_retention_resnet": {
+        "candidate": "r50_long30k_nostd6k_l8h256",
+        "rank_score": 0.270163762989727,
+        "retention_vs_advanced_plain_long": 0.9782337345552122
+      },
+      "tradeoff_statement": "No ResNet variant simultaneously exceeds advanced plain long no-BNT retention and improves parity score. Best-parity variants lose substantial no-BNT retention, while the best-retention ResNet remains slightly below advanced retention and has weaker parity than advanced plain long."
+    }
+  },
+  "recommendations": {
+    "best_parity_first": {
+      "config_name": "resnet18_long15k_std10k_l10h320",
+      "category": "backbone_v2",
+      "why": "Lowest rank_score among tuned ResNet candidates.",
+      "metrics": {
+        "inflation_std_sum_bnt_over_nobnt": 1.034815893593816,
+        "fom3_ratio_bnt_over_nobnt": 1.0048823406562362,
+        "rank_score": 0.039698234250052256,
+        "retention_vs_control_plain": 0.585154080163079,
+        "retention_vs_advanced_plain_long": 0.44697018795876825
+      }
+    },
+    "best_retention_aware": {
+      "config_name": "r50_long30k_nostd6k_l8h256",
+      "category": "resnet50_v2",
+      "why": "Highest no-BNT retention versus advanced plain long among tuned ResNet candidates.",
+      "metrics": {
+        "inflation_std_sum_bnt_over_nobnt": 1.0512219241525083,
+        "fom3_ratio_bnt_over_nobnt": 0.7810581611627813,
+        "rank_score": 0.270163762989727,
+        "retention_vs_control_plain": 1.2806613876023265,
+        "retention_vs_advanced_plain_long": 0.9782337345552122
+      }
+    },
+    "practical_default_next_production": {
+      "config_name": "r50_long30k_nostd6k_l8h256",
+      "category": "resnet50_v2",
+      "why": "Best parity-retention balance score among tuned ResNets, where balance_score = rank_score + abs(1 - retention_vs_advanced_plain_long).",
+      "balance_score": 0.29193002843451477,
+      "metrics": {
+        "inflation_std_sum_bnt_over_nobnt": 1.0512219241525083,
+        "fom3_ratio_bnt_over_nobnt": 0.7810581611627813,
+        "rank_score": 0.270163762989727,
+        "retention_vs_control_plain": 1.2806613876023265,
+        "retention_vs_advanced_plain_long": 0.9782337345552122
+      }
+    }
+  }
+}

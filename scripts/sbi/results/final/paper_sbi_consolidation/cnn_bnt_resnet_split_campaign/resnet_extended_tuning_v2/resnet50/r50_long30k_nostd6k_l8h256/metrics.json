@@ -1,0 +1,91 @@
+{
+  "variant": "r50_long30k_nostd6k_l8h256",
+  "seeds": [
+    41,
+    42,
+    43
+  ],
+  "inflation_std_sum_bnt_over_nobnt": 1.0512219241525083,
+  "fom3_ratio_bnt_over_nobnt": 0.7810581611627813,
+  "nobnt_fom3_mean": 507302.4538402422,
+  "bnt_fom3_mean": 396232.7217498263,
+  "rank_score": 0.270163762989727,
+  "nobnt": {
+    "n": 3.0,
+    "std_sum_mean": 0.1819456915060679,
+    "std_sum_std": 0.0006098132775900812,
+    "bias_l2_mean": 0.0710912119864054,
+    "bias_l2_std": 0.0193497313050833,
+    "fom3_mean": 507302.4538402422,
+    "fom3_std": 9670.11601340855,
+    "valid_fom3_count": 3.0
+  },
+  "bnt": {
+    "n": 3.0,
+    "std_sum_mean": 0.1912652999162674,
+    "std_sum_std": 0.0016284177982068897,
+    "bias_l2_mean": 0.07936008112321435,
+    "bias_l2_std": 0.018234233536400208,
+    "fom3_mean": 396232.7217498263,
+    "fom3_std": 17057.125905358796,
+    "valid_fom3_count": 3.0
+  },
+  "per_seed": {
+    "nobnt": [
+      {
+        "seed": 41.0,
+        "std_sum": 0.18139804899692535,
+        "bias_l2": 0.09340396666642473,
+        "fom3": 514009.7833559469
+      },
+      {
+        "seed": 42.0,
+        "std_sum": 0.18260283768177032,
+        "bias_l2": 0.060943712994303595,
+        "fom3": 496217.6868460591
+      },
+      {
+        "seed": 43.0,
+        "std_sum": 0.18183618783950806,
+        "bias_l2": 0.058925956298487875,
+        "fom3": 511679.89131872053
+      }
+    ],
+    "bnt": [
+      {
+        "seed": 41.0,
+        "std_sum": 0.19000835716724396,
+        "bias_l2": 0.09909094002844805,
+        "fom3": 396374.48085975245
+      },
+      {
+        "seed": 42.0,
+        "std_sum": 0.19310489296913147,
+        "bias_l2": 0.06313012672317982,
+        "fom3": 379105.1580969112
+      },
+      {
+        "seed": 43.0,
+        "std_sum": 0.19068264961242676,
+        "bias_l2": 0.0758591766180152,
+        "fom3": 413218.5262928151
+      }
+    ]
+  },
+  "rank_score_formula": "abs(inflation_std_sum_bnt_over_nobnt-1)+abs(fom3_ratio_bnt_over_nobnt-1)",
+  "config": {
+    "compressor_steps": 30000,
+    "nvp_layers": 8,
+    "nvp_hidden": 256,
+    "total_steps": 6000,
+    "standardize_summary": false,
+    "compressor_arch": "resnet50",
+    "resnet_head_width": 256,
+    "batch_size": 256,
+    "patience": 35,
+    "save_every": 500,
+    "summary_clip_value": 5.0,
+    "npe_samples": 100000,
+    "ds_batch_size": 500
+  }
+}
