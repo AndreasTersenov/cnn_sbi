@@ -1,0 +1,455 @@
+{
+  "analysis_scope": "ResNet50 inflation-tuning consolidation for BNT/no-BNT parity vs information retention",
+  "generated_at_utc": "2026-04-16T10:45:48.065680+00:00",
+  "campaign_root": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_resnet_split_campaign",
+  "rank_score_formula": "abs(inflation_std_sum_bnt_over_nobnt - 1) + abs(fom3_ratio_bnt_over_nobnt - 1)",
+  "required_metrics_reported": [
+    "inflation_std_sum_bnt_over_nobnt",
+    "fom3_ratio_bnt_over_nobnt",
+    "nobnt_fom3_mean",
+    "bnt_fom3_mean",
+    "retention_nobnt_vs_resnet50_split",
+    "retention_nobnt_vs_control_plain_split"
+  ],
+  "references": {
+    "baseline_resnet50_split": {
+      "inflation_std_sum_bnt_over_nobnt": 1.0702855555296191,
+      "fom3_ratio_bnt_over_nobnt": 0.5790999594948966,
+      "nobnt_fom3_mean": 165789.9379196576,
+      "bnt_fom3_mean": 96008.94633393512,
+      "rank_score_tradeoff": 0.49118559603472256
+    },
+    "control_plain_split": {
+      "inflation_std_sum_bnt_over_nobnt": 1.0592058795031327,
+      "fom3_ratio_bnt_over_nobnt": 0.6098853526723745,
+      "nobnt_fom3_mean": 396125.3604983136,
+      "bnt_fom3_mean": 241591.0551899855,
+      "rank_score_tradeoff": 0.4493205268307582
+    }
+  },
+  "best_variants": {
+    "nde_best_by_tradeoff_rank": "std10k_l10h320",
+    "nde_best_by_nobnt_retention": "std6k_l8h256",
+    "long_compressor_best_by_tradeoff_rank": "long15k_nostd6k_l8h256",
+    "long_compressor_best_by_nobnt_retention": "long15k_std6k_l8h256"
+  },
+  "comparison_set_required": [
+    "resnet50_split",
+    "std10k_l10h320",
+    "long15k_nostd6k_l8h256",
+    "control_plain_split"
+  ],
+  "overcorrection_variants": [
+    {
+      "name": "std10k_l10h320",
+      "inflation_std_sum_bnt_over_nobnt": 0.9369544462901666,
+      "tradeoff_rank_score": 0.2041972824765238,
+      "retention_nobnt_vs_resnet50_split": 0.6604152779611943
+    }
+  ],
+  "qualified_candidates": [
+    {
+      "name": "long15k_nostd6k_l8h256",
+      "family": "long_compressor_variant",
+      "rank_score_tradeoff": 0.2173744354887468,
+      "inflation_std_sum_bnt_over_nobnt": 1.0257630200513963,
+      "fom3_ratio_bnt_over_nobnt": 0.8083885845626495,
+      "retention_nobnt_vs_resnet50_split": 1.9522286392785353,
+      "retention_nobnt_vs_control_plain_split": 0.8170642356849148
+    },
+    {
+      "name": "long15k_std6k_l8h256",
+      "family": "long_compressor_variant",
+      "rank_score_tradeoff": 0.285776215322029,
+      "inflation_std_sum_bnt_over_nobnt": 1.0418357162494434,
+      "fom3_ratio_bnt_over_nobnt": 0.7560595009274144,
+      "retention_nobnt_vs_resnet50_split": 2.0667087054315885,
+      "retention_nobnt_vs_control_plain_split": 0.8649774595105169
+    }
+  ],
+  "recommended_next_run": {
+    "name": "long15k_nostd6k_l8h256",
+    "family": "long_compressor_variant",
+    "rationale": [
+      "Best tradeoff score among variants that improve baseline inflation closeness to 1, improve BNT/no-BNT FoM ratio over baseline, and retain at least baseline no-BNT FoM.",
+      "Provides strong BNT/no-BNT parity improvement without sacrificing no-BNT information relative to baseline resnet50_split."
+    ],
+    "metrics": {
+      "inflation_std_sum_bnt_over_nobnt": 1.0257630200513963,
+      "fom3_ratio_bnt_over_nobnt": 0.8083885845626495,
+      "nobnt_fom3_mean": 323659.86491096596,
+      "bnt_fom3_mean": 261642.9400751141,
+      "retention_nobnt_vs_resnet50_split": 1.9522286392785353,
+      "retention_nobnt_vs_control_plain_split": 0.8170642356849148,
+      "rank_score_tradeoff": 0.2173744354887468
+    }
+  },
+  "configs_sorted_by_tradeoff_rank": [
+    {
+      "name": "std10k_l10h320",
+      "family": "nde_variant",
+      "source_metrics_file": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_resnet_split_campaign/resnet50_inflation_tuning/nde_variants/std10k_l10h320/metrics.json",
+      "inflation_std_sum_bnt_over_nobnt": 0.9369544462901666,
+      "fom3_ratio_bnt_over_nobnt": 0.8588482712333096,
+      "nobnt_fom3_mean": 109490.20793437981,
+      "bnt_fom3_mean": 94035.4758014177,
+      "rank_score_tradeoff": 0.2041972824765238,
+      "inflation_overcorrected": true,
+      "raw_rank_score_from_metrics": 0.2041972824765238,
+      "config": {
+        "compressor_arch": "resnet50",
+        "compressor_steps": 5000,
+        "resolved_compressor_steps": {
+          "nobnt": 5000,
+          "bnt": 5000
+        },
+        "compressor_conv_channels": "64,128,256",
+        "compressor_dense_width": 256,
+        "compressor_pool_window": 16,
+        "compressor_pool_stride": 8,
+        "resnet_small_channels": "64,128,256",
+        "resnet_small_blocks": "2,2,2",
+        "resnet_head_width": 256,
+        "resnet_v2": false,
+        "standardize_summary": true,
+        "summary_clip_value": 5.0,
+        "flow_steps": 10000,
+        "nvp_layers": 10,
+        "nvp_hidden": 320,
+        "batch_size": 256,
+        "patience": 35
+      },
+      "seeds": [
+        41,
+        42,
+        43
+      ],
+      "retention_nobnt_vs_resnet50_split": 0.6604152779611943,
+      "retention_nobnt_vs_control_plain_split": 0.27640292405576977,
+      "delta_inflation_vs_resnet50_split": -0.13333110923945257,
+      "delta_fom3_ratio_vs_resnet50_split": 0.2797483117384131,
+      "rank_position_by_tradeoff": 1
+    },
+    {
+      "name": "long15k_nostd6k_l8h256",
+      "family": "long_compressor_variant",
+      "source_metrics_file": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_resnet_split_campaign/resnet50_inflation_tuning/long_compressor/long15k_nostd6k_l8h256/metrics.json",
+      "inflation_std_sum_bnt_over_nobnt": 1.0257630200513963,
+      "fom3_ratio_bnt_over_nobnt": 0.8083885845626495,
+      "nobnt_fom3_mean": 323659.86491096596,
+      "bnt_fom3_mean": 261642.9400751141,
+      "rank_score_tradeoff": 0.2173744354887468,
+      "inflation_overcorrected": false,
+      "raw_rank_score_from_metrics": 0.2173744354887468,
+      "config": {
+        "compressor_arch": "resnet50",
+        "compressor_steps": 15000,
+        "resolved_compressor_steps": {
+          "nobnt": 15000,
+          "bnt": 15000
+        },
+        "compressor_conv_channels": "64,128,256",
+        "compressor_dense_width": 256,
+        "compressor_pool_window": 16,
+        "compressor_pool_stride": 8,
+        "resnet_small_channels": "64,128,256",
+        "resnet_small_blocks": "2,2,2",
+        "resnet_head_width": 256,
+        "resnet_v2": false,
+        "standardize_summary": false,
+        "summary_clip_value": 5.0,
+        "flow_steps": 6000,
+        "nvp_layers": 8,
+        "nvp_hidden": 256,
+        "batch_size": 256,
+        "patience": 35
+      },
+      "seeds": [
+        41,
+        42,
+        43
+      ],
+      "retention_nobnt_vs_resnet50_split": 1.9522286392785353,
+      "retention_nobnt_vs_control_plain_split": 0.8170642356849148,
+      "delta_inflation_vs_resnet50_split": -0.044522535478222824,
+      "delta_fom3_ratio_vs_resnet50_split": 0.22928862506775294,
+      "rank_position_by_tradeoff": 2
+    },
+    {
+      "name": "long15k_std6k_l8h256",
+      "family": "long_compressor_variant",
+      "source_metrics_file": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_resnet_split_campaign/resnet50_inflation_tuning/long_compressor/long15k_std6k_l8h256/metrics.json",
+      "inflation_std_sum_bnt_over_nobnt": 1.0418357162494434,
+      "fom3_ratio_bnt_over_nobnt": 0.7560595009274144,
+      "nobnt_fom3_mean": 342639.50797151896,
+      "bnt_fom3_mean": 259055.85539496146,
+      "rank_score_tradeoff": 0.285776215322029,
+      "inflation_overcorrected": false,
+      "raw_rank_score_from_metrics": 0.285776215322029,
+      "config": {
+        "compressor_arch": "resnet50",
+        "compressor_steps": 15000,
+        "resolved_compressor_steps": {
+          "nobnt": 15000,
+          "bnt": 15000
+        },
+        "compressor_conv_channels": "64,128,256",
+        "compressor_dense_width": 256,
+        "compressor_pool_window": 16,
+        "compressor_pool_stride": 8,
+        "resnet_small_channels": "64,128,256",
+        "resnet_small_blocks": "2,2,2",
+        "resnet_head_width": 256,
+        "resnet_v2": false,
+        "standardize_summary": true,
+        "summary_clip_value": 5.0,
+        "flow_steps": 6000,
+        "nvp_layers": 8,
+        "nvp_hidden": 256,
+        "batch_size": 256,
+        "patience": 35
+      },
+      "seeds": [
+        41,
+        42,
+        43
+      ],
+      "retention_nobnt_vs_resnet50_split": 2.0667087054315885,
+      "retention_nobnt_vs_control_plain_split": 0.8649774595105169,
+      "delta_inflation_vs_resnet50_split": -0.028449839280175748,
+      "delta_fom3_ratio_vs_resnet50_split": 0.1769595414325178,
+      "rank_position_by_tradeoff": 3
+    },
+    {
+      "name": "nostd10k_l10h320",
+      "family": "nde_variant",
+      "source_metrics_file": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_resnet_split_campaign/resnet50_inflation_tuning/nde_variants/nostd10k_l10h320/metrics.json",
+      "inflation_std_sum_bnt_over_nobnt": 1.0247701002241505,
+      "fom3_ratio_bnt_over_nobnt": 0.6635286133427004,
+      "nobnt_fom3_mean": 130838.12053196474,
+      "bnt_fom3_mean": 86814.83668893967,
+      "rank_score_tradeoff": 0.3612414868814501,
+      "inflation_overcorrected": false,
+      "raw_rank_score_from_metrics": 0.3612414868814501,
+      "config": {
+        "compressor_arch": "resnet50",
+        "compressor_steps": 5000,
+        "resolved_compressor_steps": {
+          "nobnt": 5000,
+          "bnt": 5000
+        },
+        "compressor_conv_channels": "64,128,256",
+        "compressor_dense_width": 256,
+        "compressor_pool_window": 16,
+        "compressor_pool_stride": 8,
+        "resnet_small_channels": "64,128,256",
+        "resnet_small_blocks": "2,2,2",
+        "resnet_head_width": 256,
+        "resnet_v2": false,
+        "standardize_summary": false,
+        "summary_clip_value": 5.0,
+        "flow_steps": 10000,
+        "nvp_layers": 10,
+        "nvp_hidden": 320,
+        "batch_size": 256,
+        "patience": 35
+      },
+      "seeds": [
+        41,
+        42,
+        43
+      ],
+      "retention_nobnt_vs_resnet50_split": 0.7891801044968686,
+      "retention_nobnt_vs_control_plain_split": 0.3302947338877127,
+      "delta_inflation_vs_resnet50_split": -0.04551545530546863,
+      "delta_fom3_ratio_vs_resnet50_split": 0.08442865384780385,
+      "rank_position_by_tradeoff": 4
+    },
+    {
+      "name": "control_plain_split",
+      "family": "control_reference",
+      "source_metrics_file": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_resnet_split_campaign/control_plain_split/metrics.json",
+      "inflation_std_sum_bnt_over_nobnt": 1.0592058795031327,
+      "fom3_ratio_bnt_over_nobnt": 0.6098853526723745,
+      "nobnt_fom3_mean": 396125.3604983136,
+      "bnt_fom3_mean": 241591.0551899855,
+      "rank_score_tradeoff": 0.4493205268307582,
+      "inflation_overcorrected": false,
+      "raw_rank_score_from_metrics": 0.4493205268307582,
+      "config": {
+        "compressor_arch": "plain",
+        "compressor_steps": 30000,
+        "resolved_compressor_steps": {
+          "nobnt": 30000,
+          "bnt": 30000
+        },
+        "compressor_conv_channels": "64,128,256",
+        "compressor_dense_width": 256,
+        "compressor_pool_window": 16,
+        "compressor_pool_stride": 8,
+        "resnet_small_channels": "64,128,256",
+        "resnet_small_blocks": "2,2,2",
+        "resnet_head_width": 256,
+        "resnet_v2": false,
+        "standardize_summary": false,
+        "summary_clip_value": 5.0,
+        "flow_steps": 6000,
+        "nvp_layers": 8,
+        "nvp_hidden": 256,
+        "batch_size": 256,
+        "patience": 35
+      },
+      "seeds": [
+        41,
+        42,
+        43,
+        44,
+        45
+      ],
+      "retention_nobnt_vs_resnet50_split": 2.389320880802051,
+      "retention_nobnt_vs_control_plain_split": 1.0,
+      "delta_inflation_vs_resnet50_split": -0.011079676026486407,
+      "delta_fom3_ratio_vs_resnet50_split": 0.03078539317747797,
+      "rank_position_by_tradeoff": 5
+    },
+    {
+      "name": "std6k_l8h256",
+      "family": "nde_variant",
+      "source_metrics_file": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_resnet_split_campaign/resnet50_inflation_tuning/nde_variants/std6k_l8h256/metrics.json",
+      "inflation_std_sum_bnt_over_nobnt": 1.0784914055296997,
+      "fom3_ratio_bnt_over_nobnt": 0.5904706276694187,
+      "nobnt_fom3_mean": 184630.19027959436,
+      "bnt_fom3_mean": 109018.70434111629,
+      "rank_score_tradeoff": 0.488020777860281,
+      "inflation_overcorrected": false,
+      "raw_rank_score_from_metrics": 0.488020777860281,
+      "config": {
+        "compressor_arch": "resnet50",
+        "compressor_steps": 5000,
+        "resolved_compressor_steps": {
+          "nobnt": 5000,
+          "bnt": 5000
+        },
+        "compressor_conv_channels": "64,128,256",
+        "compressor_dense_width": 256,
+        "compressor_pool_window": 16,
+        "compressor_pool_stride": 8,
+        "resnet_small_channels": "64,128,256",
+        "resnet_small_blocks": "2,2,2",
+        "resnet_head_width": 256,
+        "resnet_v2": false,
+        "standardize_summary": true,
+        "summary_clip_value": 5.0,
+        "flow_steps": 6000,
+        "nvp_layers": 8,
+        "nvp_hidden": 256,
+        "batch_size": 256,
+        "patience": 35
+      },
+      "seeds": [
+        41,
+        42,
+        43
+      ],
+      "retention_nobnt_vs_resnet50_split": 1.113639299202023,
+      "retention_nobnt_vs_control_plain_split": 0.46609030547131647,
+      "delta_inflation_vs_resnet50_split": 0.008205850000080561,
+      "delta_fom3_ratio_vs_resnet50_split": 0.011370668174522147,
+      "rank_position_by_tradeoff": 6
+    },
+    {
+      "name": "resnet50_split",
+      "family": "baseline",
+      "source_metrics_file": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_resnet_split_campaign/resnet50_split/metrics.json",
+      "inflation_std_sum_bnt_over_nobnt": 1.0702855555296191,
+      "fom3_ratio_bnt_over_nobnt": 0.5790999594948966,
+      "nobnt_fom3_mean": 165789.9379196576,
+      "bnt_fom3_mean": 96008.94633393512,
+      "rank_score_tradeoff": 0.49118559603472256,
+      "inflation_overcorrected": false,
+      "raw_rank_score_from_metrics": 0.49118559603472256,
+      "config": {
+        "compressor_arch": "resnet50",
+        "compressor_steps": 5000,
+        "resolved_compressor_steps": {
+          "nobnt": 5000,
+          "bnt": 5000
+        },
+        "compressor_conv_channels": "64,128,256",
+        "compressor_dense_width": 256,
+        "compressor_pool_window": 16,
+        "compressor_pool_stride": 8,
+        "resnet_small_channels": "64,128,256",
+        "resnet_small_blocks": "2,2,2",
+        "resnet_head_width": 256,
+        "resnet_v2": false,
+        "standardize_summary": false,
+        "summary_clip_value": 5.0,
+        "flow_steps": 6000,
+        "nvp_layers": 8,
+        "nvp_hidden": 256,
+        "batch_size": 256,
+        "patience": 35
+      },
+      "seeds": [
+        41,
+        42,
+        43
+      ],
+      "retention_nobnt_vs_resnet50_split": 1.0,
+      "retention_nobnt_vs_control_plain_split": 0.418528966969191,
+      "delta_inflation_vs_resnet50_split": 0.0,
+      "delta_fom3_ratio_vs_resnet50_split": 0.0,
+      "rank_position_by_tradeoff": 7
+    }
+  ],
+  "campaign_summary_context": {
+    "source_file": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_resnet_split_campaign/campaign_summary.json",
+    "campaign_best_config": "control_plain_split",
+    "campaign_ranked_configs": [
+      {
+        "name": "control_plain_split",
+        "rank_score": 0.4493205268307582,
+        "inflation_std_sum_bnt_over_nobnt": 1.0592058795031327,
+        "fom3_ratio_bnt_over_nobnt": 0.6098853526723745,
+        "nobnt_fom3_mean": 396125.3604983136,
+        "bnt_fom3_mean": 241591.0551899855,
+        "seeds": [
+          41,
+          42,
+          43,
+          44,
+          45
+        ]
+      },
+      {
+        "name": "resnet50_split",
+        "rank_score": 0.49118559603472256,
+        "inflation_std_sum_bnt_over_nobnt": 1.0702855555296191,
+        "fom3_ratio_bnt_over_nobnt": 0.5790999594948966,
+        "nobnt_fom3_mean": 165789.9379196576,
+        "bnt_fom3_mean": 96008.94633393512,
+        "seeds": [
+          41,
+          42,
+          43
+        ]
+      },
+      {
+        "name": "resnet_small_split",
+        "rank_score": 0.7104017838634511,
+        "inflation_std_sum_bnt_over_nobnt": 1.1222062743302539,
+        "fom3_ratio_bnt_over_nobnt": 0.4118044904668028,
+        "nobnt_fom3_mean": 393203.0293814241,
+        "bnt_fom3_mean": 161922.77316442062,
+        "seeds": [
+          41,
+          42,
+          43,
+          44,
+          45
+        ]
+      }
+    ]
+  }
+}

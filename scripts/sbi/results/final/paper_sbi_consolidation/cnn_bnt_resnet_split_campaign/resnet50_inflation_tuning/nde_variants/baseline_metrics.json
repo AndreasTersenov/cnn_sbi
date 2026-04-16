@@ -1,0 +1,98 @@
+{
+  "rows": [
+    {
+      "condition": "nobnt",
+      "seed": 41,
+      "file": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/bnt_comparison_tomo4/posteriors/cnn_tomo4_20deg160_nobnt_s41.npy",
+      "std_sum": 0.22233209013938904,
+      "bias_l2": 0.09169043203664447,
+      "fom3": 219841.75883173724,
+      "det_cov3": 2.0690911356356336e-11,
+      "logdet_cov3": -24.601326576984768,
+      "valid_fom3": true
+    },
+    {
+      "condition": "nobnt",
+      "seed": 42,
+      "file": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/bnt_comparison_tomo4/posteriors/cnn_tomo4_20deg160_nobnt_s42.npy",
+      "std_sum": 0.22782035171985626,
+      "bias_l2": 0.0833896272647825,
+      "fom3": 230710.9127598885,
+      "det_cov3": 1.8787272092647094e-11,
+      "logdet_cov3": -24.69784149172026,
+      "valid_fom3": true
+    },
+    {
+      "condition": "nobnt",
+      "seed": 43,
+      "file": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/bnt_comparison_tomo4/posteriors/cnn_tomo4_20deg160_nobnt_s43.npy",
+      "std_sum": 0.22461941838264465,
+      "bias_l2": 0.06528586867148216,
+      "fom3": 215049.71546776404,
+      "det_cov3": 2.1623314026857594e-11,
+      "logdet_cov3": -24.55724903022591,
+      "valid_fom3": true
+    },
+    {
+      "condition": "bnt",
+      "seed": 41,
+      "file": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/bnt_comparison_tomo4/posteriors/cnn_tomo4_20deg160_bnt_s41.npy",
+      "std_sum": 0.4008292555809021,
+      "bias_l2": 0.11368294625714351,
+      "fom3": 21686.680062760093,
+      "det_cov3": 2.1262476910602652e-09,
+      "logdet_cov3": -19.968907058140164,
+      "valid_fom3": true
+    },
+    {
+      "condition": "bnt",
+      "seed": 42,
+      "file": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/bnt_comparison_tomo4/posteriors/cnn_tomo4_20deg160_bnt_s42.npy",
+      "std_sum": 0.40501752495765686,
+      "bias_l2": 0.08506521482793061,
+      "fom3": 21248.292272781655,
+      "det_cov3": 2.2148888507009024e-09,
+      "logdet_cov3": -19.928063614978857,
+      "valid_fom3": true
+    },
+    {
+      "condition": "bnt",
+      "seed": 43,
+      "file": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/bnt_comparison_tomo4/posteriors/cnn_tomo4_20deg160_bnt_s43.npy",
+      "std_sum": 0.41205453872680664,
+      "bias_l2": 0.06507093278764828,
+      "fom3": 20156.100772931153,
+      "det_cov3": 2.461426987714724e-09,
+      "logdet_cov3": -19.822524578874567,
+      "valid_fom3": true
+    }
+  ],
+  "nobnt": {
+    "n": 3,
+    "std_sum_mean": 0.22492395341396332,
+    "std_sum_std": 0.002756775286976315,
+    "bias_l2_mean": 0.08012197599096971,
+    "bias_l2_std": 0.013502162799405717,
+    "fom3_mean": 221867.46235312996,
+    "fom3_std": 8024.70443213635,
+    "valid_fom3_count": 3
+  },
+  "bnt": {
+    "n": 3,
+    "std_sum_mean": 0.4059671064217885,
+    "std_sum_std": 0.005672567685290232,
+    "bias_l2_mean": 0.08793969795757413,
+    "bias_l2_std": 0.02443315275064907,
+    "fom3_mean": 21030.3577028243,
+    "fom3_std": 788.2194162796222,
+    "valid_fom3_count": 3
+  },
+  "inflation_std_sum_bnt_over_nobnt": 1.804908282376767,
+  "fom3_ratio_bnt_over_nobnt": 0.09478793095560738,
+  "name": "baseline_final_paper",
+  "seeds": [
+    41,
+    42,
+    43
+  ]
+}
