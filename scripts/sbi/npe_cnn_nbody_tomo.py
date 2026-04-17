@@ -120,6 +120,50 @@ def parse_positive_int_list(spec: str, arg_name: str) -> tuple[int, ...]:
     return tuple(values)
 
 
+def parse_nonnegative_float_list(spec: str, arg_name: str) -> tuple[float, ...]:
+    """Parse comma-separated finite non-negative floats."""
+    values = []
+    for token in spec.split(","):
+        token = token.strip()
+        if not token:
+            continue
+        value = float(token)
+        if not np.isfinite(value):
+            raise ValueError(f"Invalid value '{token}' in {arg_name}: not finite.")
+        if value < 0.0:
+            raise ValueError(
+                f"Invalid value '{value}' in {arg_name}. Values must be >= 0."
+            )
+        values.append(value)
+    if not values:
+        raise ValueError(f"{arg_name} must contain at least one float.")
+    return tuple(values)
+
+
+def parse_positive_float_list(spec: str, arg_name: str) -> tuple[float, ...]:
+    """Parse comma-separated finite positive floats."""
+    values = parse_nonnegative_float_list(spec, arg_name)
+    if any(v <= 0.0 for v in values):
+        raise ValueError(f"{arg_name} values must be > 0.")
+    return values
+
+
+def allocate_stage_steps(total_steps: int, stage_fracs: tuple[float, ...]) -> tuple[int, ...]:
+    """Allocate integer stage steps from fractions, preserving total exactly."""
+    raw = [float(total_steps) * frac for frac in stage_fracs]
+    floored = [int(np.floor(v)) for v in raw]
+    remainder = int(total_steps - sum(floored))
+    # Distribute leftover steps to largest residuals first.
+    residual_order = sorted(
+        range(len(raw)),
+        key=lambda idx: (raw[idx] - floored[idx]),
+        reverse=True,
+    )
+    for idx in residual_order[:remainder]:
+        floored[idx] += 1
+    return tuple(int(v) for v in floored)
+
+
 def _checkpoint_step(path: Path) -> int:
     match = re.search(r"batch(\d+)\.pkl$", path.name)
     return int(match.group(1)) if match is not None else -1
@@ -335,6 +379,32 @@ def parse_args() -> argparse.Namespace:
                     help="Batch size for compressor training")
     p.add_argument("--compressor-save-every", type=int, default=2000,
                     help="Save compressor checkpoint every N steps")
+    p.add_argument(
+        "--compressor-noise-curriculum",
+        action="store_true",
+        help=(
+            "Train compressor with staged shape-noise levels that ramp to "
+            "target --sigma-e."
+        ),
+    )
+    p.add_argument(
+        "--compressor-curriculum-sigma-factors",
+        type=str,
+        default="0.0,0.25,0.5,0.75,1.0",
+        help=(
+            "Comma-separated multipliers of --sigma-e for curriculum stages "
+            "(used when --compressor-noise-curriculum is set)."
+        ),
+    )
+    p.add_argument(
+        "--compressor-curriculum-stage-fracs",
+        type=str,
+        default="0.10,0.15,0.20,0.25,0.30",
+        help=(
+            "Comma-separated stage fractions summing to 1.0 for curriculum "
+            "step allocation (used when --compressor-noise-curriculum is set)."
+        ),
+    )
     p.add_argument(
         "--compressor-plot-contours",
         action="store_true",
@@ -706,6 +776,13 @@ def build_cnn_cache_metadata(
         "compressor_dense_width": int(args.compressor_dense_width),
         "compressor_pool_window": int(args.compressor_pool_window),
         "compressor_pool_stride": int(args.compressor_pool_stride),
+        "compressor_noise_curriculum": int(bool(args.compressor_noise_curriculum)),
+        "compressor_curriculum_sigma_factors": str(
+            args.compressor_curriculum_sigma_factors
+        ),
+        "compressor_curriculum_stage_fracs": str(
+            args.compressor_curriculum_stage_fracs
+        ),
         "resnet_small_channels": str(args.resnet_small_channels),
         "resnet_small_blocks": str(args.resnet_small_blocks),
         "resnet_head_width": int(args.resnet_head_width),
@@ -872,6 +949,7 @@ def train_compressor_vmim(
     compressor_train_split: str,
     compressor_val_split: str,
     plot_contours: bool = False,
+    noise_curriculum_stages: Optional[list[Dict[str, object]]] = None,
 ) -> Tuple[hk.Params, hk.State]:
     """Train the CNN compressor from scratch using VMIM loss.
 
@@ -939,98 +1017,175 @@ def train_compressor_vmim(
     )
     update = jax.jit(model.update)
 
-    # --- Streaming datasets ---
-    ds_tr = tfds.load(tfds_name, split=compressor_train_split)
-    ds_tr = ds_tr.repeat().shuffle(800)
-    ds_tr = ds_tr.map(augmentation_fn, num_parallel_calls=tf.data.AUTOTUNE)
-    ds_tr = ds_tr.batch(batch_size)
-    ds_tr = ds_tr.prefetch(tf.data.AUTOTUNE)
-    ds_train_iter = iter(tfds.as_numpy(ds_tr))
+    def _dataset_iter(split: str, shuffle_buffer: int, aug_fn):
+        ds = tfds.load(tfds_name, split=split)
+        ds = ds.repeat().shuffle(shuffle_buffer)
+        ds = ds.map(aug_fn, num_parallel_calls=tf.data.AUTOTUNE)
+        ds = ds.batch(batch_size)
+        ds = ds.prefetch(tf.data.AUTOTUNE)
+        return iter(tfds.as_numpy(ds))
 
-    ds_te = tfds.load(tfds_name, split=compressor_val_split)
-    ds_te = ds_te.repeat().shuffle(200)
-    ds_te = ds_te.map(augmentation_fn, num_parallel_calls=tf.data.AUTOTUNE)
-    ds_te = ds_te.batch(batch_size)
-    ds_te = ds_te.prefetch(tf.data.AUTOTUNE)
-    ds_test_iter = iter(tfds.as_numpy(ds_te))
+    stage_specs: list[Dict[str, object]]
+    if noise_curriculum_stages is None:
+        stage_specs = [
+            {
+                "name": "target_noise",
+                "stage_index": 1,
+                "sigma_factor": 1.0,
+                "sigma_e": None,
+                "steps": int(total_steps),
+                "augmentation_fn": augmentation_fn,
+            }
+        ]
+    else:
+        stage_specs = []
+        for stage in noise_curriculum_stages:
+            stage_steps = int(stage.get("steps", 0))
+            if stage_steps <= 0:
+                continue
+            if "augmentation_fn" not in stage:
+                raise ValueError("Curriculum stage is missing augmentation_fn.")
+            stage_specs.append(stage)
+        if not stage_specs:
+            raise ValueError("Noise curriculum enabled but no non-empty stages were built.")
+        planned_steps = sum(int(stage["steps"]) for stage in stage_specs)
+        if planned_steps != int(total_steps):
+            raise ValueError(
+                "Noise curriculum stage steps must sum to --compressor-steps "
+                f"({planned_steps} != {total_steps})."
+            )
+        print("  Noise curriculum schedule:")
+        for stage in stage_specs:
+            sigma_e_stage = stage.get("sigma_e")
+            sigma_desc = (
+                f"{float(sigma_e_stage):.6f}" if sigma_e_stage is not None else "target"
+            )
+            print(
+                "   - "
+                f"stage {int(stage.get('stage_index', -1))}: "
+                f"factor={float(stage.get('sigma_factor', 1.0)):.4f}, "
+                f"sigma_e={sigma_desc}, "
+                f"steps={int(stage['steps'])}"
+            )
 
     # --- Training loop ---
     store_loss = []
     loss_train_hist = []
     loss_test_hist = []
 
+    stop_training = False
+    global_step = 0
     last_step = 0
     last_saved_step = 0
-    for step in tqdm(range(1, total_steps + 1), desc="Compressor"):
-        ex = next(ds_train_iter)
-        if jnp.isnan(ex["maps"]).any():
-            continue
-
-        b_loss, params_merged, opt_state, state_cnn = update(
-            model_params=params_merged,
-            opt_state=opt_state,
-            theta=ex["theta"],
-            x=ex["maps"],
-            state_resnet=state_cnn,
+    for stage in stage_specs:
+        stage_idx = int(stage.get("stage_index", len(stage_specs)))
+        stage_name = str(stage.get("name", f"stage_{stage_idx}"))
+        stage_sigma_factor = float(stage.get("sigma_factor", 1.0))
+        stage_sigma_e = stage.get("sigma_e")
+        stage_steps = int(stage["steps"])
+        stage_aug = stage["augmentation_fn"]
+        stage_sigma_desc = (
+            f"{float(stage_sigma_e):.6f}" if stage_sigma_e is not None else "target"
         )
-        store_loss.append(float(b_loss))
 
-        if jnp.isnan(b_loss):
-            print("  [!] NaN loss — stopping compressor training")
-            break
-        last_step = step
+        wandb.log(
+            {
+                "compressor/curriculum_stage_index": stage_idx,
+                "compressor/curriculum_stage_sigma_factor": stage_sigma_factor,
+                "compressor/step": global_step,
+            }
+        )
+        print(
+            f"  Stage {stage_idx}/{len(stage_specs)} [{stage_name}] | "
+            f"sigma_factor={stage_sigma_factor:.4f} | "
+            f"sigma_e={stage_sigma_desc} | "
+            f"steps={stage_steps}"
+        )
 
-        # Log to wandb every 100 steps
-        if step % 100 == 0:
-            wandb.log({
-                "compressor/train_loss": float(b_loss),
-                "compressor/step": step,
-            })
+        ds_train_iter = _dataset_iter(compressor_train_split, 800, stage_aug)
+        ds_test_iter = _dataset_iter(compressor_val_split, 200, stage_aug)
 
-        if step % save_every == 0:
-            # Save checkpoint
-            ckpt_params = save_dir / f"params_nd_compressor_batch{step}.pkl"
-            with open(ckpt_params, "wb") as f:
-                pickle.dump(params_merged, f)
-            ckpt_state = save_dir / f"opt_state_resnet_batch{step}.pkl"
-            with open(ckpt_state, "wb") as f:
-                pickle.dump(state_cnn, f)
-            last_saved_step = step
+        for _ in tqdm(range(stage_steps), desc=f"Compressor[{stage_name}]"):
+            step = global_step + 1
+            ex = next(ds_train_iter)
+            if jnp.isnan(ex["maps"]).any():
+                global_step = step
+                continue
 
-            # Test loss
-            ex_test = next(ds_test_iter)
-            b_loss_test, _, _, _ = update(
+            b_loss, params_merged, opt_state, state_cnn = update(
                 model_params=params_merged,
                 opt_state=opt_state,
-                theta=ex_test["theta"],
-                x=ex_test["maps"],
+                theta=ex["theta"],
+                x=ex["maps"],
                 state_resnet=state_cnn,
             )
-            loss_train_hist.append(float(b_loss))
-            loss_test_hist.append(float(b_loss_test))
+            store_loss.append(float(b_loss))
 
-            wandb.log({
-                "compressor/test_loss": float(b_loss_test),
-                "compressor/step": step,
-            })
-            print(
-                f"  Step {step:6d} | "
-                f"train {b_loss:.4f} | test {b_loss_test:.4f}"
-            )
+            if jnp.isnan(b_loss):
+                print("  [!] NaN loss — stopping compressor training")
+                stop_training = True
+                global_step = step
+                break
+            last_step = step
+            global_step = step
 
-            # Save loss curves
-            np.save(save_dir / "loss_compressor_train.npy",
-                    np.array(loss_train_hist))
-            np.save(save_dir / "loss_compressor_test.npy",
-                    np.array(loss_test_hist))
+            # Log to wandb every 100 steps
+            if step % 100 == 0:
+                wandb.log({
+                    "compressor/train_loss": float(b_loss),
+                    "compressor/step": step,
+                    "compressor/curriculum_stage_index": stage_idx,
+                    "compressor/curriculum_stage_sigma_factor": stage_sigma_factor,
+                })
 
-            # Optional contour diagnostic from compressor + companion NF
-            if plot_contours:
-                _plot_compressor_contours(
-                    compressor, params_merged, state_cnn, nf,
-                    m_data_obs, field_npix, nbins, n_cosmo, compressor_dim,
-                    truth, param_names, save_dir, step,
+            if step % save_every == 0:
+                # Save checkpoint
+                ckpt_params = save_dir / f"params_nd_compressor_batch{step}.pkl"
+                with open(ckpt_params, "wb") as f:
+                    pickle.dump(params_merged, f)
+                ckpt_state = save_dir / f"opt_state_resnet_batch{step}.pkl"
+                with open(ckpt_state, "wb") as f:
+                    pickle.dump(state_cnn, f)
+                last_saved_step = step
+
+                # Test loss
+                ex_test = next(ds_test_iter)
+                b_loss_test, _, _, _ = update(
+                    model_params=params_merged,
+                    opt_state=opt_state,
+                    theta=ex_test["theta"],
+                    x=ex_test["maps"],
+                    state_resnet=state_cnn,
                 )
+                loss_train_hist.append(float(b_loss))
+                loss_test_hist.append(float(b_loss_test))
+
+                wandb.log({
+                    "compressor/test_loss": float(b_loss_test),
+                    "compressor/step": step,
+                    "compressor/curriculum_stage_index": stage_idx,
+                    "compressor/curriculum_stage_sigma_factor": stage_sigma_factor,
+                })
+                print(
+                    f"  Step {step:6d} | "
+                    f"train {b_loss:.4f} | test {b_loss_test:.4f}"
+                )
+
+                # Save loss curves
+                np.save(save_dir / "loss_compressor_train.npy",
+                        np.array(loss_train_hist))
+                np.save(save_dir / "loss_compressor_test.npy",
+                        np.array(loss_test_hist))
+
+                # Optional contour diagnostic from compressor + companion NF
+                if plot_contours:
+                    _plot_compressor_contours(
+                        compressor, params_merged, state_cnn, nf,
+                        m_data_obs, field_npix, nbins, n_cosmo, compressor_dim,
+                        truth, param_names, save_dir, step,
+                    )
+        if stop_training:
+            break
 
     if last_step > 0 and last_saved_step != last_step:
         ckpt_params = save_dir / f"params_nd_compressor_batch{last_step}.pkl"
@@ -1122,9 +1277,11 @@ def build_augmentation(
     nbins: int,
     tomo_bin_indices: tuple[int, ...],
     apply_bnt: bool = False,
+    sigma_e_override: Optional[float] = None,
 ):
     """Build the TF augmentation pipeline for the tomographic dataset."""
-    noise_std = sigma_e / jnp.sqrt(
+    effective_sigma_e = sigma_e if sigma_e_override is None else sigma_e_override
+    noise_std = effective_sigma_e / jnp.sqrt(
         galaxy_density * (field_size * 60 / field_npix) ** 2
     )
 
@@ -1664,6 +1821,34 @@ def main():
             "--resnet-small-channels and --resnet-small-blocks must have "
             "the same number of entries."
         )
+    curriculum_sigma_factors: Optional[tuple[float, ...]] = None
+    curriculum_stage_fracs: Optional[tuple[float, ...]] = None
+    if args.compressor_noise_curriculum:
+        curriculum_sigma_factors = parse_nonnegative_float_list(
+            args.compressor_curriculum_sigma_factors,
+            "--compressor-curriculum-sigma-factors",
+        )
+        curriculum_stage_fracs = parse_positive_float_list(
+            args.compressor_curriculum_stage_fracs,
+            "--compressor-curriculum-stage-fracs",
+        )
+        if len(curriculum_sigma_factors) != len(curriculum_stage_fracs):
+            raise ValueError(
+                "--compressor-curriculum-sigma-factors and "
+                "--compressor-curriculum-stage-fracs must have the same length."
+            )
+        frac_sum = float(np.sum(np.asarray(curriculum_stage_fracs, dtype=np.float64)))
+        if not np.isclose(frac_sum, 1.0, atol=1e-6):
+            raise ValueError(
+                "--compressor-curriculum-stage-fracs must sum to 1.0 "
+                f"(got {frac_sum:.8f})."
+            )
+        args.compressor_curriculum_sigma_factors = ",".join(
+            f"{v:.10g}" for v in curriculum_sigma_factors
+        )
+        args.compressor_curriculum_stage_fracs = ",".join(
+            f"{v:.10g}" for v in curriculum_stage_fracs
+        )
     if args.nbins != len(tomo_bin_indices):
         print(
             f"  Overriding nbins from {args.nbins} to {len(tomo_bin_indices)} "
@@ -1794,6 +1979,72 @@ def main():
         args.field_size, args.field_npix, args.nbins, tomo_bin_indices,
         apply_bnt=args.apply_bnt,
     )
+    curriculum_stages: Optional[list[Dict[str, object]]] = None
+    if args.train_compressor and args.compressor_noise_curriculum:
+        if curriculum_sigma_factors is None or curriculum_stage_fracs is None:
+            raise ValueError(
+                "Internal error: curriculum flag set but parsed schedule missing."
+            )
+        stage_steps = allocate_stage_steps(
+            int(args.compressor_steps),
+            curriculum_stage_fracs,
+        )
+        curriculum_stages = []
+        for idx, (sigma_factor, steps) in enumerate(
+            zip(curriculum_sigma_factors, stage_steps),
+            start=1,
+        ):
+            if int(steps) <= 0:
+                continue
+            stage_sigma_e = float(args.sigma_e) * float(sigma_factor)
+            stage_aug = build_augmentation(
+                args.map_kind,
+                args.sigma_e,
+                args.galaxy_density,
+                args.field_size,
+                args.field_npix,
+                args.nbins,
+                tomo_bin_indices,
+                apply_bnt=args.apply_bnt,
+                sigma_e_override=stage_sigma_e,
+            )
+            curriculum_stages.append(
+                {
+                    "name": f"curriculum_s{idx}",
+                    "stage_index": idx,
+                    "sigma_factor": float(sigma_factor),
+                    "sigma_e": float(stage_sigma_e),
+                    "steps": int(steps),
+                    "augmentation_fn": stage_aug,
+                }
+            )
+        if not curriculum_stages:
+            raise ValueError(
+                "Curriculum schedule produced zero non-empty stages. "
+                "Increase --compressor-steps or adjust stage fractions."
+            )
+        allocated = int(sum(int(stage["steps"]) for stage in curriculum_stages))
+        if allocated != int(args.compressor_steps):
+            raise ValueError(
+                "Curriculum stage allocation does not match compressor steps "
+                f"({allocated} != {args.compressor_steps})."
+            )
+        wandb.config.update(
+            {
+                "compressor/noise_curriculum": True,
+                "compressor/curriculum_sigma_factors": list(curriculum_sigma_factors),
+                "compressor/curriculum_stage_fracs": list(curriculum_stage_fracs),
+                "compressor/curriculum_stage_steps": [
+                    int(stage["steps"]) for stage in curriculum_stages
+                ],
+            },
+            allow_val_change=True,
+        )
+    else:
+        wandb.config.update(
+            {"compressor/noise_curriculum": False},
+            allow_val_change=True,
+        )
 
     if args.train_compressor:
         comp_save_dir = (
@@ -1821,6 +2072,7 @@ def main():
             compressor_train_split=args.compressor_train_split,
             compressor_val_split=args.compressor_val_split,
             plot_contours=args.compressor_plot_contours,
+            noise_curriculum_stages=curriculum_stages,
         )
         # Invalidate any cached compressed datasets
         cache_dir = Path(args.cache_dir) if args.cache_dir else None
@@ -2007,6 +2259,7 @@ def main():
         "data/val_size": len(dataset_val["theta"]),
         "data/summary_dim": summary_dim,
         "data/compressor_arch": args.compressor_arch,
+        "data/compressor_noise_curriculum": int(args.compressor_noise_curriculum),
         "data/require_disjoint_train_examples": int(args.require_disjoint_train_examples),
         "data/train_x_min": float(dataset_train["x"].min()),
         "data/train_x_max": float(dataset_train["x"].max()),
@@ -2129,6 +2382,13 @@ def main():
             "compressor_dense_width": int(args.compressor_dense_width),
             "compressor_pool_window": int(args.compressor_pool_window),
             "compressor_pool_stride": int(args.compressor_pool_stride),
+            "compressor_noise_curriculum": bool(args.compressor_noise_curriculum),
+            "compressor_curriculum_sigma_factors": str(
+                args.compressor_curriculum_sigma_factors
+            ),
+            "compressor_curriculum_stage_fracs": str(
+                args.compressor_curriculum_stage_fracs
+            ),
             "resnet_small_channels": str(args.resnet_small_channels),
             "resnet_small_blocks": str(args.resnet_small_blocks),
             "resnet_head_width": int(args.resnet_head_width),
