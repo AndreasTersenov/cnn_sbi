@@ -163,10 +163,9 @@ def main() -> None:
     if not conditions or not set(conditions).issubset({"nobnt", "bnt"}):
         raise ValueError("--conditions must be subset of {nobnt,bnt}.")
 
-    cnn_train_script = str(script_dir / "npe_cnn_nbody_tomo.py")
-    cnn_eval_script = str(script_dir / "npe_cnn_jaxili_nbody_tomo.py")
-    l1_script = str(script_dir / "npe_l1norm_jaxili_nbody_tomo.py")
-    vmim_script = str(script_dir / "npe_l1vmim_jaxili_nbody_tomo.py")
+    cnn_script = str(script_dir / "npe_cnn_nbody_tomo.py")
+    l1_script = str(script_dir / "npe_l1norm_nbody_tomo.py")
+    vmim_script = str(script_dir / "npe_l1vmim_nbody_tomo.py")
 
     manifest = {
         "seeds": seeds,
@@ -199,13 +198,8 @@ def main() -> None:
             name=f"cnn_train::{cond}",
             log_path=out_root / "logs" / f"cnn_train_{cond}.log",
             command=[
-                "conda",
-                "run",
-                "--no-capture-output",
-                "-n",
-                "jaxili",
                 "python",
-                cnn_train_script,
+                cnn_script,
                 "--no-wandb",
                 "--map-kind",
                 args.map_kind,
@@ -311,8 +305,6 @@ def main() -> None:
                 "3e-4",
                 "--total-steps",
                 "1",
-                "--epochs",
-                "2",
                 "--save-every",
                 "1",
                 "--no-sample",
@@ -345,13 +337,8 @@ def main() -> None:
             cnn_cache = out_root / "cache" / f"cnn_tomo4_20deg160_{cond}"
             cnn_post = out_root / "posteriors" / f"cnn_{tag}.npy"
             cnn_cmd = [
-                "conda",
-                "run",
-                "--no-capture-output",
-                "-n",
-                "jaxili",
                 "python",
-                cnn_eval_script,
+                cnn_script,
                 "--no-wandb",
                 "--map-kind",
                 args.map_kind,
@@ -395,7 +382,7 @@ def main() -> None:
                     [
                         "--plot",
                         "--figure-out",
-                        str(out_root / "figures" / f"cnn_{tag}.pdf"),
+                        str(out_root / "figures" / f"cnn_{tag}.png"),
                     ]
                 )
             eval_jobs.append(
@@ -410,11 +397,6 @@ def main() -> None:
             l1_cache = out_root / "cache" / f"l1_tomo4_20deg160_{cond}"
             l1_post = out_root / "posteriors" / f"l1_{tag}.npy"
             l1_cmd = [
-                "conda",
-                "run",
-                "--no-capture-output",
-                "-n",
-                "jaxili",
                 "python",
                 l1_script,
                 "--no-wandb",
@@ -444,8 +426,6 @@ def main() -> None:
                 str(args.l1_min_snr),
                 "--l1-max-snr",
                 str(args.l1_max_snr),
-                "--pca-components",
-                "0",
                 "--total-steps",
                 str(args.flow_steps_cnn_l1),
                 "--save-every",
@@ -466,7 +446,7 @@ def main() -> None:
                     [
                         "--plot",
                         "--figure-out",
-                        str(out_root / "figures" / f"l1_{tag}.pdf"),
+                        str(out_root / "figures" / f"l1_{tag}.png"),
                     ]
                 )
             eval_jobs.append(
@@ -550,7 +530,7 @@ def main() -> None:
                     [
                         "--plot",
                         "--figure-out",
-                        str(out_root / "figures" / f"l1vmim_{tag}.pdf"),
+                        str(out_root / "figures" / f"l1vmim_{tag}.png"),
                     ]
                 )
             eval_jobs.append(
