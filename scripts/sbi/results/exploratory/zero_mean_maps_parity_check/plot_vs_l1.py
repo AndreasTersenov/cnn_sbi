@@ -24,7 +24,18 @@ from typing import Dict, List, Tuple
 import numpy as np
 
 
-REPO_ROOT = Path(__file__).resolve().parents[5]
+def _find_repo_root(start: Path) -> Path:
+    sentinels = (".git", "pyproject.toml", "setup.py")
+    for candidate in (start, *start.parents):
+        if any((candidate / sentinel).exists() for sentinel in sentinels):
+            return candidate
+    raise RuntimeError(
+        f"Could not determine repository root from {start}; "
+        f"looked for any of {sentinels!r}."
+    )
+
+
+REPO_ROOT = _find_repo_root(Path(__file__).resolve().parent)
 TRUTH = np.array([0.26, 0.84, -1.0, 0.6736, 0.9649, 0.0493], dtype=np.float64)
 PARAM_NAMES = [r"\Omega_m", r"\sigma_8", r"w_0", r"h_0", r"n_s", r"\Omega_b"]
 
