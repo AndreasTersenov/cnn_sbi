@@ -1,0 +1,10 @@
+{
+  "run_a_resnet18": {
+    "nobnt": 15000,
+    "bnt": 15000
+  },
+  "run_b_advanced_plain": {
+    "nobnt": 120000,
+    "bnt": 120000
+  }
+}

@@ -1,0 +1,80 @@
+{
+  "old_best_cdim10_random25": {
+    "dataset": "random25",
+    "summary_dim": 10,
+    "sigma8_std_ratio_bnt_over_nobnt": 1.2646510601043701,
+    "omega_m_sigma8_area_ratio_bnt_over_nobnt": 1.450581007390768,
+    "per_seed_sigma8_std_ratio": [
+      1.168492078781128,
+      1.1690212488174438,
+      1.178894281387329,
+      1.1722195148468018,
+      1.153403401374817
+    ]
+  },
+  "indep_split_advanced_cdim10_long120k": {
+    "dataset": "nonoverlap48_split70_30",
+    "summary_dim": 10,
+    "sigma8_std_ratio_bnt_over_nobnt": 1.096550703048706,
+    "omega_m_sigma8_area_ratio_bnt_over_nobnt": 1.2045493988915388,
+    "per_seed_sigma8_std_ratio": [
+      1.0324190855026245,
+      1.1206276416778564,
+      1.1309001445770264,
+      1.1010112762451172,
+      1.0764154195785522
+    ]
+  },
+  "multipatch_advanced_cdim10": {
+    "dataset": "nonoverlap48",
+    "summary_dim": 10,
+    "sigma8_std_ratio_bnt_over_nobnt": 1.3548613786697388,
+    "omega_m_sigma8_area_ratio_bnt_over_nobnt": 1.4184126826666472,
+    "per_seed_sigma8_std_ratio": [
+      1.1444436311721802,
+      1.1893832683563232,
+      1.1879968643188477,
+      1.2024590969085693,
+      1.1775721311569214
+    ]
+  },
+  "indep_split_stagej_cdim6": {
+    "dataset": "nonoverlap48_split70_30",
+    "summary_dim": 6,
+    "sigma8_std_ratio_bnt_over_nobnt": 1.3046072721481323,
+    "omega_m_sigma8_area_ratio_bnt_over_nobnt": 1.4292572857991448,
+    "per_seed_sigma8_std_ratio": [
+      1.2796744108200073,
+      1.240583896636963,
+      1.267295002937317,
+      1.2558993101119995,
+      1.2432388067245483
+    ]
+  },
+  "indep_split_advanced_cdim12": {
+    "dataset": "nonoverlap48_split70_30",
+    "summary_dim": 12,
+    "sigma8_std_ratio_bnt_over_nobnt": 1.3045696020126343,
+    "omega_m_sigma8_area_ratio_bnt_over_nobnt": 1.3294697349117877,
+    "per_seed_sigma8_std_ratio": [
+      1.226616382598877,
+      1.2558798789978027,
+      1.2368817329406738,
+      1.254685401916504,
+      1.2674239873886108
+    ]
+  },
+  "indep_split_advanced_cdim10": {
+    "dataset": "nonoverlap48_split70_30",
+    "summary_dim": 10,
+    "sigma8_std_ratio_bnt_over_nobnt": 1.4071216583251953,
+    "omega_m_sigma8_area_ratio_bnt_over_nobnt": 1.545234814520401,
+    "per_seed_sigma8_std_ratio": [
+      1.1923019886016846,
+      1.2152553796768188,
+      1.228492259979248,
+      1.206917405128479,
+      1.2128393650054932
+    ]
+  }
+}

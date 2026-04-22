@@ -124,7 +124,7 @@ class NbodyCosmogridDatasetLargeFOV(tfds.core.GeneratorBasedBuilder):
             path_string = "/home/tersenov/" + dataset_grid["path_par"][i].decode(
                 "utf-8"
             ).replace("CosmoGrid", "CosmoGridV1").replace("raw", "stage3_forecast").replace("grid", "new_grid")
-
+            
             for j in range(7):
                 filename = path_string + "perm_000" + str(j)
                 filename_nbody = filename + "/projected_probes_maps_nobaryons512.h5"
@@ -132,12 +132,12 @@ class NbodyCosmogridDatasetLargeFOV(tfds.core.GeneratorBasedBuilder):
 
                 # keeping only last tomo bins
                 nbody_map = np.array(sim_nbody["kg"][f"stage3_lensing{4}"])
-
+                
                 # projection
                 key1, key2 = jax.random.split(key)
                 lon = jax.random.randint(key1, (nb_of_projected_map,), -180, 180)
                 lat = jax.random.randint(key2, (nb_of_projected_map,), -90, 90)
-
+                
                 for k in range(nb_of_projected_map):
                     proj = hp.projector.GnomonicProj(
                         rot=[lon[k], lat[k], 0], xsize=xsize, ysize=xsize, reso=reso
@@ -146,7 +146,7 @@ class NbodyCosmogridDatasetLargeFOV(tfds.core.GeneratorBasedBuilder):
                         nbody_map,
                         vec2pix_func=partial(hp.vec2pix, nside),
                     )
-
+                    
                     yield f"{i}-{j}-{k}", {
                         "map_nbody": jnp.array(projection_nbody).squeeze(),
                         "theta": jnp.array(params),

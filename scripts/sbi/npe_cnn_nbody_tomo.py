@@ -47,25 +47,25 @@ import tensorflow as tf
 from jax.lib import xla_bridge
 from tensorflow_probability.substrates import jax as tfp
 
-# sbi_lens normalizing flow
-from sbi_lens.normflow.models import AffineCoupling, ConditionalRealNVP
-from sbi_lens.normflow.train_model import TrainModel
-
-if not hasattr(np, "issctype"):
-    def _np_issctype(rep):
-        try:
-            return issubclass(np.dtype(rep).type, np.generic)
-        except Exception:
-            return False
-
-    np.issctype = _np_issctype  # type: ignore[attr-defined]
-
 from bnt_utils import (
     BNT_MATRIX_VERSION,
     apply_bnt_numpy,
     apply_bnt_tf,
     validate_bnt_configuration,
 )
+
+# NumPy 2.x compatibility for older TFP/JAX substrate code paths.
+if not hasattr(np, "issctype"):
+    def _np_issctype(rep) -> bool:
+        try:
+            return issubclass(np.dtype(rep).type, np.generic)
+        except Exception:
+            return False
+    np.issctype = _np_issctype  # type: ignore[attr-defined]
+
+# sbi_lens normalizing flow
+from sbi_lens.normflow.models import AffineCoupling, ConditionalRealNVP
+from sbi_lens.normflow.train_model import TrainModel
 
 # Register the local TFDS dataset builder so tfds.load can find it
 import tf_dataset_nbody_tomo as _tomo_builder  # noqa: F401, E402
@@ -120,6 +120,50 @@ def parse_positive_int_list(spec: str, arg_name: str) -> tuple[int, ...]:
     return tuple(values)
 
 
+def parse_nonnegative_float_list(spec: str, arg_name: str) -> tuple[float, ...]:
+    """Parse comma-separated finite non-negative floats."""
+    values = []
+    for token in spec.split(","):
+        token = token.strip()
+        if not token:
+            continue
+        value = float(token)
+        if not np.isfinite(value):
+            raise ValueError(f"Invalid value '{token}' in {arg_name}: not finite.")
+        if value < 0.0:
+            raise ValueError(
+                f"Invalid value '{value}' in {arg_name}. Values must be >= 0."
+            )
+        values.append(value)
+    if not values:
+        raise ValueError(f"{arg_name} must contain at least one float.")
+    return tuple(values)
+
+
+def parse_positive_float_list(spec: str, arg_name: str) -> tuple[float, ...]:
+    """Parse comma-separated finite positive floats."""
+    values = parse_nonnegative_float_list(spec, arg_name)
+    if any(v <= 0.0 for v in values):
+        raise ValueError(f"{arg_name} values must be > 0.")
+    return values
+
+
+def allocate_stage_steps(total_steps: int, stage_fracs: tuple[float, ...]) -> tuple[int, ...]:
+    """Allocate integer stage steps from fractions, preserving total exactly."""
+    raw = [float(total_steps) * frac for frac in stage_fracs]
+    floored = [int(np.floor(v)) for v in raw]
+    remainder = int(total_steps - sum(floored))
+    # Distribute leftover steps to largest residuals first.
+    residual_order = sorted(
+        range(len(raw)),
+        key=lambda idx: (raw[idx] - floored[idx]),
+        reverse=True,
+    )
+    for idx in residual_order[:remainder]:
+        floored[idx] += 1
+    return tuple(int(v) for v in floored)
+
+
 def _checkpoint_step(path: Path) -> int:
     match = re.search(r"batch(\d+)\.pkl$", path.name)
     return int(match.group(1)) if match is not None else -1
@@ -153,6 +197,18 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--compressor-dim", type=int, default=6,
                     help="CNN compressor output dimension")
     p.add_argument(
+        "--compressor-arch",
+        type=str,
+        default="plain",
+        choices=["plain", "resnet_small", "resnet18", "resnet34", "resnet50"],
+        help=(
+            "Compressor architecture family: "
+            "'plain' (existing 3-conv CNN), "
+            "'resnet_small' (handcrafted residual CNN), "
+            "'resnet18'/'resnet34'/'resnet50' (canonical Haiku ResNets)."
+        ),
+    )
+    p.add_argument(
         "--compressor-conv-channels",
         type=str,
         default="32,64,128",
@@ -175,6 +231,32 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=8,
         help="AvgPool stride in compressor head",
+    )
+    p.add_argument(
+        "--resnet-small-channels",
+        type=str,
+        default="64,128,256",
+        help="Comma-separated stage channels for --compressor-arch=resnet_small",
+    )
+    p.add_argument(
+        "--resnet-small-blocks",
+        type=str,
+        default="2,2,2",
+        help="Comma-separated residual blocks per stage for resnet_small",
+    )
+    p.add_argument(
+        "--resnet-head-width",
+        type=int,
+        default=256,
+        help="Dense head width used by ResNet compressors before output projection",
+    )
+    p.add_argument(
+        "--resnet-v2",
+        action="store_true",
+        help=(
+            "Use ResNet-v2 variant for canonical ResNets "
+            "(--compressor-arch=resnet18/resnet34/resnet50)"
+        ),
     )
     p.add_argument("--compressor-params", type=str,
                     default="/home/tersenov/software/cnn_sbi/tomo/save_params/"
@@ -208,6 +290,39 @@ def parse_args() -> argparse.Namespace:
         type=str,
         default="NbodyCosmogridDatasetTomo/grid",
         help="TFDS dataset name/config for training and validation maps",
+    )
+    p.add_argument(
+        "--compressor-train-split",
+        type=str,
+        default="train",
+        help="TFDS split used to train the compressor",
+    )
+    p.add_argument(
+        "--compressor-val-split",
+        type=str,
+        default="test",
+        help="TFDS split used for compressor validation/test loss",
+    )
+    p.add_argument(
+        "--nde-train-split",
+        type=str,
+        default="train",
+        help="TFDS split used to build NDE training summaries",
+    )
+    p.add_argument(
+        "--nde-val-split",
+        type=str,
+        default="test",
+        help="TFDS split used to build NDE validation summaries",
+    )
+    p.add_argument(
+        "--require-disjoint-train-examples",
+        action="store_true",
+        help=(
+            "Require zero overlap of exact training examples between "
+            "--compressor-train-split and --nde-train-split "
+            "(example identity = (cosmology, patch))."
+        ),
     )
     p.add_argument(
         "--tomo-bin-indices",
@@ -265,6 +380,72 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--compressor-save-every", type=int, default=2000,
                     help="Save compressor checkpoint every N steps")
     p.add_argument(
+        "--compressor-noise-curriculum",
+        action="store_true",
+        help=(
+            "Train compressor with staged shape-noise levels that ramp to "
+            "target --sigma-e."
+        ),
+    )
+    p.add_argument(
+        "--compressor-curriculum-sigma-factors",
+        type=str,
+        default="0.0,0.25,0.5,0.75,1.0",
+        help=(
+            "Comma-separated multipliers of --sigma-e for curriculum stages "
+            "(used when --compressor-noise-curriculum is set)."
+        ),
+    )
+    p.add_argument(
+        "--compressor-curriculum-stage-fracs",
+        type=str,
+        default="0.10,0.15,0.20,0.25,0.30",
+        help=(
+            "Comma-separated stage fractions summing to 1.0 for curriculum "
+            "step allocation (used when --compressor-noise-curriculum is set)."
+        ),
+    )
+    p.add_argument(
+        "--compressor-paired-bnt-nobnt-consistency",
+        action="store_true",
+        help=(
+            "Train compressor on paired no-BNT/BNT views of the same maps and "
+            "optimize VMIM with an explicit summary consistency penalty."
+        ),
+    )
+    p.add_argument(
+        "--compressor-consistency-weight",
+        type=float,
+        default=0.1,
+        help=(
+            "Weight for paired summary consistency loss when "
+            "--compressor-paired-bnt-nobnt-consistency is enabled."
+        ),
+    )
+    p.add_argument(
+        "--compressor-domain-adversarial",
+        action="store_true",
+        help=(
+            "Enable a domain-adversarial head (BNT vs no-BNT) during compressor "
+            "training to encourage domain-invariant summaries."
+        ),
+    )
+    p.add_argument(
+        "--compressor-domain-adv-weight",
+        type=float,
+        default=0.05,
+        help=(
+            "Adversarial weight for domain invariance. The compressor minimizes "
+            "VMIM + consistency - w * domain_ce."
+        ),
+    )
+    p.add_argument(
+        "--compressor-domain-hidden",
+        type=int,
+        default=64,
+        help="Hidden width of the domain-adversarial MLP head.",
+    )
+    p.add_argument(
         "--compressor-plot-contours",
         action="store_true",
         help="Plot compressor contour diagnostics at each compressor checkpoint",
@@ -294,6 +475,16 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--summary-clip-value", type=float, default=5.0,
                     help="Clip standardized summary features to ±this value "
                          "(0 = disabled)")
+    p.add_argument("--zero-mean-maps", dest="zero_mean_maps",
+                    action="store_true",
+                    help="Subtract the per-example, per-channel spatial mean "
+                         "from input maps before the compressor (mass-sheet "
+                         "degeneracy). Applied to observed and augmented "
+                         "training/eval maps.")
+    p.add_argument("--no-zero-mean-maps", dest="zero_mean_maps",
+                    action="store_false",
+                    help="Disable per-channel map demeaning (default).")
+    p.set_defaults(zero_mean_maps=False)
 
     return p.parse_args()
 
@@ -342,6 +533,7 @@ def load_observed_map(
     galaxy_density: float,
     rng_key: jax.Array,
     apply_bnt: bool = False,
+    zero_mean_maps: bool = False,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Load fiducial 4-bin tomographic map, project, and add shape noise."""
     print("######## OBSERVED DATA ########")
@@ -382,6 +574,19 @@ def load_observed_map(
     noise_std = pixel_noise_sigma(sigma_e, galaxy_density, field_size, field_npix)
     noise = jax.random.normal(rng_key, (field_npix, field_npix, nbins)) * noise_std
     m_data = np.array(jnp.asarray(m_data) + noise)
+    if zero_mean_maps:
+        # Mass-sheet degeneracy: each tomographic channel is recoverable only
+        # up to an additive constant in real data. Remove the per-channel
+        # spatial mean so the compressor cannot exploit absolute levels.
+        per_channel_mean = m_data.mean(axis=(0, 1), keepdims=True)
+        m_data = m_data - per_channel_mean
+        residual = np.abs(m_data.mean(axis=(0, 1))).max()
+        assert residual < 1e-5, (
+            f"Observed map per-channel mean residual {residual:.3e} after "
+            "demeaning exceeds tolerance."
+        )
+        print(f"  Applied zero-mean-maps to observed map "
+              f"(subtracted means = {per_channel_mean.squeeze()})")
     if apply_bnt:
         m_data = apply_bnt_numpy(m_data)
     print(f"  Observed map shape = {m_data.shape}, "
@@ -425,23 +630,173 @@ class CompressorCNN2D(hk.Module):
         return net_x.squeeze()
 
 
-def build_compressor(
+class ResidualBlock2D(hk.Module):
+    """Simple residual block used by handcrafted resnet_small compressor."""
+
+    def __init__(self, channels: int, stride: int = 1, name: str | None = None):
+        super().__init__(name=name)
+        self.channels = channels
+        self.stride = stride
+
+    def __call__(self, x):
+        shortcut = x
+        y = hk.Conv2D(self.channels, 3, stride=self.stride, padding="SAME")(x)
+        y = jax.nn.leaky_relu(y)
+        y = hk.Conv2D(self.channels, 3, stride=1, padding="SAME")(y)
+
+        if self.stride != 1 or x.shape[-1] != self.channels:
+            shortcut = hk.Conv2D(
+                self.channels, 1, stride=self.stride, padding="SAME"
+            )(shortcut)
+        return jax.nn.leaky_relu(y + shortcut)
+
+
+class CompressorResNetSmall(hk.Module):
+    """Handcrafted residual CNN compressor for (B, H, W, nbins) maps."""
+
+    def __init__(
+        self,
+        output_dim: int,
+        stage_channels: tuple[int, ...],
+        blocks_per_stage: tuple[int, ...],
+        head_width: int,
+        name: str | None = None,
+    ):
+        super().__init__(name=name)
+        self.output_dim = output_dim
+        self.stage_channels = stage_channels
+        self.blocks_per_stage = blocks_per_stage
+        self.head_width = head_width
+
+    def __call__(self, x):
+        y = hk.Conv2D(self.stage_channels[0], 7, stride=2, padding="SAME")(x)
+        y = jax.nn.leaky_relu(y)
+        y = hk.max_pool(y, window_shape=3, strides=2, padding="SAME")
+
+        for stage_idx, (channels, n_blocks) in enumerate(
+            zip(self.stage_channels, self.blocks_per_stage)
+        ):
+            for block_idx in range(n_blocks):
+                stride = 2 if (stage_idx > 0 and block_idx == 0) else 1
+                y = ResidualBlock2D(channels=channels, stride=stride)(
+                    y
+                )
+
+        y = jnp.mean(y, axis=(1, 2))
+        y = hk.Linear(self.head_width)(y)
+        y = jax.nn.leaky_relu(y)
+        y = hk.Linear(self.output_dim)(y)
+        return y.squeeze()
+
+
+class CompressorCanonicalResNet(hk.Module):
+    """Canonical Haiku ResNet compressor for selected depth."""
+
+    def __init__(
+        self,
+        output_dim: int,
+        arch: str,
+        head_width: int,
+        resnet_v2: bool,
+        name: str | None = None,
+    ):
+        super().__init__(name=name)
+        self.output_dim = output_dim
+        self.arch = arch
+        self.head_width = head_width
+        self.resnet_v2 = resnet_v2
+
+    def __call__(self, x, is_training: bool):
+        if self.arch == "resnet18":
+            backbone_cls = hk.nets.ResNet18
+        elif self.arch == "resnet34":
+            backbone_cls = hk.nets.ResNet34
+        elif self.arch == "resnet50":
+            backbone_cls = hk.nets.ResNet50
+        else:
+            raise ValueError(f"Unsupported canonical ResNet arch '{self.arch}'")
+
+        backbone = backbone_cls(
+            num_classes=self.head_width,
+            resnet_v2=self.resnet_v2,
+            initial_conv_config={
+                "output_channels": 64,
+                "kernel_shape": 7,
+                "stride": 2,
+                "padding": "SAME",
+            },
+            name=f"{self.arch}_backbone",
+        )
+        y = backbone(x, is_training=is_training)
+        y = jax.nn.leaky_relu(y)
+        y = hk.Linear(self.output_dim)(y)
+        return y.squeeze()
+
+
+def build_compressors(
     dim: int,
+    arch: str,
     conv_channels: tuple[int, ...],
     dense_width: int,
     pool_window: int,
     pool_stride: int,
+    resnet_small_channels: tuple[int, ...],
+    resnet_small_blocks: tuple[int, ...],
+    resnet_head_width: int,
+    resnet_v2: bool,
 ):
-    """Build the Haiku compressor transform."""
-    return hk.transform_with_state(
-        lambda y: CompressorCNN2D(
-            dim,
-            conv_channels=conv_channels,
-            dense_width=dense_width,
-            pool_window=pool_window,
-            pool_stride=pool_stride,
-        )(y)
-    )
+    """Build train/eval Haiku compressor transforms for selected architecture."""
+    if arch == "plain":
+        def _forward(y):
+            return CompressorCNN2D(
+                dim,
+                conv_channels=conv_channels,
+                dense_width=dense_width,
+                pool_window=pool_window,
+                pool_stride=pool_stride,
+                name="compressor_plain",
+            )(y)
+        compressor_train = hk.transform_with_state(_forward)
+        compressor_eval = hk.transform_with_state(_forward)
+        return compressor_train, compressor_eval
+
+    if arch == "resnet_small":
+        def _forward(y):
+            return CompressorResNetSmall(
+                dim,
+                stage_channels=resnet_small_channels,
+                blocks_per_stage=resnet_small_blocks,
+                head_width=resnet_head_width,
+                name="compressor_resnet_small",
+            )(y)
+        compressor_train = hk.transform_with_state(_forward)
+        compressor_eval = hk.transform_with_state(_forward)
+        return compressor_train, compressor_eval
+
+    if arch in ("resnet18", "resnet34", "resnet50"):
+        def _forward_train(y):
+            return CompressorCanonicalResNet(
+                dim,
+                arch=arch,
+                head_width=resnet_head_width,
+                resnet_v2=resnet_v2,
+                name=f"compressor_{arch}",
+            )(y, is_training=True)
+
+        def _forward_eval(y):
+            return CompressorCanonicalResNet(
+                dim,
+                arch=arch,
+                head_width=resnet_head_width,
+                resnet_v2=resnet_v2,
+                name=f"compressor_{arch}",
+            )(y, is_training=False)
+
+        compressor_train = hk.transform_with_state(_forward_train)
+        compressor_eval = hk.transform_with_state(_forward_eval)
+        return compressor_train, compressor_eval
+
+    raise ValueError(f"Unknown --compressor-arch '{arch}'")
 
 
 def load_compressor_params(
@@ -479,12 +834,36 @@ def build_cnn_cache_metadata(
 
     meta: Dict[str, object] = {
         "compressor_source": compressor_source,
+        "compressor_arch": str(args.compressor_arch),
         "compressor_dim": int(args.compressor_dim),
         "compressor_conv_channels": str(args.compressor_conv_channels),
         "compressor_dense_width": int(args.compressor_dense_width),
         "compressor_pool_window": int(args.compressor_pool_window),
         "compressor_pool_stride": int(args.compressor_pool_stride),
+        "compressor_noise_curriculum": int(bool(args.compressor_noise_curriculum)),
+        "compressor_curriculum_sigma_factors": str(
+            args.compressor_curriculum_sigma_factors
+        ),
+        "compressor_curriculum_stage_fracs": str(
+            args.compressor_curriculum_stage_fracs
+        ),
+        "compressor_paired_bnt_nobnt_consistency": int(
+            bool(args.compressor_paired_bnt_nobnt_consistency)
+        ),
+        "compressor_consistency_weight": float(args.compressor_consistency_weight),
+        "compressor_domain_adversarial": int(bool(args.compressor_domain_adversarial)),
+        "compressor_domain_adv_weight": float(args.compressor_domain_adv_weight),
+        "compressor_domain_hidden": int(args.compressor_domain_hidden),
+        "resnet_small_channels": str(args.resnet_small_channels),
+        "resnet_small_blocks": str(args.resnet_small_blocks),
+        "resnet_head_width": int(args.resnet_head_width),
+        "resnet_v2": int(bool(args.resnet_v2)),
         "tfds_name": str(args.tfds_name),
+        "compressor_train_split": str(args.compressor_train_split),
+        "compressor_val_split": str(args.compressor_val_split),
+        "nde_train_split": str(args.nde_train_split),
+        "nde_val_split": str(args.nde_val_split),
+        "require_disjoint_train_examples": int(bool(args.require_disjoint_train_examples)),
         "tomo_bin_indices": ",".join(str(b) for b in tomo_bin_indices),
         "map_kind": str(args.map_kind),
         "field_size": int(args.field_size),
@@ -494,6 +873,7 @@ def build_cnn_cache_metadata(
         "galaxy_density": float(args.galaxy_density),
         "apply_bnt": bool(args.apply_bnt),
         "bnt_matrix_version": BNT_MATRIX_VERSION if args.apply_bnt else "none",
+        "zero_mean_maps": int(bool(args.zero_mean_maps)),
         "compressor_params_path": str(params_path) if params_path else "",
         "compressor_state_path": str(state_path) if state_path else "",
         "compressor_params_sha256": (
@@ -537,6 +917,57 @@ def compare_cache_metadata(
                 )
 
     return len(mismatches) == 0, mismatches
+
+
+def _normalize_tfds_id(raw_id: object) -> str:
+    if isinstance(raw_id, bytes):
+        return raw_id.decode("utf-8")
+    return str(raw_id)
+
+
+def _collect_split_identity(
+    tfds_name: str,
+    split: str,
+    theta_decimals: int = 8,
+) -> Tuple[set[str], set[tuple[float, ...]]]:
+    import tensorflow_datasets as tfds
+
+    ds = tfds.load(
+        tfds_name,
+        split=split,
+        read_config=tfds.ReadConfig(add_tfds_id=True),
+    )
+    id_set: set[str] = set()
+    theta_set: set[tuple[float, ...]] = set()
+    for ex in tfds.as_numpy(ds):
+        id_set.add(_normalize_tfds_id(ex["tfds_id"]))
+        theta = np.asarray(ex["theta"], dtype=np.float64).copy()
+        # Match pipeline convention where H0 is expressed as h0.
+        theta[3] = theta[3] / 100.0
+        theta_set.add(tuple(np.round(theta, theta_decimals).tolist()))
+    return id_set, theta_set
+
+
+def audit_train_split_overlap(
+    tfds_name: str,
+    compressor_train_split: str,
+    nde_train_split: str,
+) -> Dict[str, object]:
+    """Audit overlap of exact examples between compressor and NDE train splits."""
+    ids_comp, theta_comp = _collect_split_identity(tfds_name, compressor_train_split)
+    ids_nde, theta_nde = _collect_split_identity(tfds_name, nde_train_split)
+    shared_ids = ids_comp.intersection(ids_nde)
+    shared_theta = theta_comp.intersection(theta_nde)
+    return {
+        "compressor_train_split": str(compressor_train_split),
+        "nde_train_split": str(nde_train_split),
+        "compressor_train_examples": int(len(ids_comp)),
+        "nde_train_examples": int(len(ids_nde)),
+        "shared_example_count": int(len(shared_ids)),
+        "compressor_theta_count": int(len(theta_comp)),
+        "nde_theta_count": int(len(theta_nde)),
+        "shared_theta_count": int(len(shared_theta)),
+    }
 
 
 def log_compressor_checkpoint_provenance(
@@ -587,7 +1018,15 @@ def train_compressor_vmim(
     truth: np.ndarray,
     param_names: list[str],
     tfds_name: str,
+    compressor_train_split: str,
+    compressor_val_split: str,
     plot_contours: bool = False,
+    noise_curriculum_stages: Optional[list[Dict[str, object]]] = None,
+    paired_bnt_nobnt_consistency: bool = False,
+    consistency_weight: float = 0.0,
+    domain_adversarial: bool = False,
+    domain_adv_weight: float = 0.0,
+    domain_hidden: int = 64,
 ) -> Tuple[hk.Params, hk.State]:
     """Train the CNN compressor from scratch using VMIM loss.
 
@@ -655,94 +1094,430 @@ def train_compressor_vmim(
     )
     update = jax.jit(model.update)
 
-    # --- Streaming datasets ---
-    ds_tr = tfds.load(tfds_name, split="train")
-    ds_tr = ds_tr.repeat().shuffle(800)
-    ds_tr = ds_tr.map(augmentation_fn, num_parallel_calls=tf.data.AUTOTUNE)
-    ds_tr = ds_tr.batch(batch_size)
-    ds_tr = ds_tr.prefetch(tf.data.AUTOTUNE)
-    ds_train_iter = iter(tfds.as_numpy(ds_tr))
+    paired_training = bool(paired_bnt_nobnt_consistency or domain_adversarial)
+    if paired_training:
+        print(
+            "  Paired BNT/no-BNT compressor training enabled "
+            f"(consistency_weight={consistency_weight:.4g}, "
+            f"domain_adversarial={bool(domain_adversarial)}, "
+            f"domain_adv_weight={domain_adv_weight:.4g})."
+        )
 
-    ds_te = tfds.load(tfds_name, split="test")
-    ds_te = ds_te.repeat().shuffle(200)
-    ds_te = ds_te.map(augmentation_fn, num_parallel_calls=tf.data.AUTOTUNE)
-    ds_te = ds_te.batch(batch_size)
-    ds_te = ds_te.prefetch(tf.data.AUTOTUNE)
-    ds_test_iter = iter(tfds.as_numpy(ds_te))
+    domain_params = None
+    domain_optimizer = None
+    domain_opt_state = None
+
+    def _domain_logits(dparams, y):
+        hidden = jnp.tanh(jnp.matmul(y, dparams["w1"]) + dparams["b1"])
+        return jnp.matmul(hidden, dparams["w2"]) + dparams["b2"]
+
+    if domain_adversarial:
+        key_dom = jax.random.PRNGKey(17)
+        key_w1, key_w2 = jax.random.split(key_dom)
+        scale_in = 1.0 / np.sqrt(float(max(1, compressor_dim)))
+        scale_hidden = 1.0 / np.sqrt(float(max(1, domain_hidden)))
+        domain_params = {
+            "w1": jax.random.normal(key_w1, (compressor_dim, domain_hidden)) * scale_in,
+            "b1": jnp.zeros((domain_hidden,), dtype=jnp.float32),
+            "w2": jax.random.normal(key_w2, (domain_hidden, 2)) * scale_hidden,
+            "b2": jnp.zeros((2,), dtype=jnp.float32),
+        }
+        domain_optimizer = optax.adam(learning_rate=lr_schedule)
+        domain_opt_state = domain_optimizer.init(domain_params)
+
+        @jax.jit
+        def _update_domain_head(
+            current_domain_params,
+            current_domain_opt_state,
+            model_params,
+            state_resnet,
+            x_nobnt,
+            x_bnt,
+        ):
+            def _domain_loss_fn(dparams):
+                y_nobnt, _ = compressor.apply(model_params, state_resnet, None, x_nobnt)
+                y_bnt, _ = compressor.apply(model_params, state_resnet, None, x_bnt)
+                y_domain = jnp.concatenate(
+                    [
+                        jax.lax.stop_gradient(y_nobnt),
+                        jax.lax.stop_gradient(y_bnt),
+                    ],
+                    axis=0,
+                )
+                labels = jnp.concatenate(
+                    [
+                        jnp.zeros((y_nobnt.shape[0],), dtype=jnp.int32),
+                        jnp.ones((y_bnt.shape[0],), dtype=jnp.int32),
+                    ],
+                    axis=0,
+                )
+                logits = _domain_logits(dparams, y_domain)
+                ce = jnp.mean(
+                    optax.softmax_cross_entropy_with_integer_labels(logits, labels)
+                )
+                acc = jnp.mean((jnp.argmax(logits, axis=-1) == labels).astype(jnp.float32))
+                return ce, acc
+
+            (domain_loss, domain_acc), domain_grads = jax.value_and_grad(
+                _domain_loss_fn, has_aux=True
+            )(current_domain_params)
+            domain_updates, new_domain_opt_state = domain_optimizer.update(  # type: ignore[union-attr]
+                domain_grads, current_domain_opt_state, current_domain_params
+            )
+            new_domain_params = optax.apply_updates(current_domain_params, domain_updates)
+            return domain_loss, domain_acc, new_domain_params, new_domain_opt_state
+
+    def _paired_objective(
+        model_params,
+        state_resnet,
+        theta,
+        x_nobnt,
+        x_bnt,
+        current_domain_params,
+    ):
+        y_nobnt, state_mid = compressor.apply(model_params, state_resnet, None, x_nobnt)
+        y_bnt, state_out = compressor.apply(model_params, state_mid, None, x_bnt)
+
+        log_prob_nobnt = nf.apply(model_params, theta, y_nobnt)
+        log_prob_bnt = nf.apply(model_params, theta, y_bnt)
+        vmim_loss = -0.5 * (jnp.mean(log_prob_nobnt) + jnp.mean(log_prob_bnt))
+
+        consistency_loss = jnp.mean(jnp.sum((y_nobnt - y_bnt) ** 2, axis=-1))
+        total_loss = vmim_loss + float(consistency_weight) * consistency_loss
+
+        domain_ce = jnp.asarray(0.0, dtype=vmim_loss.dtype)
+        domain_acc = jnp.asarray(0.0, dtype=vmim_loss.dtype)
+        if domain_adversarial:
+            y_domain = jnp.concatenate([y_nobnt, y_bnt], axis=0)
+            labels = jnp.concatenate(
+                [
+                    jnp.zeros((y_nobnt.shape[0],), dtype=jnp.int32),
+                    jnp.ones((y_bnt.shape[0],), dtype=jnp.int32),
+                ],
+                axis=0,
+            )
+            logits = _domain_logits(current_domain_params, y_domain)
+            domain_ce = jnp.mean(
+                optax.softmax_cross_entropy_with_integer_labels(logits, labels)
+            )
+            domain_acc = jnp.mean((jnp.argmax(logits, axis=-1) == labels).astype(jnp.float32))
+            total_loss = total_loss - float(domain_adv_weight) * domain_ce
+
+        return total_loss, state_out, vmim_loss, consistency_loss, domain_ce, domain_acc
+
+    @jax.jit
+    def _update_paired(
+        model_params,
+        current_opt_state,
+        state_resnet,
+        theta,
+        x_nobnt,
+        x_bnt,
+        current_domain_params,
+    ):
+        def _loss_fn(params):
+            total, state_out, vmim_loss, consistency_loss, domain_ce, domain_acc = (
+                _paired_objective(
+                    params,
+                    state_resnet,
+                    theta,
+                    x_nobnt,
+                    x_bnt,
+                    current_domain_params,
+                )
+            )
+            aux = (state_out, vmim_loss, consistency_loss, domain_ce, domain_acc)
+            return total, aux
+
+        (loss, aux), grads = jax.value_and_grad(_loss_fn, has_aux=True)(model_params)
+        updates, new_opt_state = optimizer.update(grads, current_opt_state, model_params)
+        new_params = optax.apply_updates(model_params, updates)
+        state_out, vmim_loss, consistency_loss, domain_ce, domain_acc = aux
+        return (
+            loss,
+            new_params,
+            new_opt_state,
+            state_out,
+            vmim_loss,
+            consistency_loss,
+            domain_ce,
+            domain_acc,
+        )
+
+    @jax.jit
+    def _eval_paired(
+        model_params,
+        state_resnet,
+        theta,
+        x_nobnt,
+        x_bnt,
+        current_domain_params,
+    ):
+        total, _, vmim_loss, consistency_loss, domain_ce, domain_acc = _paired_objective(
+            model_params,
+            state_resnet,
+            theta,
+            x_nobnt,
+            x_bnt,
+            current_domain_params,
+        )
+        return total, vmim_loss, consistency_loss, domain_ce, domain_acc
+
+    def _dataset_iter(split: str, shuffle_buffer: int, aug_fn):
+        ds = tfds.load(tfds_name, split=split)
+        ds = ds.repeat().shuffle(shuffle_buffer)
+        ds = ds.map(aug_fn, num_parallel_calls=tf.data.AUTOTUNE)
+        ds = ds.batch(batch_size)
+        ds = ds.prefetch(tf.data.AUTOTUNE)
+        return iter(tfds.as_numpy(ds))
+
+    stage_specs: list[Dict[str, object]]
+    if noise_curriculum_stages is None:
+        stage_specs = [
+            {
+                "name": "target_noise",
+                "stage_index": 1,
+                "sigma_factor": 1.0,
+                "sigma_e": None,
+                "steps": int(total_steps),
+                "augmentation_fn": augmentation_fn,
+            }
+        ]
+    else:
+        stage_specs = []
+        for stage in noise_curriculum_stages:
+            stage_steps = int(stage.get("steps", 0))
+            if stage_steps <= 0:
+                continue
+            if "augmentation_fn" not in stage:
+                raise ValueError("Curriculum stage is missing augmentation_fn.")
+            stage_specs.append(stage)
+        if not stage_specs:
+            raise ValueError("Noise curriculum enabled but no non-empty stages were built.")
+        planned_steps = sum(int(stage["steps"]) for stage in stage_specs)
+        if planned_steps != int(total_steps):
+            raise ValueError(
+                "Noise curriculum stage steps must sum to --compressor-steps "
+                f"({planned_steps} != {total_steps})."
+            )
+        print("  Noise curriculum schedule:")
+        for stage in stage_specs:
+            sigma_e_stage = stage.get("sigma_e")
+            sigma_desc = (
+                f"{float(sigma_e_stage):.6f}" if sigma_e_stage is not None else "target"
+            )
+            print(
+                "   - "
+                f"stage {int(stage.get('stage_index', -1))}: "
+                f"factor={float(stage.get('sigma_factor', 1.0)):.4f}, "
+                f"sigma_e={sigma_desc}, "
+                f"steps={int(stage['steps'])}"
+            )
 
     # --- Training loop ---
     store_loss = []
     loss_train_hist = []
     loss_test_hist = []
 
-    for step in tqdm(range(1, total_steps + 1), desc="Compressor"):
-        ex = next(ds_train_iter)
-        if jnp.isnan(ex["maps"]).any():
-            continue
-
-        b_loss, params_merged, opt_state, state_cnn = update(
-            model_params=params_merged,
-            opt_state=opt_state,
-            theta=ex["theta"],
-            x=ex["maps"],
-            state_resnet=state_cnn,
+    stop_training = False
+    global_step = 0
+    last_step = 0
+    last_saved_step = 0
+    for stage in stage_specs:
+        stage_idx = int(stage.get("stage_index", len(stage_specs)))
+        stage_name = str(stage.get("name", f"stage_{stage_idx}"))
+        stage_sigma_factor = float(stage.get("sigma_factor", 1.0))
+        stage_sigma_e = stage.get("sigma_e")
+        stage_steps = int(stage["steps"])
+        stage_aug = stage["augmentation_fn"]
+        stage_sigma_desc = (
+            f"{float(stage_sigma_e):.6f}" if stage_sigma_e is not None else "target"
         )
-        store_loss.append(float(b_loss))
 
-        if jnp.isnan(b_loss):
-            print("  [!] NaN loss — stopping compressor training")
+        wandb.log(
+            {
+                "compressor/curriculum_stage_index": stage_idx,
+                "compressor/curriculum_stage_sigma_factor": stage_sigma_factor,
+                "compressor/step": global_step,
+            }
+        )
+        print(
+            f"  Stage {stage_idx}/{len(stage_specs)} [{stage_name}] | "
+            f"sigma_factor={stage_sigma_factor:.4f} | "
+            f"sigma_e={stage_sigma_desc} | "
+            f"steps={stage_steps}"
+        )
+
+        ds_train_iter = _dataset_iter(compressor_train_split, 800, stage_aug)
+        ds_test_iter = _dataset_iter(compressor_val_split, 200, stage_aug)
+
+        for _ in tqdm(range(stage_steps), desc=f"Compressor[{stage_name}]"):
+            step = global_step + 1
+            ex = next(ds_train_iter)
+            if paired_training:
+                has_nan = bool(np.isnan(ex["maps_nobnt"]).any()) or bool(
+                    np.isnan(ex["maps_bnt"]).any()
+                )
+            else:
+                has_nan = bool(np.isnan(ex["maps"]).any())
+            if has_nan:
+                global_step = step
+                continue
+
+            domain_loss = 0.0
+            domain_acc = 0.0
+            if domain_adversarial:
+                (
+                    domain_loss,
+                    domain_acc,
+                    domain_params,
+                    domain_opt_state,
+                ) = _update_domain_head(
+                    domain_params,
+                    domain_opt_state,
+                    params_merged,
+                    state_cnn,
+                    ex["maps_nobnt"],
+                    ex["maps_bnt"],
+                )
+
+            if paired_training:
+                (
+                    b_loss,
+                    params_merged,
+                    opt_state,
+                    state_cnn,
+                    vmim_train_loss,
+                    consistency_train_loss,
+                    domain_ce_train,
+                    domain_acc_train,
+                ) = _update_paired(
+                    params_merged,
+                    opt_state,
+                    state_cnn,
+                    ex["theta"],
+                    ex["maps_nobnt"],
+                    ex["maps_bnt"],
+                    domain_params,
+                )
+            else:
+                b_loss, params_merged, opt_state, state_cnn = update(
+                    model_params=params_merged,
+                    opt_state=opt_state,
+                    theta=ex["theta"],
+                    x=ex["maps"],
+                    state_resnet=state_cnn,
+                )
+                vmim_train_loss = b_loss
+                consistency_train_loss = jnp.asarray(0.0, dtype=b_loss.dtype)
+                domain_ce_train = jnp.asarray(0.0, dtype=b_loss.dtype)
+                domain_acc_train = jnp.asarray(0.0, dtype=b_loss.dtype)
+            store_loss.append(float(b_loss))
+
+            if jnp.isnan(b_loss):
+                print("  [!] NaN loss — stopping compressor training")
+                stop_training = True
+                global_step = step
+                break
+            last_step = step
+            global_step = step
+
+            # Log to wandb every 100 steps
+            if step % 100 == 0:
+                wandb.log({
+                    "compressor/train_loss": float(b_loss),
+                    "compressor/train_vmim_loss": float(vmim_train_loss),
+                    "compressor/train_consistency_loss": float(consistency_train_loss),
+                    "compressor/train_domain_ce": float(domain_ce_train),
+                    "compressor/train_domain_acc": float(domain_acc_train),
+                    "compressor/domain_head_loss": float(domain_loss),
+                    "compressor/domain_head_acc": float(domain_acc),
+                    "compressor/step": step,
+                    "compressor/curriculum_stage_index": stage_idx,
+                    "compressor/curriculum_stage_sigma_factor": stage_sigma_factor,
+                })
+
+            if step % save_every == 0:
+                # Save checkpoint
+                ckpt_params = save_dir / f"params_nd_compressor_batch{step}.pkl"
+                with open(ckpt_params, "wb") as f:
+                    pickle.dump(params_merged, f)
+                ckpt_state = save_dir / f"opt_state_resnet_batch{step}.pkl"
+                with open(ckpt_state, "wb") as f:
+                    pickle.dump(state_cnn, f)
+                last_saved_step = step
+
+                # Test loss
+                ex_test = next(ds_test_iter)
+                if paired_training:
+                    (
+                        b_loss_test,
+                        vmim_test_loss,
+                        consistency_test_loss,
+                        domain_ce_test,
+                        domain_acc_test,
+                    ) = _eval_paired(
+                        params_merged,
+                        state_cnn,
+                        ex_test["theta"],
+                        ex_test["maps_nobnt"],
+                        ex_test["maps_bnt"],
+                        domain_params,
+                    )
+                else:
+                    b_loss_test, _, _, _ = update(
+                        model_params=params_merged,
+                        opt_state=opt_state,
+                        theta=ex_test["theta"],
+                        x=ex_test["maps"],
+                        state_resnet=state_cnn,
+                    )
+                    vmim_test_loss = b_loss_test
+                    consistency_test_loss = jnp.asarray(0.0, dtype=b_loss_test.dtype)
+                    domain_ce_test = jnp.asarray(0.0, dtype=b_loss_test.dtype)
+                    domain_acc_test = jnp.asarray(0.0, dtype=b_loss_test.dtype)
+                loss_train_hist.append(float(b_loss))
+                loss_test_hist.append(float(b_loss_test))
+
+                wandb.log({
+                    "compressor/test_loss": float(b_loss_test),
+                    "compressor/test_vmim_loss": float(vmim_test_loss),
+                    "compressor/test_consistency_loss": float(consistency_test_loss),
+                    "compressor/test_domain_ce": float(domain_ce_test),
+                    "compressor/test_domain_acc": float(domain_acc_test),
+                    "compressor/step": step,
+                    "compressor/curriculum_stage_index": stage_idx,
+                    "compressor/curriculum_stage_sigma_factor": stage_sigma_factor,
+                })
+                print(
+                    f"  Step {step:6d} | "
+                    f"train {b_loss:.4f} | test {b_loss_test:.4f}"
+                )
+
+                # Save loss curves
+                np.save(save_dir / "loss_compressor_train.npy",
+                        np.array(loss_train_hist))
+                np.save(save_dir / "loss_compressor_test.npy",
+                        np.array(loss_test_hist))
+
+                # Optional contour diagnostic from compressor + companion NF
+                if plot_contours:
+                    _plot_compressor_contours(
+                        compressor, params_merged, state_cnn, nf,
+                        m_data_obs, field_npix, nbins, n_cosmo, compressor_dim,
+                        truth, param_names, save_dir, step,
+                    )
+        if stop_training:
             break
 
-        # Log to wandb every 100 steps
-        if step % 100 == 0:
-            wandb.log({
-                "compressor/train_loss": float(b_loss),
-                "compressor/step": step,
-            })
-
-        if step % save_every == 0:
-            # Save checkpoint
-            ckpt_params = save_dir / f"params_nd_compressor_batch{step}.pkl"
-            with open(ckpt_params, "wb") as f:
-                pickle.dump(params_merged, f)
-            ckpt_state = save_dir / f"opt_state_resnet_batch{step}.pkl"
-            with open(ckpt_state, "wb") as f:
-                pickle.dump(state_cnn, f)
-
-            # Test loss
-            ex_test = next(ds_test_iter)
-            b_loss_test, _, _, _ = update(
-                model_params=params_merged,
-                opt_state=opt_state,
-                theta=ex_test["theta"],
-                x=ex_test["maps"],
-                state_resnet=state_cnn,
-            )
-            loss_train_hist.append(float(b_loss))
-            loss_test_hist.append(float(b_loss_test))
-
-            wandb.log({
-                "compressor/test_loss": float(b_loss_test),
-                "compressor/step": step,
-            })
-            print(
-                f"  Step {step:6d} | "
-                f"train {b_loss:.4f} | test {b_loss_test:.4f}"
-            )
-
-            # Save loss curves
-            np.save(save_dir / "loss_compressor_train.npy",
-                    np.array(loss_train_hist))
-            np.save(save_dir / "loss_compressor_test.npy",
-                    np.array(loss_test_hist))
-
-            # Optional contour diagnostic from compressor + companion NF
-            if plot_contours:
-                _plot_compressor_contours(
-                    compressor, params_merged, state_cnn, nf,
-                    m_data_obs, field_npix, nbins, n_cosmo, compressor_dim,
-                    truth, param_names, save_dir, step,
-                )
+    if last_step > 0 and last_saved_step != last_step:
+        ckpt_params = save_dir / f"params_nd_compressor_batch{last_step}.pkl"
+        with open(ckpt_params, "wb") as f:
+            pickle.dump(params_merged, f)
+        ckpt_state = save_dir / f"opt_state_resnet_batch{last_step}.pkl"
+        with open(ckpt_state, "wb") as f:
+            pickle.dump(state_cnn, f)
+        print(f"  Saved final checkpoint @ step {last_step}.")
 
     print(f"  Compressor training done ({len(store_loss)} steps).")
     wandb.run.summary["compressor/total_steps"] = len(store_loss)
@@ -825,9 +1600,13 @@ def build_augmentation(
     nbins: int,
     tomo_bin_indices: tuple[int, ...],
     apply_bnt: bool = False,
+    sigma_e_override: Optional[float] = None,
+    paired_bnt_nobnt_consistency: bool = False,
+    zero_mean_maps: bool = False,
 ):
     """Build the TF augmentation pipeline for the tomographic dataset."""
-    noise_std = sigma_e / jnp.sqrt(
+    effective_sigma_e = sigma_e if sigma_e_override is None else sigma_e_override
+    noise_std = effective_sigma_e / jnp.sqrt(
         galaxy_density * (field_size * 60 / field_npix) ** 2
     )
 
@@ -838,11 +1617,52 @@ def build_augmentation(
     }[map_kind]
     gather_indices = tf.constant([b - 1 for b in tomo_bin_indices], dtype=tf.int32)
 
+    def _rescale_h(theta):
+        return tf.tensor_scatter_nd_update(theta, [[3]], [theta[3] / 100.0])
+
+    def _flip_pair(x_nobnt, x_bnt):
+        flip_lr = tf.less(tf.random.uniform([], 0.0, 1.0), 0.5)
+        flip_ud = tf.less(tf.random.uniform([], 0.0, 1.0), 0.5)
+
+        def _apply_lr(x):
+            return tf.cond(flip_lr, lambda: tf.image.flip_left_right(x), lambda: x)
+
+        def _apply_ud(x):
+            return tf.cond(flip_ud, lambda: tf.image.flip_up_down(x), lambda: x)
+
+        x_nobnt = _apply_ud(_apply_lr(x_nobnt))
+        x_bnt = _apply_ud(_apply_lr(x_bnt))
+        return x_nobnt, x_bnt
+
+    if paired_bnt_nobnt_consistency:
+        def augmentation(example):
+            x = tf.gather(example[map_key], gather_indices, axis=-1)
+            noise = tf.random.normal(
+                shape=(field_npix, field_npix, nbins),
+                stddev=noise_std,
+            )
+            x_nobnt = x + noise
+            if zero_mean_maps:
+                # Demean once, before BNT split. BNT is linear across channels
+                # so B(x - m·1) is also zero-mean per channel — both views see
+                # a mass-sheet-degeneracy-respecting input.
+                x_nobnt = x_nobnt - tf.reduce_mean(
+                    x_nobnt, axis=[0, 1], keepdims=True,
+                )
+            x_bnt = apply_bnt_tf(x_nobnt)
+            x_nobnt, x_bnt = _flip_pair(x_nobnt, x_bnt)
+            theta = _rescale_h(example["theta"])
+            return {"maps_nobnt": x_nobnt, "maps_bnt": x_bnt, "theta": theta}
+
+        return augmentation
+
     def augmentation_noise(example):
         x = tf.gather(example[map_key], gather_indices, axis=-1)
         x += tf.random.normal(
             shape=(field_npix, field_npix, nbins), stddev=noise_std,
         )
+        if zero_mean_maps:
+            x = x - tf.reduce_mean(x, axis=[0, 1], keepdims=True)
         if apply_bnt:
             x = apply_bnt_tf(x)
         return {"maps": x, "theta": example["theta"]}
@@ -854,8 +1674,7 @@ def build_augmentation(
         return {"maps": x, "theta": example["theta"]}
 
     def rescale_h(example):
-        x = example["theta"]
-        x = tf.tensor_scatter_nd_update(x, [[3]], [x[3] / 100.0])
+        x = _rescale_h(example["theta"])
         return {"maps": example["maps"], "theta": x}
 
     def augmentation(example):
@@ -876,6 +1695,7 @@ def compress_dataset(
     comp_params: hk.Params,
     comp_state: hk.State,
     ds_batch_size: int,
+    paired_map_view: Optional[str] = None,
 ) -> Dict[str, np.ndarray]:
     """
     Load TFDS dataset, apply augmentation, compress via CNN.
@@ -894,15 +1714,42 @@ def compress_dataset(
     x_list = []
     n_processed = 0
     t0 = time.time()
+    first_batch_reported = False
 
     for example in ds.as_numpy_iterator():
-        maps_np = example["maps"]   # (B, H, W, nbins)
+        if "maps" in example:
+            maps_np = example["maps"]   # (B, H, W, nbins)
+        elif "maps_nobnt" in example and "maps_bnt" in example:
+            if paired_map_view == "nobnt":
+                maps_np = example["maps_nobnt"]
+            elif paired_map_view == "bnt":
+                maps_np = example["maps_bnt"]
+            else:
+                raise KeyError(
+                    "Augmentation produced paired maps but no valid paired_map_view "
+                    f"was provided (got {paired_map_view!r})."
+                )
+        else:
+            raise KeyError(
+                "Augmentation output missing map tensor. Expected one of "
+                "['maps'] or paired ['maps_nobnt', 'maps_bnt']; got keys "
+                f"{sorted(example.keys())}."
+            )
         theta_np = example["theta"]  # (B, 6)
 
         # Skip any batch with NaNs
         if np.isnan(maps_np).any():
             print("    [!] Skipped batch with NaN maps")
             continue
+
+        if not first_batch_reported:
+            per_map_means = maps_np.mean(axis=(1, 2))  # (B, nbins)
+            print(
+                "    First-batch per-channel spatial-mean stats: "
+                f"abs max = {np.abs(per_map_means).max():.3e}, "
+                f"mean = {per_map_means.mean():.3e}"
+            )
+            first_batch_reported = True
 
         comp_y, _ = compressor.apply(
             comp_params, comp_state, None, maps_np,
@@ -1345,15 +2192,71 @@ def main():
     compressor_conv_channels = parse_positive_int_list(
         args.compressor_conv_channels, "--compressor-conv-channels",
     )
-    args.compressor_conv_channels = ",".join(
-        str(v) for v in compressor_conv_channels
+    resnet_small_channels = parse_positive_int_list(
+        args.resnet_small_channels, "--resnet-small-channels",
     )
+    resnet_small_blocks = parse_positive_int_list(
+        args.resnet_small_blocks, "--resnet-small-blocks",
+    )
+    args.compressor_conv_channels = ",".join(str(v) for v in compressor_conv_channels)
+    args.resnet_small_channels = ",".join(str(v) for v in resnet_small_channels)
+    args.resnet_small_blocks = ",".join(str(v) for v in resnet_small_blocks)
     if args.compressor_dense_width < 1:
         raise ValueError("--compressor-dense-width must be >= 1.")
     if args.compressor_pool_window < 1:
         raise ValueError("--compressor-pool-window must be >= 1.")
     if args.compressor_pool_stride < 1:
         raise ValueError("--compressor-pool-stride must be >= 1.")
+    if args.resnet_head_width < 1:
+        raise ValueError("--resnet-head-width must be >= 1.")
+    if args.compressor_domain_hidden < 1:
+        raise ValueError("--compressor-domain-hidden must be >= 1.")
+    if args.compressor_consistency_weight < 0.0:
+        raise ValueError("--compressor-consistency-weight must be >= 0.")
+    if args.compressor_domain_adv_weight < 0.0:
+        raise ValueError("--compressor-domain-adv-weight must be >= 0.")
+    if (
+        args.compressor_domain_adversarial
+        and not args.compressor_paired_bnt_nobnt_consistency
+    ):
+        print(
+            "  Enabling --compressor-paired-bnt-nobnt-consistency because "
+            "--compressor-domain-adversarial requires paired domain views."
+        )
+        args.compressor_paired_bnt_nobnt_consistency = True
+    if len(resnet_small_channels) != len(resnet_small_blocks):
+        raise ValueError(
+            "--resnet-small-channels and --resnet-small-blocks must have "
+            "the same number of entries."
+        )
+    curriculum_sigma_factors: Optional[tuple[float, ...]] = None
+    curriculum_stage_fracs: Optional[tuple[float, ...]] = None
+    if args.compressor_noise_curriculum:
+        curriculum_sigma_factors = parse_nonnegative_float_list(
+            args.compressor_curriculum_sigma_factors,
+            "--compressor-curriculum-sigma-factors",
+        )
+        curriculum_stage_fracs = parse_positive_float_list(
+            args.compressor_curriculum_stage_fracs,
+            "--compressor-curriculum-stage-fracs",
+        )
+        if len(curriculum_sigma_factors) != len(curriculum_stage_fracs):
+            raise ValueError(
+                "--compressor-curriculum-sigma-factors and "
+                "--compressor-curriculum-stage-fracs must have the same length."
+            )
+        frac_sum = float(np.sum(np.asarray(curriculum_stage_fracs, dtype=np.float64)))
+        if not np.isclose(frac_sum, 1.0, atol=1e-6):
+            raise ValueError(
+                "--compressor-curriculum-stage-fracs must sum to 1.0 "
+                f"(got {frac_sum:.8f})."
+            )
+        args.compressor_curriculum_sigma_factors = ",".join(
+            f"{v:.10g}" for v in curriculum_sigma_factors
+        )
+        args.compressor_curriculum_stage_fracs = ",".join(
+            f"{v:.10g}" for v in curriculum_stage_fracs
+        )
     if args.nbins != len(tomo_bin_indices):
         print(
             f"  Overriding nbins from {args.nbins} to {len(tomo_bin_indices)} "
@@ -1401,33 +2304,176 @@ def main():
         tomo_bin_indices,
         args.sigma_e, args.galaxy_density, rng_obs,
         apply_bnt=args.apply_bnt,
+        zero_mean_maps=args.zero_mean_maps,
     )
 
     # ------------------------------------------------------------------
     # 2. CNN compressor
     # ------------------------------------------------------------------
     print("######## CNN COMPRESSOR ########")
+    if args.compressor_arch == "plain":
+        arch_desc = (
+            f"plain conv={compressor_conv_channels} "
+            f"dense={args.compressor_dense_width} "
+            f"pool=({args.compressor_pool_window},{args.compressor_pool_stride})"
+        )
+    elif args.compressor_arch == "resnet_small":
+        arch_desc = (
+            "resnet_small "
+            f"channels={resnet_small_channels} "
+            f"blocks={resnet_small_blocks} "
+            f"head={args.resnet_head_width}"
+        )
+    elif args.compressor_arch in ("resnet18", "resnet34", "resnet50"):
+        arch_desc = (
+            f"{args.compressor_arch} "
+            f"head={args.resnet_head_width} "
+            f"resnet_v2={bool(args.resnet_v2)}"
+        )
+    else:
+        raise ValueError(f"Unsupported --compressor-arch '{args.compressor_arch}'")
+    print(f"  Compressor architecture: {arch_desc}")
     print(
-        "  Compressor architecture: "
-        f"conv={compressor_conv_channels}, "
-        f"dense={args.compressor_dense_width}, "
-        f"pool=({args.compressor_pool_window},{args.compressor_pool_stride})"
+        "  Split config: "
+        f"compressor[{args.compressor_train_split}/{args.compressor_val_split}] "
+        f"NDE[{args.nde_train_split}/{args.nde_val_split}]"
     )
-    compressor = build_compressor(
+
+    split_overlap_info = None
+    if args.require_disjoint_train_examples:
+        print(
+            "  Auditing train-split overlap (example identity = "
+            "(cosmology, patch)) ..."
+        )
+        split_overlap_info = audit_train_split_overlap(
+            args.tfds_name,
+            args.compressor_train_split,
+            args.nde_train_split,
+        )
+        print(
+            "  Train overlap audit | "
+            f"comp_examples={split_overlap_info['compressor_train_examples']} "
+            f"nde_examples={split_overlap_info['nde_train_examples']} "
+            f"shared_examples={split_overlap_info['shared_example_count']} "
+            f"shared_theta={split_overlap_info['shared_theta_count']}"
+        )
+        if int(split_overlap_info["shared_example_count"]) > 0:
+            raise ValueError(
+                "Detected shared training examples between compressor and NDE "
+                f"splits: {split_overlap_info['shared_example_count']}."
+            )
+        wandb.config.update(
+            {"data/train_split_overlap": split_overlap_info},
+            allow_val_change=True,
+        )
+
+    compressor_train, compressor_eval = build_compressors(
         args.compressor_dim,
+        arch=args.compressor_arch,
         conv_channels=compressor_conv_channels,
         dense_width=args.compressor_dense_width,
         pool_window=args.compressor_pool_window,
         pool_stride=args.compressor_pool_stride,
+        resnet_small_channels=resnet_small_channels,
+        resnet_small_blocks=resnet_small_blocks,
+        resnet_head_width=args.resnet_head_width,
+        resnet_v2=bool(args.resnet_v2),
     )
     compressor_source = "train_compressor" if args.train_compressor else "pretrained"
     compressor_params_ref: Optional[str] = None
     compressor_state_ref: Optional[str] = None
 
+    paired_consistency_training = bool(
+        args.train_compressor and args.compressor_paired_bnt_nobnt_consistency
+    )
     augmentation = build_augmentation(
         args.map_kind, args.sigma_e, args.galaxy_density,
         args.field_size, args.field_npix, args.nbins, tomo_bin_indices,
         apply_bnt=args.apply_bnt,
+        paired_bnt_nobnt_consistency=paired_consistency_training,
+        zero_mean_maps=args.zero_mean_maps,
+    )
+    curriculum_stages: Optional[list[Dict[str, object]]] = None
+    if args.train_compressor and args.compressor_noise_curriculum:
+        if curriculum_sigma_factors is None or curriculum_stage_fracs is None:
+            raise ValueError(
+                "Internal error: curriculum flag set but parsed schedule missing."
+            )
+        stage_steps = allocate_stage_steps(
+            int(args.compressor_steps),
+            curriculum_stage_fracs,
+        )
+        curriculum_stages = []
+        for idx, (sigma_factor, steps) in enumerate(
+            zip(curriculum_sigma_factors, stage_steps),
+            start=1,
+        ):
+            if int(steps) <= 0:
+                continue
+            stage_sigma_e = float(args.sigma_e) * float(sigma_factor)
+            stage_aug = build_augmentation(
+                args.map_kind,
+                args.sigma_e,
+                args.galaxy_density,
+                args.field_size,
+                args.field_npix,
+                args.nbins,
+                tomo_bin_indices,
+                apply_bnt=args.apply_bnt,
+                sigma_e_override=stage_sigma_e,
+                paired_bnt_nobnt_consistency=paired_consistency_training,
+                zero_mean_maps=args.zero_mean_maps,
+            )
+            curriculum_stages.append(
+                {
+                    "name": f"curriculum_s{idx}",
+                    "stage_index": idx,
+                    "sigma_factor": float(sigma_factor),
+                    "sigma_e": float(stage_sigma_e),
+                    "steps": int(steps),
+                    "augmentation_fn": stage_aug,
+                }
+            )
+        if not curriculum_stages:
+            raise ValueError(
+                "Curriculum schedule produced zero non-empty stages. "
+                "Increase --compressor-steps or adjust stage fractions."
+            )
+        allocated = int(sum(int(stage["steps"]) for stage in curriculum_stages))
+        if allocated != int(args.compressor_steps):
+            raise ValueError(
+                "Curriculum stage allocation does not match compressor steps "
+                f"({allocated} != {args.compressor_steps})."
+            )
+        wandb.config.update(
+            {
+                "compressor/noise_curriculum": True,
+                "compressor/curriculum_sigma_factors": list(curriculum_sigma_factors),
+                "compressor/curriculum_stage_fracs": list(curriculum_stage_fracs),
+                "compressor/curriculum_stage_steps": [
+                    int(stage["steps"]) for stage in curriculum_stages
+                ],
+            },
+            allow_val_change=True,
+        )
+    else:
+        wandb.config.update(
+            {"compressor/noise_curriculum": False},
+            allow_val_change=True,
+        )
+    wandb.config.update(
+        {
+            "compressor/paired_bnt_nobnt_consistency": bool(
+                paired_consistency_training
+            ),
+            "compressor/consistency_weight": float(args.compressor_consistency_weight),
+            "compressor/domain_adversarial": bool(
+                args.compressor_domain_adversarial and paired_consistency_training
+            ),
+            "compressor/domain_adv_weight": float(args.compressor_domain_adv_weight),
+            "compressor/domain_hidden": int(args.compressor_domain_hidden),
+        },
+        allow_val_change=True,
     )
 
     if args.train_compressor:
@@ -1438,7 +2484,7 @@ def main():
             / f"bin_{args.nbins}"
         )
         comp_params, comp_state = train_compressor_vmim(
-            compressor=compressor,
+            compressor=compressor_train,
             augmentation_fn=augmentation,
             n_cosmo=args.n_cosmo,
             compressor_dim=args.compressor_dim,
@@ -1453,7 +2499,17 @@ def main():
             truth=truth,
             param_names=param_names,
             tfds_name=args.tfds_name,
+            compressor_train_split=args.compressor_train_split,
+            compressor_val_split=args.compressor_val_split,
             plot_contours=args.compressor_plot_contours,
+            noise_curriculum_stages=curriculum_stages,
+            paired_bnt_nobnt_consistency=paired_consistency_training,
+            consistency_weight=float(args.compressor_consistency_weight),
+            domain_adversarial=bool(
+                args.compressor_domain_adversarial and paired_consistency_training
+            ),
+            domain_adv_weight=float(args.compressor_domain_adv_weight),
+            domain_hidden=int(args.compressor_domain_hidden),
         )
         # Invalidate any cached compressed datasets
         cache_dir = Path(args.cache_dir) if args.cache_dir else None
@@ -1475,7 +2531,7 @@ def main():
 
     # 2a. Compress observed map
     print("######## COMPRESS: OBSERVED MAP ########")
-    obs_compressed, _ = compressor.apply(
+    obs_compressed, _ = compressor_eval.apply(
         comp_params, comp_state, None,
         m_data.reshape([1, args.field_npix, args.field_npix, args.nbins]),
     )
@@ -1529,15 +2585,20 @@ def main():
             )
 
     if not cache_ok:
+        paired_map_view = (
+            "bnt" if args.apply_bnt else "nobnt"
+        ) if paired_consistency_training else None
         dataset_train = compress_dataset(
-            args.tfds_name, "train",
-            augmentation, compressor, comp_params, comp_state,
+            args.tfds_name, args.nde_train_split,
+            augmentation, compressor_eval, comp_params, comp_state,
             args.ds_batch_size,
+            paired_map_view=paired_map_view,
         )
         dataset_val = compress_dataset(
-            args.tfds_name, "test",
-            augmentation, compressor, comp_params, comp_state,
+            args.tfds_name, args.nde_val_split,
+            augmentation, compressor_eval, comp_params, comp_state,
             args.ds_batch_size,
+            paired_map_view=paired_map_view,
         )
         # Save cache
         if cache_dir is not None:
@@ -1639,6 +2700,15 @@ def main():
         "data/train_size": len(dataset_train["theta"]),
         "data/val_size": len(dataset_val["theta"]),
         "data/summary_dim": summary_dim,
+        "data/compressor_arch": args.compressor_arch,
+        "data/compressor_noise_curriculum": int(args.compressor_noise_curriculum),
+        "data/compressor_paired_bnt_nobnt_consistency": int(
+            args.compressor_paired_bnt_nobnt_consistency
+        ),
+        "data/compressor_consistency_weight": float(args.compressor_consistency_weight),
+        "data/compressor_domain_adversarial": int(args.compressor_domain_adversarial),
+        "data/compressor_domain_adv_weight": float(args.compressor_domain_adv_weight),
+        "data/require_disjoint_train_examples": int(args.require_disjoint_train_examples),
         "data/train_x_min": float(dataset_train["x"].min()),
         "data/train_x_max": float(dataset_train["x"].max()),
         "data/train_x_mean": float(dataset_train["x"].mean()),
@@ -1646,6 +2716,16 @@ def main():
         "data/summary_standardized": int(standardization_applied),
         "data/summary_clip_value": (
             float(summary_clip_value) if summary_clip_value is not None else 0.0
+        ),
+        "data/shared_train_examples": (
+            int(split_overlap_info["shared_example_count"])
+            if split_overlap_info is not None
+            else -1
+        ),
+        "data/shared_train_theta": (
+            int(split_overlap_info["shared_theta_count"])
+            if split_overlap_info is not None
+            else -1
         ),
     })
 
@@ -1745,6 +2825,29 @@ def main():
             "method": "cnn",
             "posterior_file": str(out.resolve()),
             "flow_params_source": flow_params_source,
+            "compressor_arch": str(args.compressor_arch),
+            "compressor_conv_channels": str(args.compressor_conv_channels),
+            "compressor_dense_width": int(args.compressor_dense_width),
+            "compressor_pool_window": int(args.compressor_pool_window),
+            "compressor_pool_stride": int(args.compressor_pool_stride),
+            "compressor_noise_curriculum": bool(args.compressor_noise_curriculum),
+            "compressor_curriculum_sigma_factors": str(
+                args.compressor_curriculum_sigma_factors
+            ),
+            "compressor_curriculum_stage_fracs": str(
+                args.compressor_curriculum_stage_fracs
+            ),
+            "compressor_paired_bnt_nobnt_consistency": bool(
+                args.compressor_paired_bnt_nobnt_consistency
+            ),
+            "compressor_consistency_weight": float(args.compressor_consistency_weight),
+            "compressor_domain_adversarial": bool(args.compressor_domain_adversarial),
+            "compressor_domain_adv_weight": float(args.compressor_domain_adv_weight),
+            "compressor_domain_hidden": int(args.compressor_domain_hidden),
+            "resnet_small_channels": str(args.resnet_small_channels),
+            "resnet_small_blocks": str(args.resnet_small_blocks),
+            "resnet_head_width": int(args.resnet_head_width),
+            "resnet_v2": bool(args.resnet_v2),
             "total_steps": int(args.total_steps),
             "save_every": int(args.save_every),
             "patience": int(args.patience),
@@ -1755,6 +2858,15 @@ def main():
                 if standardization_applied and summary_stats_path.exists()
                 else None
             ),
+            "compressor_train_split": str(args.compressor_train_split),
+            "compressor_val_split": str(args.compressor_val_split),
+            "nde_train_split": str(args.nde_train_split),
+            "nde_val_split": str(args.nde_val_split),
+            "require_disjoint_train_examples": bool(args.require_disjoint_train_examples),
+            "train_split_overlap": split_overlap_info,
+            "apply_bnt": bool(args.apply_bnt),
+            "bnt_matrix_version": BNT_MATRIX_VERSION if args.apply_bnt else "none",
+            "zero_mean_maps": bool(args.zero_mean_maps),
         }
         if flow_summary_path.exists():
             metadata["flow_training_summary"] = json.loads(

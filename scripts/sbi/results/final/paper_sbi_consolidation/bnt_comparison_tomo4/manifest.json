@@ -1,0 +1,26 @@
+{
+  "seeds": [
+    41,
+    42,
+    43
+  ],
+  "conditions": [
+    "nobnt",
+    "bnt"
+  ],
+  "gpus": [
+    "0",
+    "1",
+    "2",
+    "3"
+  ],
+  "dataset": "NbodyCosmogridDatasetTomo/grid_20deg_160px",
+  "field_size": 20,
+  "field_npix": 160,
+  "tomo_bins": "1,2,3,4",
+  "flow_steps_cnn_l1": 5000,
+  "flow_steps_vmim": 12000,
+  "compressor_steps_cnn": 20000,
+  "compressor_steps_vmim": 12000,
+  "repo_root": "/mnt/home/tersenov/software/cnn_sbi"
+}

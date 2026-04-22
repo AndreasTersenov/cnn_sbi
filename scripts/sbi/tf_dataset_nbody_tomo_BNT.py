@@ -126,7 +126,7 @@ class NbodyCosmogridDatasetTomo(tfds.core.GeneratorBasedBuilder):
             path_string = "/home/tersenov/" + dataset_grid["path_par"][i].decode(
                 "utf-8"
             ).replace("CosmoGrid", "CosmoGridV1").replace("raw", "stage3_forecast").replace("grid", "new_grid")
-
+            
             for j in range(7):
                 filename = path_string + "perm_000" + str(j)
                 filename_nbody = filename + "/projected_probes_maps_nobaryons512.h5"
@@ -137,12 +137,12 @@ class NbodyCosmogridDatasetTomo(tfds.core.GeneratorBasedBuilder):
                 tomo_maps = [
                     np.array(kg[f"stage3_lensing{b}"]) for b in (1, 2, 3, 4)
                 ]
-
+                
                 # projection
                 key1, key2 = jax.random.split(key)
                 lon = jax.random.randint(key1, (nb_of_projected_map,), -180, 180)
                 lat = jax.random.randint(key2, (nb_of_projected_map,), -90, 90)
-
+                
                 for k in range(nb_of_projected_map):
                     proj = hp.projector.GnomonicProj(
                         rot=[lon[k], lat[k], 0], xsize=xsize, ysize=xsize, reso=reso
@@ -153,7 +153,7 @@ class NbodyCosmogridDatasetTomo(tfds.core.GeneratorBasedBuilder):
                         for bin_map in tomo_maps
                     ]
                     projection_nbody = np.stack(projected_bins, axis=-1).astype(np.float32)
-
+                    
                     yield f"{i}-{j}-{k}", {
                         "map_nbody": jnp.array(projection_nbody, dtype=jnp.float32),
                         "theta": jnp.array(params, dtype=jnp.float32),

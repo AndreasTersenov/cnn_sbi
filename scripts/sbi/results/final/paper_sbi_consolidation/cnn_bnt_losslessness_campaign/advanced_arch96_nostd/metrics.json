@@ -1,0 +1,113 @@
+{
+  "rows": [
+    {
+      "condition": "nobnt",
+      "seed": 41,
+      "file": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_losslessness_campaign/advanced_arch96_nostd/posteriors/cnn_tomo4_20deg160_nobnt_advanced_arch96_nostd_s41.npy",
+      "std_sum": 0.17620831727981567,
+      "bias_l2": 0.09154286025729154,
+      "fom3": 612813.708088798,
+      "det_cov3": 2.6628276444657862e-12,
+      "logdet_cov3": -26.65163253350985,
+      "valid_fom3": true
+    },
+    {
+      "condition": "nobnt",
+      "seed": 42,
+      "file": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_losslessness_campaign/advanced_arch96_nostd/posteriors/cnn_tomo4_20deg160_nobnt_advanced_arch96_nostd_s42.npy",
+      "std_sum": 0.17817968130111694,
+      "bias_l2": 0.08424304028183094,
+      "fom3": 590366.295657608,
+      "det_cov3": 2.869174016591638e-12,
+      "logdet_cov3": -26.576996926676117,
+      "valid_fom3": true
+    },
+    {
+      "condition": "nobnt",
+      "seed": 43,
+      "file": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_losslessness_campaign/advanced_arch96_nostd/posteriors/cnn_tomo4_20deg160_nobnt_advanced_arch96_nostd_s43.npy",
+      "std_sum": 0.17874832451343536,
+      "bias_l2": 0.05911429931210317,
+      "fom3": 602761.7666687295,
+      "det_cov3": 2.752381345936132e-12,
+      "logdet_cov3": -26.618554634986474,
+      "valid_fom3": true
+    },
+    {
+      "condition": "bnt",
+      "seed": 41,
+      "file": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_losslessness_campaign/advanced_arch96_nostd/posteriors/cnn_tomo4_20deg160_bnt_advanced_arch96_nostd_s41.npy",
+      "std_sum": 0.18798990547657013,
+      "bias_l2": 0.09391312344014258,
+      "fom3": 474816.54277350364,
+      "det_cov3": 4.435558556106444e-12,
+      "logdet_cov3": -26.14136756534483,
+      "valid_fom3": true
+    },
+    {
+      "condition": "bnt",
+      "seed": 42,
+      "file": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_losslessness_campaign/advanced_arch96_nostd/posteriors/cnn_tomo4_20deg160_bnt_advanced_arch96_nostd_s42.npy",
+      "std_sum": 0.1921619325876236,
+      "bias_l2": 0.07986725816130798,
+      "fom3": 449466.10121589765,
+      "det_cov3": 4.950010435097263e-12,
+      "logdet_cov3": -26.031631431249714,
+      "valid_fom3": true
+    },
+    {
+      "condition": "bnt",
+      "seed": 43,
+      "file": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_losslessness_campaign/advanced_arch96_nostd/posteriors/cnn_tomo4_20deg160_bnt_advanced_arch96_nostd_s43.npy",
+      "std_sum": 0.1924874633550644,
+      "bias_l2": 0.0532605932200019,
+      "fom3": 431487.64325097494,
+      "det_cov3": 5.371100440111875e-12,
+      "logdet_cov3": -25.949988304731022,
+      "valid_fom3": true
+    }
+  ],
+  "nobnt": {
+    "n": 3,
+    "std_sum_mean": 0.17771210769812265,
+    "std_sum_std": 0.001332995871101212,
+    "bias_l2_mean": 0.07830006661707521,
+    "bias_l2_std": 0.01701152824495595,
+    "fom3_mean": 601980.5901383784,
+    "fom3_std": 11244.076609160244,
+    "valid_fom3_count": 3
+  },
+  "bnt": {
+    "n": 3,
+    "std_sum_mean": 0.19087976713975272,
+    "std_sum_std": 0.0025079808401155946,
+    "bias_l2_mean": 0.07568032494048414,
+    "bias_l2_std": 0.020647151393632764,
+    "fom3_mean": 451923.4290801254,
+    "fom3_std": 21768.72133664675,
+    "valid_fom3_count": 3
+  },
+  "inflation_std_sum_bnt_over_nobnt": 1.0740954547902712,
+  "fom3_ratio_bnt_over_nobnt": 0.7507275757449935,
+  "name": "advanced_arch96_nostd",
+  "seeds": [
+    41,
+    42,
+    43
+  ],
+  "config": {
+    "compressor_steps": 70000,
+    "compressor_conv_channels": "96,192,384",
+    "compressor_dense_width": 192,
+    "compressor_pool_window": 16,
+    "compressor_pool_stride": 8,
+    "standardize_summary": false,
+    "summary_clip_value": 5.0,
+    "flow_steps": 7000,
+    "nvp_layers": 6,
+    "nvp_hidden": 192,
+    "batch_size": 256,
+    "patience": 35
+  },
+  "rank_score": 0.32336787904527775
+}

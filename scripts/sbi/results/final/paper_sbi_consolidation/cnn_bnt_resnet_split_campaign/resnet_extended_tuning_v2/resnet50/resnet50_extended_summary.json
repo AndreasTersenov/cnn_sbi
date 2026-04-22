@@ -1,0 +1,80 @@
+{
+  "output_root": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_resnet_split_campaign/resnet_extended_tuning_v2/resnet50",
+  "generated_at_utc": "2026-04-16T14:56:21.134195+00:00",
+  "rank_score_formula": "abs(inflation_std_sum_bnt_over_nobnt-1)+abs(fom3_ratio_bnt_over_nobnt-1)",
+  "variants": [
+    {
+      "variant": "r50_long30k_std10k_l10h320",
+      "inflation_std_sum_bnt_over_nobnt": 0.9832322662281627,
+      "fom3_ratio_bnt_over_nobnt": 0.8027832405955488,
+      "nobnt_fom3_mean": 321064.69404795597,
+      "bnt_fom3_mean": 257745.35552863652,
+      "rank_score": 0.21398449317628843,
+      "config": {
+        "compressor_steps": 30000,
+        "nvp_layers": 10,
+        "nvp_hidden": 320,
+        "total_steps": 10000,
+        "standardize_summary": true,
+        "compressor_arch": "resnet50",
+        "resnet_head_width": 256,
+        "batch_size": 256,
+        "patience": 35,
+        "save_every": 500,
+        "summary_clip_value": 5.0,
+        "npe_samples": 100000,
+        "ds_batch_size": 500
+      },
+      "metrics_file": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_resnet_split_campaign/resnet_extended_tuning_v2/resnet50/r50_long30k_std10k_l10h320/metrics.json"
+    },
+    {
+      "variant": "r50_long30k_nostd12k_l12h384",
+      "inflation_std_sum_bnt_over_nobnt": 1.0329717090588293,
+      "fom3_ratio_bnt_over_nobnt": 0.7813421006585,
+      "nobnt_fom3_mean": 313970.2656641185,
+      "bnt_fom3_mean": 245318.18691830966,
+      "rank_score": 0.25162960840032933,
+      "config": {
+        "compressor_steps": 30000,
+        "nvp_layers": 12,
+        "nvp_hidden": 384,
+        "total_steps": 12000,
+        "standardize_summary": false,
+        "compressor_arch": "resnet50",
+        "resnet_head_width": 256,
+        "batch_size": 256,
+        "patience": 35,
+        "save_every": 500,
+        "summary_clip_value": 5.0,
+        "npe_samples": 100000,
+        "ds_batch_size": 500
+      },
+      "metrics_file": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_resnet_split_campaign/resnet_extended_tuning_v2/resnet50/r50_long30k_nostd12k_l12h384/metrics.json"
+    },
+    {
+      "variant": "r50_long30k_nostd6k_l8h256",
+      "inflation_std_sum_bnt_over_nobnt": 1.0512219241525083,
+      "fom3_ratio_bnt_over_nobnt": 0.7810581611627813,
+      "nobnt_fom3_mean": 507302.4538402422,
+      "bnt_fom3_mean": 396232.7217498263,
+      "rank_score": 0.270163762989727,
+      "config": {
+        "compressor_steps": 30000,
+        "nvp_layers": 8,
+        "nvp_hidden": 256,
+        "total_steps": 6000,
+        "standardize_summary": false,
+        "compressor_arch": "resnet50",
+        "resnet_head_width": 256,
+        "batch_size": 256,
+        "patience": 35,
+        "save_every": 500,
+        "summary_clip_value": 5.0,
+        "npe_samples": 100000,
+        "ds_batch_size": 500
+      },
+      "metrics_file": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_resnet_split_campaign/resnet_extended_tuning_v2/resnet50/r50_long30k_nostd6k_l8h256/metrics.json"
+    }
+  ],
+  "best_variant_by_rank": "r50_long30k_std10k_l10h320"
+}

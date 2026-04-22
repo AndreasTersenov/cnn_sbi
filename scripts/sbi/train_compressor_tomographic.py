@@ -75,7 +75,7 @@ if args.loss == "mse":
     loss_name = "train_compressor_mse"
 elif args.loss == "vmim":
     loss_name = "train_compressor_vmim"
-
+    
 
 # Ensure the save_params and fig directories exist
 os.makedirs(f"./save_params/{args.loss}/{args.map_kind}/sigma_{sigma_e}/gal_density_{int(galaxy_density*4)}/bin_{bin_number}", exist_ok=True)
@@ -124,11 +124,11 @@ m_data = jnp.asarray(m_data) + jax.random.normal(jax.random.PRNGKey(0), (field_n
 #     r"$\\Omega_b$",
 # ]
 params_name = [
-    r'\Omega_m',
-    r'\sigma_8',
-    r'w_0',
-    r'h_0',
-    r'n_s',
+    r'\Omega_m', 
+    r'\sigma_8', 
+    r'w_0', 
+    r'h_0', 
+    r'n_s', 
     r'\Omega_b']
 
 print("######## DATA AUGMENTATION ########")
@@ -469,7 +469,7 @@ for batch in tqdm(range(1, args.total_steps + 1)):
         # }
         #     )
         # )
-
+        
         # import pandas as pd
         # df = pd.DataFrame(sample_nd, columns=params_name)  # Convert to DataFrame
         # chain = Chain(samples=df, name="SBI")  # Pass the DataFrame instead of NumPy array
@@ -477,7 +477,7 @@ for batch in tqdm(range(1, args.total_steps + 1)):
 
         # fig = c.plotter.plot(figsize=1.2)
 
-
+ 
         truth_arr = np.array(truth)
         theta = dict(zip(params_name, truth_arr))
 
@@ -489,7 +489,7 @@ for batch in tqdm(range(1, args.total_steps + 1)):
 
             lower = min(s_min, truth_val) - 0.05 * abs(truth_val)
             upper = max(s_max, truth_val) + 0.05 * abs(truth_val)
-
+            
             param_limits[name] = (lower, upper)
 
         # Convert truth values to dictionary

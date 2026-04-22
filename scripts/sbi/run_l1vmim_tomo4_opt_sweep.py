@@ -260,7 +260,7 @@ def _build_train_job(
     gpu: str,
     extra_env: Optional[Dict[str, str]],
 ) -> Job:
-    vmim_script = repo_root / "scripts" / "sbi" / "npe_l1vmim_nbody_tomo.py"
+    vmim_script = repo_root / "scripts" / "sbi" / "npe_l1vmim_jaxili_nbody_tomo.py"
     save_dir = out_root / "compressor" / cfg.config_id
     comp_paths = _vmim_comp_paths(save_dir=save_dir, map_kind=args.map_kind, nbins=4)
 
@@ -322,6 +322,8 @@ def _build_train_job(
         str(args.compressor_lr),
         "--total-steps",
         "1",
+        "--epochs",
+        "2",
         "--save-every",
         "1",
         "--no-sample",
@@ -350,7 +352,7 @@ def _build_eval_job(
     gpu: str,
     extra_env: Optional[Dict[str, str]],
 ) -> Job:
-    vmim_script = repo_root / "scripts" / "sbi" / "npe_l1vmim_nbody_tomo.py"
+    vmim_script = repo_root / "scripts" / "sbi" / "npe_l1vmim_jaxili_nbody_tomo.py"
     save_dir = out_root / "compressor" / cfg.config_id
     comp_paths = _vmim_comp_paths(save_dir=save_dir, map_kind=args.map_kind, nbins=4)
     posterior = out_root / "posteriors" / f"{cfg.config_id}_s{seed}.npy"

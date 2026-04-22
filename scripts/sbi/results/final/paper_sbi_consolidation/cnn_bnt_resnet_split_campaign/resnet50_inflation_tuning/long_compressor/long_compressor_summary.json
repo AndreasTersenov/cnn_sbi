@@ -1,0 +1,23 @@
+{
+  "output_root": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_resnet_split_campaign/resnet50_inflation_tuning/long_compressor",
+  "variants": [
+    {
+      "variant": "long15k_nostd6k_l8h256",
+      "inflation_std_sum_bnt_over_nobnt": 1.0257630200513963,
+      "fom3_ratio_bnt_over_nobnt": 0.8083885845626495,
+      "nobnt_fom3_mean": 323659.86491096596,
+      "bnt_fom3_mean": 261642.9400751141,
+      "rank_score": 0.2173744354887468
+    },
+    {
+      "variant": "long15k_std6k_l8h256",
+      "inflation_std_sum_bnt_over_nobnt": 1.0418357162494434,
+      "fom3_ratio_bnt_over_nobnt": 0.7560595009274144,
+      "nobnt_fom3_mean": 342639.50797151896,
+      "bnt_fom3_mean": 259055.85539496146,
+      "rank_score": 0.285776215322029
+    }
+  ],
+  "best_variant": "long15k_nostd6k_l8h256",
+  "rank_score_formula": "abs(inflation_std_sum_bnt_over_nobnt - 1) + abs(fom3_ratio_bnt_over_nobnt - 1)"
+}

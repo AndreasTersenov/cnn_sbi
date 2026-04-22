@@ -1,0 +1,144 @@
+{
+  "repo_root": "/mnt/home/tersenov/software/cnn_sbi",
+  "output_root": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/cnn_nobnt_deep_audit",
+  "conda_env": "jaxili",
+  "gpus": [
+    "0",
+    "1",
+    "2",
+    "3"
+  ],
+  "xla_mem_fraction": 0.5,
+  "map_kind": "nbody",
+  "tfds_name": "NbodyCosmogridDatasetTomo/grid_20deg_160px",
+  "field_size": 20,
+  "field_npix": 160,
+  "nbins": 4,
+  "tomo_bin_indices": "1,2,3,4",
+  "npe_samples": 100000,
+  "compressor_dim": 6,
+  "compressor_profiles": {
+    "fulltrain": {
+      "train_split": "train",
+      "val_split": "test",
+      "steps": 60000,
+      "conv_channels": "64,128,256",
+      "dense_width": 128,
+      "pool_window": 16,
+      "pool_stride": 8
+    },
+    "split70": {
+      "train_split": "train[:70%]",
+      "val_split": "test",
+      "steps": 60000,
+      "conv_channels": "64,128,256",
+      "dense_width": 128,
+      "pool_window": 16,
+      "pool_stride": 8
+    }
+  },
+  "runs": [
+    {
+      "name": "baseline_fulltrain",
+      "seeds": [
+        41,
+        42,
+        43
+      ],
+      "compressor_profile": "fulltrain",
+      "npe_train_split": "train",
+      "npe_val_split": "test",
+      "shuffle_theta_train": false,
+      "epochs": 5000,
+      "batch_size": 256,
+      "learning_rate": 0.0001,
+      "standardize_summary": false,
+      "summary_clip_value": 0.0
+    },
+    {
+      "name": "baseline_fulltrain_shuffle",
+      "seeds": [
+        41,
+        42,
+        43
+      ],
+      "compressor_profile": "fulltrain",
+      "npe_train_split": "train",
+      "npe_val_split": "test",
+      "shuffle_theta_train": true,
+      "epochs": 5000,
+      "batch_size": 256,
+      "learning_rate": 0.0001,
+      "standardize_summary": false,
+      "summary_clip_value": 0.0
+    },
+    {
+      "name": "split70_disjoint",
+      "seeds": [
+        41,
+        42,
+        43
+      ],
+      "compressor_profile": "split70",
+      "npe_train_split": "train[70%:]",
+      "npe_val_split": "test",
+      "shuffle_theta_train": false,
+      "epochs": 5000,
+      "batch_size": 256,
+      "learning_rate": 0.0001,
+      "standardize_summary": false,
+      "summary_clip_value": 0.0
+    },
+    {
+      "name": "split70_disjoint_shuffle",
+      "seeds": [
+        41,
+        42,
+        43
+      ],
+      "compressor_profile": "split70",
+      "npe_train_split": "train[70%:]",
+      "npe_val_split": "test",
+      "shuffle_theta_train": true,
+      "epochs": 5000,
+      "batch_size": 256,
+      "learning_rate": 0.0001,
+      "standardize_summary": false,
+      "summary_clip_value": 0.0
+    },
+    {
+      "name": "split70_small_nde10",
+      "seeds": [
+        41,
+        42,
+        43
+      ],
+      "compressor_profile": "split70",
+      "npe_train_split": "train[90%:]",
+      "npe_val_split": "test",
+      "shuffle_theta_train": false,
+      "epochs": 5000,
+      "batch_size": 256,
+      "learning_rate": 0.0001,
+      "standardize_summary": false,
+      "summary_clip_value": 0.0
+    },
+    {
+      "name": "split70_long12000",
+      "seeds": [
+        41,
+        42,
+        43
+      ],
+      "compressor_profile": "split70",
+      "npe_train_split": "train[70%:]",
+      "npe_val_split": "test",
+      "shuffle_theta_train": false,
+      "epochs": 12000,
+      "batch_size": 256,
+      "learning_rate": 0.0001,
+      "standardize_summary": false,
+      "summary_clip_value": 0.0
+    }
+  ]
+}

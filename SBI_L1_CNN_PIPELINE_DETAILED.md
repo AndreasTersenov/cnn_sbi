@@ -15,7 +15,7 @@ The goal is to provide an audit trail so you can inspect exactly where informati
 
 All pipelines:
 
-1. infer the same cosmological parameter vector
+1. infer the same cosmological parameter vector  
    `theta = [Omega_m, sigma_8, w0, h0, n_s, Omega_b]`.
 2. use the same observed fiducial map source and add shape noise.
 3. use TFDS data built from `tf_dataset_nbody_tomo.py`:
@@ -589,31 +589,31 @@ High-level sequence:
 
 ## 7) Most likely failure points (ordered for debugging)
 
-1. **Scenario mismatch**
+1. **Scenario mismatch**  
    geometry / TFDS config / tomo bin indices not aligned across observed map and train/val datasets.
 
-2. **Stale cache reuse**
+2. **Stale cache reuse**  
    wrong cache reused despite changed settings (now guarded by metadata; still verify manually).
 
-3. **Summary preprocessing mismatch**
+3. **Summary preprocessing mismatch**  
    flow checkpoint loaded with incompatible summary preprocessing. L1 now enforces saved preprocessing in `--no-train`; verify for older/legacy runs.
 
-4. **Underconverged flow**
+4. **Underconverged flow**  
    best val at final step (`flow_training_summary.json: best_at_final_step = true`).
 
-5. **Compressor quality (CNN only)**
+5. **Compressor quality (CNN only)**  
    weak or undertrained compressor can flatten posterior geometry even if flow is fine.
 
-6. **L1 extraction mode mismatch**
+6. **L1 extraction mode mismatch**  
    mixing datavectors built with different `l1_implementation`/coarse-mean/clamp behavior can shift contours.
 
-7. **Observed-data out-of-distribution**
+7. **Observed-data out-of-distribution**  
    observed summary far outside train summary support (check inlier diagnostics).
 
-8. **Historical checkpoint/preprocess mixing**
+8. **Historical checkpoint/preprocess mixing**  
    loading old flow checkpoints with newer preprocessing files can produce misleading contours.
 
-9. **Zero-variance feature leakage (jaxili path)**
+9. **Zero-variance feature leakage (jaxili path)**  
    if train-time feature mask is not reused at inference, posterior conditioning becomes inconsistent.
 
 ---

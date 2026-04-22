@@ -1,0 +1,30 @@
+{
+  "output_root": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_resnet_split_campaign/resnet50_inflation_tuning/nde_variants",
+  "variants": [
+    {
+      "variant": "std10k_l10h320",
+      "inflation_std_sum_bnt_over_nobnt": 0.9369544462901666,
+      "fom3_ratio_bnt_over_nobnt": 0.8588482712333096,
+      "nobnt_fom3_mean": 109490.20793437981,
+      "bnt_fom3_mean": 94035.4758014177,
+      "rank_score": 0.2041972824765238
+    },
+    {
+      "variant": "nostd10k_l10h320",
+      "inflation_std_sum_bnt_over_nobnt": 1.0247701002241505,
+      "fom3_ratio_bnt_over_nobnt": 0.6635286133427004,
+      "nobnt_fom3_mean": 130838.12053196474,
+      "bnt_fom3_mean": 86814.83668893967,
+      "rank_score": 0.3612414868814501
+    },
+    {
+      "variant": "std6k_l8h256",
+      "inflation_std_sum_bnt_over_nobnt": 1.0784914055296997,
+      "fom3_ratio_bnt_over_nobnt": 0.5904706276694187,
+      "nobnt_fom3_mean": 184630.19027959436,
+      "bnt_fom3_mean": 109018.70434111629,
+      "rank_score": 0.488020777860281
+    }
+  ],
+  "best_variant": "std10k_l10h320"
+}

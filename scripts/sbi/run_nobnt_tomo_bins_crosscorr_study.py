@@ -143,13 +143,13 @@ def parse_args() -> argparse.Namespace:
         "--l1-estimator",
         type=str,
         choices=("legacy", "jaxili"),
-        default="legacy",
-        help="L1 backend script selector (default: legacy).",
+        default="jaxili",
+        help="L1 backend script selector (default: jaxili).",
     )
     p.add_argument(
         "--l1-pca-components",
         type=int,
-        default=50,
+        default=0,
         help="PCA components passed to L1 eval script (0 disables PCA).",
     )
     p.add_argument(
@@ -327,13 +327,14 @@ def main() -> None:
     out_root.mkdir(parents=True, exist_ok=True)
 
     script_dir = repo_root / "scripts" / "sbi"
-    cnn_script = str(script_dir / "npe_cnn_nbody_tomo.py")
+    cnn_train_script = str(script_dir / "npe_cnn_nbody_tomo.py")
+    cnn_eval_script = str(script_dir / "npe_cnn_jaxili_nbody_tomo.py")
     l1_scripts = {
         "legacy": str(script_dir / "npe_l1norm_nbody_tomo.py"),
         "jaxili": str(script_dir / "npe_l1norm_jaxili_nbody_tomo.py"),
     }
     l1_script = l1_scripts[args.l1_estimator]
-    vmim_script = str(script_dir / "npe_l1vmim_nbody_tomo.py")
+    vmim_script = str(script_dir / "npe_l1vmim_jaxili_nbody_tomo.py")
 
     gpus = _csv_tokens(args.gpus)
     if not gpus:
@@ -441,7 +442,7 @@ def main() -> None:
                 "-n",
                 args.conda_env,
                 "python",
-                cnn_script,
+                cnn_train_script,
                 "--no-wandb",
                 "--map-kind",
                 args.map_kind,
@@ -468,14 +469,6 @@ def main() -> None:
                 str(args.cnn_compressor_steps),
                 "--compressor-save-every",
                 str(args.cnn_compressor_save_every),
-                "--compressor-conv-channels",
-                args.cnn_compressor_conv_channels,
-                "--compressor-dense-width",
-                str(args.cnn_compressor_dense_width),
-                "--compressor-pool-window",
-                str(args.cnn_compressor_pool_window),
-                "--compressor-pool-stride",
-                str(args.cnn_compressor_pool_stride),
                 "--total-steps",
                 "1",
                 "--save-every",
@@ -566,6 +559,8 @@ def main() -> None:
                 str(args.vmim_compressor_lr),
                 "--total-steps",
                 "1",
+                "--epochs",
+                "2",
                 "--save-every",
                 "1",
                 "--no-sample",
@@ -602,7 +597,7 @@ def main() -> None:
                     "-n",
                     args.conda_env,
                     "python",
-                    cnn_script,
+                    cnn_eval_script,
                     "--no-wandb",
                     "--map-kind",
                     args.map_kind,
@@ -626,14 +621,8 @@ def main() -> None:
                     cnn_compressors[variant]["params"],
                     "--compressor-state",
                     cnn_compressors[variant]["state"],
-                    "--compressor-conv-channels",
-                    args.cnn_compressor_conv_channels,
-                    "--compressor-dense-width",
-                    str(args.cnn_compressor_dense_width),
-                    "--compressor-pool-window",
-                    str(args.cnn_compressor_pool_window),
-                    "--compressor-pool-stride",
-                    str(args.cnn_compressor_pool_stride),
+                    "--compressor-dim",
+                    str(args.cnn_compressor_dim),
                     "--total-steps",
                     str(args.cnn_flow_steps),
                     "--save-every",
@@ -642,14 +631,6 @@ def main() -> None:
                     str(args.flow_patience),
                     "--batch-size",
                     str(args.cnn_batch_size),
-                    "--nvp-layers",
-                    str(args.cnn_nvp_layers),
-                    "--nvp-hidden",
-                    str(args.cnn_nvp_hidden),
-                    "--weight-decay",
-                    str(args.cnn_weight_decay),
-                    "--grad-clip",
-                    str(args.cnn_grad_clip),
                     "--npe-samples",
                     str(args.npe_samples),
                     "--posterior-out",
@@ -668,7 +649,7 @@ def main() -> None:
                         [
                             "--plot",
                             "--figure-out",
-                            str(out_root / "figures" / f"cnn_{tag}.png"),
+                            str(out_root / "figures" / f"cnn_{tag}.pdf"),
                         ]
                     )
                 eval_jobs.append(
@@ -766,7 +747,7 @@ def main() -> None:
                         [
                             "--plot",
                             "--figure-out",
-                            str(out_root / "figures" / f"l1_{tag}.png"),
+                            str(out_root / "figures" / f"l1_{tag}.pdf"),
                         ]
                     )
                 eval_jobs.append(
@@ -858,7 +839,7 @@ def main() -> None:
                         [
                             "--plot",
                             "--figure-out",
-                            str(out_root / "figures" / f"l1vmim_{tag}.png"),
+                            str(out_root / "figures" / f"l1vmim_{tag}.pdf"),
                         ]
                     )
                 eval_jobs.append(

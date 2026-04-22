@@ -1,0 +1,231 @@
+{
+  "baseline": {
+    "rows": [
+      {
+        "condition": "nobnt",
+        "seed": 41,
+        "file": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/bnt_comparison_tomo4/posteriors/cnn_tomo4_20deg160_nobnt_s41.npy",
+        "std_sum": 0.22233209013938904,
+        "bias_l2": 0.09169043203664447,
+        "fom3": 219841.75883173724,
+        "det_cov3": 2.0690911356356336e-11,
+        "logdet_cov3": -24.601326576984768,
+        "valid_fom3": true
+      },
+      {
+        "condition": "nobnt",
+        "seed": 42,
+        "file": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/bnt_comparison_tomo4/posteriors/cnn_tomo4_20deg160_nobnt_s42.npy",
+        "std_sum": 0.22782035171985626,
+        "bias_l2": 0.0833896272647825,
+        "fom3": 230710.9127598885,
+        "det_cov3": 1.8787272092647094e-11,
+        "logdet_cov3": -24.69784149172026,
+        "valid_fom3": true
+      },
+      {
+        "condition": "nobnt",
+        "seed": 43,
+        "file": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/bnt_comparison_tomo4/posteriors/cnn_tomo4_20deg160_nobnt_s43.npy",
+        "std_sum": 0.22461941838264465,
+        "bias_l2": 0.06528586867148216,
+        "fom3": 215049.71546776404,
+        "det_cov3": 2.1623314026857594e-11,
+        "logdet_cov3": -24.55724903022591,
+        "valid_fom3": true
+      },
+      {
+        "condition": "bnt",
+        "seed": 41,
+        "file": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/bnt_comparison_tomo4/posteriors/cnn_tomo4_20deg160_bnt_s41.npy",
+        "std_sum": 0.4008292555809021,
+        "bias_l2": 0.11368294625714351,
+        "fom3": 21686.680062760093,
+        "det_cov3": 2.1262476910602652e-09,
+        "logdet_cov3": -19.968907058140164,
+        "valid_fom3": true
+      },
+      {
+        "condition": "bnt",
+        "seed": 42,
+        "file": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/bnt_comparison_tomo4/posteriors/cnn_tomo4_20deg160_bnt_s42.npy",
+        "std_sum": 0.40501752495765686,
+        "bias_l2": 0.08506521482793061,
+        "fom3": 21248.292272781655,
+        "det_cov3": 2.2148888507009024e-09,
+        "logdet_cov3": -19.928063614978857,
+        "valid_fom3": true
+      },
+      {
+        "condition": "bnt",
+        "seed": 43,
+        "file": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/bnt_comparison_tomo4/posteriors/cnn_tomo4_20deg160_bnt_s43.npy",
+        "std_sum": 0.41205453872680664,
+        "bias_l2": 0.06507093278764828,
+        "fom3": 20156.100772931153,
+        "det_cov3": 2.461426987714724e-09,
+        "logdet_cov3": -19.822524578874567,
+        "valid_fom3": true
+      }
+    ],
+    "nobnt": {
+      "n": 3,
+      "std_sum_mean": 0.22492395341396332,
+      "std_sum_std": 0.002756775286976315,
+      "bias_l2_mean": 0.08012197599096971,
+      "bias_l2_std": 0.013502162799405717,
+      "fom3_mean": 221867.46235312996,
+      "fom3_std": 8024.70443213635,
+      "valid_fom3_count": 3
+    },
+    "bnt": {
+      "n": 3,
+      "std_sum_mean": 0.4059671064217885,
+      "std_sum_std": 0.005672567685290232,
+      "bias_l2_mean": 0.08793969795757413,
+      "bias_l2_std": 0.02443315275064907,
+      "fom3_mean": 21030.3577028243,
+      "fom3_std": 788.2194162796222,
+      "valid_fom3_count": 3
+    },
+    "inflation_std_sum_bnt_over_nobnt": 1.804908282376767,
+    "fom3_ratio_bnt_over_nobnt": 0.09478793095560738,
+    "name": "baseline_final_paper",
+    "seeds": [
+      41,
+      42,
+      43
+    ]
+  },
+  "configs": [
+    {
+      "rows": [
+        {
+          "condition": "nobnt",
+          "seed": 41,
+          "file": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_losslessness_campaign_multipatch_advanced96_cdim10_v1/advanced_arch96_nostd/posteriors/cnn_tomo4_20deg160_nobnt_advanced_arch96_nostd_s41.npy",
+          "std_sum": 0.17641176283359528,
+          "bias_l2": 0.09163354048993137,
+          "fom3": 604518.5369941005,
+          "det_cov3": 2.7364073907114243e-12,
+          "logdet_cov3": -26.62437522713894,
+          "valid_fom3": true
+        },
+        {
+          "condition": "nobnt",
+          "seed": 42,
+          "file": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_losslessness_campaign_multipatch_advanced96_cdim10_v1/advanced_arch96_nostd/posteriors/cnn_tomo4_20deg160_nobnt_advanced_arch96_nostd_s42.npy",
+          "std_sum": 0.17844894528388977,
+          "bias_l2": 0.08704255477145253,
+          "fom3": 583338.9560011392,
+          "det_cov3": 2.9387188581370605e-12,
+          "logdet_cov3": -26.55304739208846,
+          "valid_fom3": true
+        },
+        {
+          "condition": "nobnt",
+          "seed": 43,
+          "file": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_losslessness_campaign_multipatch_advanced96_cdim10_v1/advanced_arch96_nostd/posteriors/cnn_tomo4_20deg160_nobnt_advanced_arch96_nostd_s43.npy",
+          "std_sum": 0.17822717130184174,
+          "bias_l2": 0.06226792174308443,
+          "fom3": 635567.0746386453,
+          "det_cov3": 2.4755814441393804e-12,
+          "logdet_cov3": -26.7245458205739,
+          "valid_fom3": true
+        },
+        {
+          "condition": "bnt",
+          "seed": 41,
+          "file": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_losslessness_campaign_multipatch_advanced96_cdim10_v1/advanced_arch96_nostd/posteriors/cnn_tomo4_20deg160_bnt_advanced_arch96_nostd_s41.npy",
+          "std_sum": 0.18530403077602386,
+          "bias_l2": 0.10779177986364905,
+          "fom3": 513265.16029721725,
+          "det_cov3": 3.795914555308529e-12,
+          "logdet_cov3": -26.297095744573156,
+          "valid_fom3": true
+        },
+        {
+          "condition": "bnt",
+          "seed": 42,
+          "file": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_losslessness_campaign_multipatch_advanced96_cdim10_v1/advanced_arch96_nostd/posteriors/cnn_tomo4_20deg160_bnt_advanced_arch96_nostd_s42.npy",
+          "std_sum": 0.18770477175712585,
+          "bias_l2": 0.07707159673865835,
+          "fom3": 463136.4000015908,
+          "det_cov3": 4.66210627187332e-12,
+          "logdet_cov3": -26.09155378023517,
+          "valid_fom3": true
+        },
+        {
+          "condition": "bnt",
+          "seed": 43,
+          "file": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/cnn_bnt_losslessness_campaign_multipatch_advanced96_cdim10_v1/advanced_arch96_nostd/posteriors/cnn_tomo4_20deg160_bnt_advanced_arch96_nostd_s43.npy",
+          "std_sum": 0.18824239075183868,
+          "bias_l2": 0.04413266296597081,
+          "fom3": 442844.82615999726,
+          "det_cov3": 5.099138988511283e-12,
+          "logdet_cov3": -26.001949416233046,
+          "valid_fom3": true
+        }
+      ],
+      "nobnt": {
+        "n": 3,
+        "std_sum_mean": 0.17769595980644226,
+        "std_sum_std": 0.0011176615424986136,
+        "bias_l2_mean": 0.08031467233482277,
+        "bias_l2_std": 0.015796619659190554,
+        "fom3_mean": 607808.189211295,
+        "fom3_std": 26269.001748942057,
+        "valid_fom3_count": 3
+      },
+      "bnt": {
+        "n": 3,
+        "std_sum_mean": 0.18708373109499613,
+        "std_sum_std": 0.0015645313882698254,
+        "bias_l2_mean": 0.07633201318942608,
+        "bias_l2_std": 0.031836002087538985,
+        "fom3_mean": 473082.1288196018,
+        "fom3_std": 36248.36556716025,
+        "valid_fom3_count": 3
+      },
+      "inflation_std_sum_bnt_over_nobnt": 1.0528305274851473,
+      "fom3_ratio_bnt_over_nobnt": 0.7783411563333547,
+      "name": "advanced_arch96_nostd",
+      "seeds": [
+        41,
+        42,
+        43
+      ],
+      "config": {
+        "compressor_steps": 70000,
+        "compressor_conv_channels": "96,192,384",
+        "compressor_dense_width": 192,
+        "compressor_pool_window": 16,
+        "compressor_pool_stride": 8,
+        "standardize_summary": false,
+        "summary_clip_value": 5.0,
+        "flow_steps": 7000,
+        "nvp_layers": 6,
+        "nvp_hidden": 192,
+        "batch_size": 256,
+        "patience": 35
+      },
+      "rank_score": 0.2744893711517926
+    }
+  ],
+  "ranked_configs": [
+    {
+      "name": "advanced_arch96_nostd",
+      "rank_score": 0.2744893711517926,
+      "inflation_std_sum_bnt_over_nobnt": 1.0528305274851473,
+      "fom3_ratio_bnt_over_nobnt": 0.7783411563333547,
+      "nobnt_fom3_mean": 607808.189211295,
+      "bnt_fom3_mean": 473082.1288196018,
+      "seeds": [
+        41,
+        42,
+        43
+      ]
+    }
+  ],
+  "best_config": "advanced_arch96_nostd"
+}

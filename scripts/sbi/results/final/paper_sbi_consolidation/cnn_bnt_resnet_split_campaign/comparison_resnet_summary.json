@@ -1,0 +1,75 @@
+{
+  "best_config": "control_plain_split",
+  "baseline": {
+    "std_infl": 1.804908282376767,
+    "fom_ratio": 0.09478793095560738,
+    "nobnt_fom3": 221867.46235312996,
+    "bnt_fom3": 21030.3577028243
+  },
+  "configs": [
+    {
+      "name": "control_plain_split",
+      "seeds": [
+        41,
+        42,
+        43,
+        44,
+        45
+      ],
+      "rank_score": 0.4493205268307582,
+      "std_infl_all": 1.0592058795031327,
+      "fom_ratio_all": 0.6098853526723745,
+      "nobnt_fom3_all": 396125.3604983136,
+      "bnt_fom3_all": 241591.0551899855,
+      "std_infl_41_43": 1.0579989858280388,
+      "fom_ratio_41_43": 0.6196066673183283,
+      "nobnt_fom3_41_43": 396073.4303889777,
+      "bnt_fom3_41_43": 245409.73821665233,
+      "delta_fom_ratio_vs_control_41_43": 0.0,
+      "delta_std_infl_vs_control_41_43": 0.0,
+      "nobnt_fom3_fraction_vs_control_41_43": 1.0
+    },
+    {
+      "name": "resnet_small_split",
+      "seeds": [
+        41,
+        42,
+        43,
+        44,
+        45
+      ],
+      "rank_score": 0.7104017838634511,
+      "std_infl_all": 1.1222062743302539,
+      "fom_ratio_all": 0.4118044904668028,
+      "nobnt_fom3_all": 393203.0293814241,
+      "bnt_fom3_all": 161922.77316442062,
+      "std_infl_41_43": 1.1247790198412988,
+      "fom_ratio_41_43": 0.418060502861845,
+      "nobnt_fom3_41_43": 385915.22776572936,
+      "bnt_fom3_41_43": 161335.91418178426,
+      "delta_fom_ratio_vs_control_41_43": -0.20154616445648327,
+      "delta_std_infl_vs_control_41_43": 0.06678003401326005,
+      "nobnt_fom3_fraction_vs_control_41_43": 0.9743527289541434
+    },
+    {
+      "name": "resnet50_split",
+      "seeds": [
+        41,
+        42,
+        43
+      ],
+      "rank_score": 0.49118559603472256,
+      "std_infl_all": 1.0702855555296191,
+      "fom_ratio_all": 0.5790999594948966,
+      "nobnt_fom3_all": 165789.9379196576,
+      "bnt_fom3_all": 96008.94633393512,
+      "std_infl_41_43": 1.0702855555296191,
+      "fom_ratio_41_43": 0.5790999594948966,
+      "nobnt_fom3_41_43": 165789.9379196576,
+      "bnt_fom3_41_43": 96008.94633393512,
+      "delta_fom_ratio_vs_control_41_43": -0.04050670782343169,
+      "delta_std_infl_vs_control_41_43": 0.012286569701580374,
+      "nobnt_fom3_fraction_vs_control_41_43": 0.4185838412761942
+    }
+  ]
+}

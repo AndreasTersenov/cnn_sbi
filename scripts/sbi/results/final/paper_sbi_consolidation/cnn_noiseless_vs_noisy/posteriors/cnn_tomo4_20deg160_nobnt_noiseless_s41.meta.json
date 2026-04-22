@@ -1,0 +1,27 @@
+{
+  "method": "cnn",
+  "posterior_file": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/final/paper_sbi_consolidation/cnn_noiseless_vs_noisy/posteriors/cnn_tomo4_20deg160_nobnt_noiseless_s41.npy",
+  "flow_params_source": "trained_best_val_in_memory",
+  "total_steps": 5000,
+  "save_every": 500,
+  "patience": 30,
+  "npe_samples": 100000,
+  "summary_standardized": false,
+  "summary_standardization_file": null,
+  "compressor_train_split": "train",
+  "compressor_val_split": "test",
+  "nde_train_split": "train",
+  "nde_val_split": "test",
+  "apply_bnt": false,
+  "bnt_matrix_version": "none",
+  "flow_training_summary": {
+    "best_val_loss": -17.25971221923828,
+    "best_step": 5000,
+    "final_step": 5000,
+    "best_at_final_step": true,
+    "total_steps_requested": 5000,
+    "save_every": 500,
+    "patience": 30,
+    "n_val_checks": 10
+  }
+}

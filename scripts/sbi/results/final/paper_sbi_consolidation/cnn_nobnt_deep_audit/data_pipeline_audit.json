@@ -1,0 +1,44 @@
+{
+  "tfds_name": "NbodyCosmogridDatasetTomo/grid_20deg_160px",
+  "splits": {
+    "train_split": "train",
+    "val_split": "test",
+    "split_a": "train[:70%]",
+    "split_b": "train[70%:]"
+  },
+  "split_sizes": {
+    "train_split": 157325,
+    "val_split": 70000,
+    "split_a": 110128,
+    "split_b": 47197
+  },
+  "overlap": {
+    "train_vs_val": {
+      "tfds_id_overlap": 0,
+      "theta_overlap": 0,
+      "train_unique_theta": 899,
+      "val_unique_theta": 400
+    },
+    "split_a_vs_split_b": {
+      "tfds_id_overlap": 0,
+      "theta_overlap": 899,
+      "split_a_unique_theta": 899,
+      "split_b_unique_theta": 899
+    }
+  },
+  "preprocess_checks": {
+    "raw_theta_h0": 72.7099609375,
+    "aug_theta_h0": 0.727099597454071,
+    "expected_aug_theta_h0": 0.727099609375,
+    "theta_max_abs_error_vs_expected": 1.1920928910669204e-08,
+    "theta_h0_rescaled_pass": true,
+    "maps_shape": [
+      160,
+      160,
+      4
+    ],
+    "maps_are_finite_pass": true,
+    "augmentation_stochastic_l2": 5.7178442963706395,
+    "augmentation_stochastic_pass": true
+  }
+}

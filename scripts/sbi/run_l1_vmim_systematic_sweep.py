@@ -140,7 +140,7 @@ def run_jobs_parallel(
 def main() -> None:
     args = parse_args()
     repo_root = Path(args.repo_root).resolve()
-    script_path = repo_root / "scripts" / "sbi" / "npe_l1vmim_nbody_tomo.py"
+    script_path = repo_root / "scripts" / "sbi" / "npe_l1vmim_jaxili_nbody_tomo.py"
     out_root = Path(args.output_root).resolve()
     out_root.mkdir(parents=True, exist_ok=True)
 
@@ -293,7 +293,7 @@ def main() -> None:
                     [
                         "--plot",
                         "--figure-out",
-                        str(out_root / "figures" / f"l1_vmim_{tag}.png"),
+                        str(out_root / "figures" / f"l1_vmim_{tag}.pdf"),
                     ]
                 )
 
