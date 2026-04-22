@@ -1,6 +1,6 @@
 {
   "method": "cnn",
-  "posterior_file": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/zero_mean_maps_parity_check/run_b_advanced_plain/posteriors/cnn_tomo4_20deg160_nobnt_advanced_arch64_dense256_nostd_long_zm_s45.npy",
+  "posterior_file": "cnn_tomo4_20deg160_nobnt_advanced_arch64_dense256_nostd_long_zm_s45.npy",
   "flow_params_source": "trained_best_val_in_memory",
   "compressor_arch": "plain",
   "compressor_conv_channels": "64,128,256",
