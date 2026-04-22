@@ -1,23 +1,9 @@
 # cnn_sbi — SBI for weak-lensing cosmology
 
-> Based on [Learn2Map](https://github.com/Justinezgh/Learn2Map) by [Justine Zeghal](https://github.com/Justinezgh) and [Benjamin Remy](https://github.com/b-remy).
-
 Simulation-based inference (SBI) pipeline for weak gravitational lensing. Learns
 low-dimensional summaries of tomographic convergence maps — via a CNN-VMIM compressor
-or wavelet L1 / L1-VMIM statistics — and feeds them to a conditional RealNVP flow (or a
-`jaxili` NPE backend) to infer the 6-parameter cosmology
+or wavelet L1 / L1-VMIM statistics — and feeds them to a conditional RealNVP flow to infer the 6-parameter cosmology
 `theta = [Omega_m, sigma_8, w0, h0, n_s, Omega_b]`.
-
-Current scientific focus: BNT (Baryon Nuller Transform) contour inflation on 4-bin
-tomographic CosmoGridV1 n-body maps.
-
-## Start here
-
-- [`CLAUDE.md`](CLAUDE.md) — repo conventions, environments, commands, working-tree rules.
-- [`SBI_PIPELINE_BEST_PRACTICES.md`](SBI_PIPELINE_BEST_PRACTICES.md) — prescriptive guide for running new experiments.
-- [`PROJECT_SCIENTIFIC_KNOWLEDGE_BASE.md`](PROJECT_SCIENTIFIC_KNOWLEDGE_BASE.md) — retrospective synthesis of all campaigns and evidence.
-- [`CLAUDE_CODE_HANDOFF.md`](CLAUDE_CODE_HANDOFF.md) — runbook for the active `bnt-parity-techniques` branch.
-- [`skills/sbi/SKILL.md`](skills/sbi/SKILL.md) — experiment protocol (workflow, claim acceptance, anti-clutter).
 
 ## Layout
 
@@ -55,9 +41,7 @@ conda run -n jaxili python scripts/sbi/npe_cnn_nbody_tomo.py \
   --seed 42 --plot
 ```
 
-Add `--apply-bnt` for the BNT path (requires full 4-bin tomography). See
-[`SBI_PIPELINE_BEST_PRACTICES.md`](SBI_PIPELINE_BEST_PRACTICES.md) for canonical
-compressor and flow hyperparameters.
+Add `--apply-bnt` for the BNT path (requires full 4-bin tomography). 
 
 ## License
 
