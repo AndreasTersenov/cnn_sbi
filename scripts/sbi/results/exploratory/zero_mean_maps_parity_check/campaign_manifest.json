@@ -1,0 +1,64 @@
+{
+  "repo_root": "/mnt/home/tersenov/software/cnn_sbi",
+  "output_root": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/zero_mean_maps_parity_check",
+  "conda_env": "jaxili",
+  "gpus": [
+    "0",
+    "1",
+    "2"
+  ],
+  "xla_mem_fraction": 0.4,
+  "xla_mem_fraction_by_gpu": {
+    "0": 0.4,
+    "1": 0.4,
+    "2": 0.5
+  },
+  "tfds_name": "NbodyCosmogridDatasetTomo/grid_20deg_160px_nonoverlap48",
+  "npe_samples": 100000,
+  "zero_mean_maps": true,
+  "configs": [
+    {
+      "name": "run_a_resnet18",
+      "label": "resnet18_long15k_nostd6k_l8h256_zm",
+      "seeds": [
+        41,
+        42,
+        43
+      ],
+      "compressor_arch": "resnet18",
+      "compressor_dim": 6,
+      "compressor_steps": 15000,
+      "standardize_summary": false,
+      "summary_clip_value": 5.0,
+      "flow_steps": 6000,
+      "nvp_layers": 8,
+      "nvp_hidden": 256,
+      "compressor_train_split": "train[:70%]",
+      "nde_train_split": "train[70%:]",
+      "require_disjoint_train_examples": true
+    },
+    {
+      "name": "run_b_advanced_plain",
+      "label": "advanced_arch64_dense256_nostd_long_zm",
+      "seeds": [
+        41,
+        42,
+        43,
+        44,
+        45
+      ],
+      "compressor_arch": "plain",
+      "compressor_dim": 10,
+      "compressor_steps": 120000,
+      "standardize_summary": false,
+      "summary_clip_value": 5.0,
+      "flow_steps": 10000,
+      "nvp_layers": 8,
+      "nvp_hidden": 256,
+      "compressor_train_split": "train",
+      "nde_train_split": "train",
+      "require_disjoint_train_examples": false
+    }
+  ],
+  "generated_at_utc": "2026-04-21T22:23:22.180009+00:00"
+}
