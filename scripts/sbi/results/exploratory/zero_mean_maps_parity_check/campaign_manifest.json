@@ -1,6 +1,6 @@
 {
-  "repo_root": "/mnt/home/tersenov/software/cnn_sbi",
-  "output_root": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/zero_mean_maps_parity_check",
+  "repo_root": ".",
+  "output_root": "scripts/sbi/results/exploratory/zero_mean_maps_parity_check",
   "conda_env": "jaxili",
   "gpus": [
     "0",
