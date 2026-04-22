@@ -548,6 +548,64 @@ def _plot_overlay(
     plt.close(g.fig)
 
 
+def _plot_overlay_4way(
+    out_path: Path,
+    samples_old_nobnt: np.ndarray,
+    samples_old_bnt: np.ndarray,
+    samples_new_nobnt: np.ndarray,
+    samples_new_bnt: np.ndarray,
+    title: str,
+    dpi: int,
+) -> None:
+    plt, MCSamples, gplot = _import_plotting()
+    smooth_settings = {"smooth_scale_2D": 0.7, "smooth_scale_1D": 0.7}
+    chain_old_nobnt = MCSamples(
+        samples=samples_old_nobnt,
+        names=PARAM_NAMES,
+        labels=PARAM_NAMES,
+        label="old / no-BNT",
+        settings=smooth_settings,
+    )
+    chain_old_bnt = MCSamples(
+        samples=samples_old_bnt,
+        names=PARAM_NAMES,
+        labels=PARAM_NAMES,
+        label="old / BNT",
+        settings=smooth_settings,
+    )
+    chain_new_nobnt = MCSamples(
+        samples=samples_new_nobnt,
+        names=PARAM_NAMES,
+        labels=PARAM_NAMES,
+        label="new / no-BNT",
+        settings=smooth_settings,
+    )
+    chain_new_bnt = MCSamples(
+        samples=samples_new_bnt,
+        names=PARAM_NAMES,
+        labels=PARAM_NAMES,
+        label="new / BNT",
+        settings=smooth_settings,
+    )
+    g = gplot.get_subplot_plotter(subplot_size=1.4)
+    g.settings.alpha_filled_add = 0.45
+    g.triangle_plot(
+        [chain_old_nobnt, chain_old_bnt, chain_new_nobnt, chain_new_bnt],
+        filled=True,
+        contour_colors=["#1f77b4", "#d62728", "#2ca02c", "#9467bd"],
+        markers=TRUTH,
+        marker_args={"color": "black", "lw": 1.0},
+        legend_loc="upper right",
+    )
+    g.fig.suptitle(title, fontsize=12)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    png_path = out_path.with_suffix(".png")
+    pdf_path = out_path.with_suffix(".pdf")
+    g.fig.savefig(png_path, dpi=dpi, bbox_inches="tight")
+    g.fig.savefig(pdf_path, bbox_inches="tight")
+    plt.close(g.fig)
+
+
 def _concat(paths: Iterable[Path]) -> np.ndarray:
     return np.concatenate([np.load(p) for p in paths], axis=0)
 
