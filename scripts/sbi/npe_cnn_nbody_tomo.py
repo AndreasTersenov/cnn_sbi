@@ -406,6 +406,46 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     p.add_argument(
+        "--compressor-paired-bnt-nobnt-consistency",
+        action="store_true",
+        help=(
+            "Train compressor on paired no-BNT/BNT views of the same maps and "
+            "optimize VMIM with an explicit summary consistency penalty."
+        ),
+    )
+    p.add_argument(
+        "--compressor-consistency-weight",
+        type=float,
+        default=0.1,
+        help=(
+            "Weight for paired summary consistency loss when "
+            "--compressor-paired-bnt-nobnt-consistency is enabled."
+        ),
+    )
+    p.add_argument(
+        "--compressor-domain-adversarial",
+        action="store_true",
+        help=(
+            "Enable a domain-adversarial head (BNT vs no-BNT) during compressor "
+            "training to encourage domain-invariant summaries."
+        ),
+    )
+    p.add_argument(
+        "--compressor-domain-adv-weight",
+        type=float,
+        default=0.05,
+        help=(
+            "Adversarial weight for domain invariance. The compressor minimizes "
+            "VMIM + consistency - w * domain_ce."
+        ),
+    )
+    p.add_argument(
+        "--compressor-domain-hidden",
+        type=int,
+        default=64,
+        help="Hidden width of the domain-adversarial MLP head.",
+    )
+    p.add_argument(
         "--compressor-plot-contours",
         action="store_true",
         help="Plot compressor contour diagnostics at each compressor checkpoint",
@@ -435,6 +475,16 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--summary-clip-value", type=float, default=5.0,
                     help="Clip standardized summary features to ±this value "
                          "(0 = disabled)")
+    p.add_argument("--zero-mean-maps", dest="zero_mean_maps",
+                    action="store_true",
+                    help="Subtract the per-example, per-channel spatial mean "
+                         "from input maps before the compressor (mass-sheet "
+                         "degeneracy). Applied to observed and augmented "
+                         "training/eval maps.")
+    p.add_argument("--no-zero-mean-maps", dest="zero_mean_maps",
+                    action="store_false",
+                    help="Disable per-channel map demeaning (default).")
+    p.set_defaults(zero_mean_maps=False)
 
     return p.parse_args()
 
@@ -483,6 +533,7 @@ def load_observed_map(
     galaxy_density: float,
     rng_key: jax.Array,
     apply_bnt: bool = False,
+    zero_mean_maps: bool = False,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Load fiducial 4-bin tomographic map, project, and add shape noise."""
     print("######## OBSERVED DATA ########")
@@ -523,6 +574,19 @@ def load_observed_map(
     noise_std = pixel_noise_sigma(sigma_e, galaxy_density, field_size, field_npix)
     noise = jax.random.normal(rng_key, (field_npix, field_npix, nbins)) * noise_std
     m_data = np.array(jnp.asarray(m_data) + noise)
+    if zero_mean_maps:
+        # Mass-sheet degeneracy: each tomographic channel is recoverable only
+        # up to an additive constant in real data. Remove the per-channel
+        # spatial mean so the compressor cannot exploit absolute levels.
+        per_channel_mean = m_data.mean(axis=(0, 1), keepdims=True)
+        m_data = m_data - per_channel_mean
+        residual = np.abs(m_data.mean(axis=(0, 1))).max()
+        assert residual < 1e-5, (
+            f"Observed map per-channel mean residual {residual:.3e} after "
+            "demeaning exceeds tolerance."
+        )
+        print(f"  Applied zero-mean-maps to observed map "
+              f"(subtracted means = {per_channel_mean.squeeze()})")
     if apply_bnt:
         m_data = apply_bnt_numpy(m_data)
     print(f"  Observed map shape = {m_data.shape}, "
@@ -783,6 +847,13 @@ def build_cnn_cache_metadata(
         "compressor_curriculum_stage_fracs": str(
             args.compressor_curriculum_stage_fracs
         ),
+        "compressor_paired_bnt_nobnt_consistency": int(
+            bool(args.compressor_paired_bnt_nobnt_consistency)
+        ),
+        "compressor_consistency_weight": float(args.compressor_consistency_weight),
+        "compressor_domain_adversarial": int(bool(args.compressor_domain_adversarial)),
+        "compressor_domain_adv_weight": float(args.compressor_domain_adv_weight),
+        "compressor_domain_hidden": int(args.compressor_domain_hidden),
         "resnet_small_channels": str(args.resnet_small_channels),
         "resnet_small_blocks": str(args.resnet_small_blocks),
         "resnet_head_width": int(args.resnet_head_width),
@@ -802,6 +873,7 @@ def build_cnn_cache_metadata(
         "galaxy_density": float(args.galaxy_density),
         "apply_bnt": bool(args.apply_bnt),
         "bnt_matrix_version": BNT_MATRIX_VERSION if args.apply_bnt else "none",
+        "zero_mean_maps": int(bool(args.zero_mean_maps)),
         "compressor_params_path": str(params_path) if params_path else "",
         "compressor_state_path": str(state_path) if state_path else "",
         "compressor_params_sha256": (
@@ -950,6 +1022,11 @@ def train_compressor_vmim(
     compressor_val_split: str,
     plot_contours: bool = False,
     noise_curriculum_stages: Optional[list[Dict[str, object]]] = None,
+    paired_bnt_nobnt_consistency: bool = False,
+    consistency_weight: float = 0.0,
+    domain_adversarial: bool = False,
+    domain_adv_weight: float = 0.0,
+    domain_hidden: int = 64,
 ) -> Tuple[hk.Params, hk.State]:
     """Train the CNN compressor from scratch using VMIM loss.
 
@@ -1016,6 +1093,175 @@ def train_compressor_vmim(
         optimizer=optimizer, loss_name="train_compressor_vmim",
     )
     update = jax.jit(model.update)
+
+    paired_training = bool(paired_bnt_nobnt_consistency or domain_adversarial)
+    if paired_training:
+        print(
+            "  Paired BNT/no-BNT compressor training enabled "
+            f"(consistency_weight={consistency_weight:.4g}, "
+            f"domain_adversarial={bool(domain_adversarial)}, "
+            f"domain_adv_weight={domain_adv_weight:.4g})."
+        )
+
+    domain_params = None
+    domain_optimizer = None
+    domain_opt_state = None
+
+    def _domain_logits(dparams, y):
+        hidden = jnp.tanh(jnp.matmul(y, dparams["w1"]) + dparams["b1"])
+        return jnp.matmul(hidden, dparams["w2"]) + dparams["b2"]
+
+    if domain_adversarial:
+        key_dom = jax.random.PRNGKey(17)
+        key_w1, key_w2 = jax.random.split(key_dom)
+        scale_in = 1.0 / np.sqrt(float(max(1, compressor_dim)))
+        scale_hidden = 1.0 / np.sqrt(float(max(1, domain_hidden)))
+        domain_params = {
+            "w1": jax.random.normal(key_w1, (compressor_dim, domain_hidden)) * scale_in,
+            "b1": jnp.zeros((domain_hidden,), dtype=jnp.float32),
+            "w2": jax.random.normal(key_w2, (domain_hidden, 2)) * scale_hidden,
+            "b2": jnp.zeros((2,), dtype=jnp.float32),
+        }
+        domain_optimizer = optax.adam(learning_rate=lr_schedule)
+        domain_opt_state = domain_optimizer.init(domain_params)
+
+        @jax.jit
+        def _update_domain_head(
+            current_domain_params,
+            current_domain_opt_state,
+            model_params,
+            state_resnet,
+            x_nobnt,
+            x_bnt,
+        ):
+            def _domain_loss_fn(dparams):
+                y_nobnt, _ = compressor.apply(model_params, state_resnet, None, x_nobnt)
+                y_bnt, _ = compressor.apply(model_params, state_resnet, None, x_bnt)
+                y_domain = jnp.concatenate(
+                    [
+                        jax.lax.stop_gradient(y_nobnt),
+                        jax.lax.stop_gradient(y_bnt),
+                    ],
+                    axis=0,
+                )
+                labels = jnp.concatenate(
+                    [
+                        jnp.zeros((y_nobnt.shape[0],), dtype=jnp.int32),
+                        jnp.ones((y_bnt.shape[0],), dtype=jnp.int32),
+                    ],
+                    axis=0,
+                )
+                logits = _domain_logits(dparams, y_domain)
+                ce = jnp.mean(
+                    optax.softmax_cross_entropy_with_integer_labels(logits, labels)
+                )
+                acc = jnp.mean((jnp.argmax(logits, axis=-1) == labels).astype(jnp.float32))
+                return ce, acc
+
+            (domain_loss, domain_acc), domain_grads = jax.value_and_grad(
+                _domain_loss_fn, has_aux=True
+            )(current_domain_params)
+            domain_updates, new_domain_opt_state = domain_optimizer.update(  # type: ignore[union-attr]
+                domain_grads, current_domain_opt_state, current_domain_params
+            )
+            new_domain_params = optax.apply_updates(current_domain_params, domain_updates)
+            return domain_loss, domain_acc, new_domain_params, new_domain_opt_state
+
+    def _paired_objective(
+        model_params,
+        state_resnet,
+        theta,
+        x_nobnt,
+        x_bnt,
+        current_domain_params,
+    ):
+        y_nobnt, state_mid = compressor.apply(model_params, state_resnet, None, x_nobnt)
+        y_bnt, state_out = compressor.apply(model_params, state_mid, None, x_bnt)
+
+        log_prob_nobnt = nf.apply(model_params, theta, y_nobnt)
+        log_prob_bnt = nf.apply(model_params, theta, y_bnt)
+        vmim_loss = -0.5 * (jnp.mean(log_prob_nobnt) + jnp.mean(log_prob_bnt))
+
+        consistency_loss = jnp.mean(jnp.sum((y_nobnt - y_bnt) ** 2, axis=-1))
+        total_loss = vmim_loss + float(consistency_weight) * consistency_loss
+
+        domain_ce = jnp.asarray(0.0, dtype=vmim_loss.dtype)
+        domain_acc = jnp.asarray(0.0, dtype=vmim_loss.dtype)
+        if domain_adversarial:
+            y_domain = jnp.concatenate([y_nobnt, y_bnt], axis=0)
+            labels = jnp.concatenate(
+                [
+                    jnp.zeros((y_nobnt.shape[0],), dtype=jnp.int32),
+                    jnp.ones((y_bnt.shape[0],), dtype=jnp.int32),
+                ],
+                axis=0,
+            )
+            logits = _domain_logits(current_domain_params, y_domain)
+            domain_ce = jnp.mean(
+                optax.softmax_cross_entropy_with_integer_labels(logits, labels)
+            )
+            domain_acc = jnp.mean((jnp.argmax(logits, axis=-1) == labels).astype(jnp.float32))
+            total_loss = total_loss - float(domain_adv_weight) * domain_ce
+
+        return total_loss, state_out, vmim_loss, consistency_loss, domain_ce, domain_acc
+
+    @jax.jit
+    def _update_paired(
+        model_params,
+        current_opt_state,
+        state_resnet,
+        theta,
+        x_nobnt,
+        x_bnt,
+        current_domain_params,
+    ):
+        def _loss_fn(params):
+            total, state_out, vmim_loss, consistency_loss, domain_ce, domain_acc = (
+                _paired_objective(
+                    params,
+                    state_resnet,
+                    theta,
+                    x_nobnt,
+                    x_bnt,
+                    current_domain_params,
+                )
+            )
+            aux = (state_out, vmim_loss, consistency_loss, domain_ce, domain_acc)
+            return total, aux
+
+        (loss, aux), grads = jax.value_and_grad(_loss_fn, has_aux=True)(model_params)
+        updates, new_opt_state = optimizer.update(grads, current_opt_state, model_params)
+        new_params = optax.apply_updates(model_params, updates)
+        state_out, vmim_loss, consistency_loss, domain_ce, domain_acc = aux
+        return (
+            loss,
+            new_params,
+            new_opt_state,
+            state_out,
+            vmim_loss,
+            consistency_loss,
+            domain_ce,
+            domain_acc,
+        )
+
+    @jax.jit
+    def _eval_paired(
+        model_params,
+        state_resnet,
+        theta,
+        x_nobnt,
+        x_bnt,
+        current_domain_params,
+    ):
+        total, _, vmim_loss, consistency_loss, domain_ce, domain_acc = _paired_objective(
+            model_params,
+            state_resnet,
+            theta,
+            x_nobnt,
+            x_bnt,
+            current_domain_params,
+        )
+        return total, vmim_loss, consistency_loss, domain_ce, domain_acc
 
     def _dataset_iter(split: str, shuffle_buffer: int, aug_fn):
         ds = tfds.load(tfds_name, split=split)
@@ -1108,17 +1354,64 @@ def train_compressor_vmim(
         for _ in tqdm(range(stage_steps), desc=f"Compressor[{stage_name}]"):
             step = global_step + 1
             ex = next(ds_train_iter)
-            if jnp.isnan(ex["maps"]).any():
+            if paired_training:
+                has_nan = bool(np.isnan(ex["maps_nobnt"]).any()) or bool(
+                    np.isnan(ex["maps_bnt"]).any()
+                )
+            else:
+                has_nan = bool(np.isnan(ex["maps"]).any())
+            if has_nan:
                 global_step = step
                 continue
 
-            b_loss, params_merged, opt_state, state_cnn = update(
-                model_params=params_merged,
-                opt_state=opt_state,
-                theta=ex["theta"],
-                x=ex["maps"],
-                state_resnet=state_cnn,
-            )
+            domain_loss = 0.0
+            domain_acc = 0.0
+            if domain_adversarial:
+                (
+                    domain_loss,
+                    domain_acc,
+                    domain_params,
+                    domain_opt_state,
+                ) = _update_domain_head(
+                    domain_params,
+                    domain_opt_state,
+                    params_merged,
+                    state_cnn,
+                    ex["maps_nobnt"],
+                    ex["maps_bnt"],
+                )
+
+            if paired_training:
+                (
+                    b_loss,
+                    params_merged,
+                    opt_state,
+                    state_cnn,
+                    vmim_train_loss,
+                    consistency_train_loss,
+                    domain_ce_train,
+                    domain_acc_train,
+                ) = _update_paired(
+                    params_merged,
+                    opt_state,
+                    state_cnn,
+                    ex["theta"],
+                    ex["maps_nobnt"],
+                    ex["maps_bnt"],
+                    domain_params,
+                )
+            else:
+                b_loss, params_merged, opt_state, state_cnn = update(
+                    model_params=params_merged,
+                    opt_state=opt_state,
+                    theta=ex["theta"],
+                    x=ex["maps"],
+                    state_resnet=state_cnn,
+                )
+                vmim_train_loss = b_loss
+                consistency_train_loss = jnp.asarray(0.0, dtype=b_loss.dtype)
+                domain_ce_train = jnp.asarray(0.0, dtype=b_loss.dtype)
+                domain_acc_train = jnp.asarray(0.0, dtype=b_loss.dtype)
             store_loss.append(float(b_loss))
 
             if jnp.isnan(b_loss):
@@ -1133,6 +1426,12 @@ def train_compressor_vmim(
             if step % 100 == 0:
                 wandb.log({
                     "compressor/train_loss": float(b_loss),
+                    "compressor/train_vmim_loss": float(vmim_train_loss),
+                    "compressor/train_consistency_loss": float(consistency_train_loss),
+                    "compressor/train_domain_ce": float(domain_ce_train),
+                    "compressor/train_domain_acc": float(domain_acc_train),
+                    "compressor/domain_head_loss": float(domain_loss),
+                    "compressor/domain_head_acc": float(domain_acc),
                     "compressor/step": step,
                     "compressor/curriculum_stage_index": stage_idx,
                     "compressor/curriculum_stage_sigma_factor": stage_sigma_factor,
@@ -1150,18 +1449,42 @@ def train_compressor_vmim(
 
                 # Test loss
                 ex_test = next(ds_test_iter)
-                b_loss_test, _, _, _ = update(
-                    model_params=params_merged,
-                    opt_state=opt_state,
-                    theta=ex_test["theta"],
-                    x=ex_test["maps"],
-                    state_resnet=state_cnn,
-                )
+                if paired_training:
+                    (
+                        b_loss_test,
+                        vmim_test_loss,
+                        consistency_test_loss,
+                        domain_ce_test,
+                        domain_acc_test,
+                    ) = _eval_paired(
+                        params_merged,
+                        state_cnn,
+                        ex_test["theta"],
+                        ex_test["maps_nobnt"],
+                        ex_test["maps_bnt"],
+                        domain_params,
+                    )
+                else:
+                    b_loss_test, _, _, _ = update(
+                        model_params=params_merged,
+                        opt_state=opt_state,
+                        theta=ex_test["theta"],
+                        x=ex_test["maps"],
+                        state_resnet=state_cnn,
+                    )
+                    vmim_test_loss = b_loss_test
+                    consistency_test_loss = jnp.asarray(0.0, dtype=b_loss_test.dtype)
+                    domain_ce_test = jnp.asarray(0.0, dtype=b_loss_test.dtype)
+                    domain_acc_test = jnp.asarray(0.0, dtype=b_loss_test.dtype)
                 loss_train_hist.append(float(b_loss))
                 loss_test_hist.append(float(b_loss_test))
 
                 wandb.log({
                     "compressor/test_loss": float(b_loss_test),
+                    "compressor/test_vmim_loss": float(vmim_test_loss),
+                    "compressor/test_consistency_loss": float(consistency_test_loss),
+                    "compressor/test_domain_ce": float(domain_ce_test),
+                    "compressor/test_domain_acc": float(domain_acc_test),
                     "compressor/step": step,
                     "compressor/curriculum_stage_index": stage_idx,
                     "compressor/curriculum_stage_sigma_factor": stage_sigma_factor,
@@ -1278,6 +1601,8 @@ def build_augmentation(
     tomo_bin_indices: tuple[int, ...],
     apply_bnt: bool = False,
     sigma_e_override: Optional[float] = None,
+    paired_bnt_nobnt_consistency: bool = False,
+    zero_mean_maps: bool = False,
 ):
     """Build the TF augmentation pipeline for the tomographic dataset."""
     effective_sigma_e = sigma_e if sigma_e_override is None else sigma_e_override
@@ -1292,11 +1617,52 @@ def build_augmentation(
     }[map_kind]
     gather_indices = tf.constant([b - 1 for b in tomo_bin_indices], dtype=tf.int32)
 
+    def _rescale_h(theta):
+        return tf.tensor_scatter_nd_update(theta, [[3]], [theta[3] / 100.0])
+
+    def _flip_pair(x_nobnt, x_bnt):
+        flip_lr = tf.less(tf.random.uniform([], 0.0, 1.0), 0.5)
+        flip_ud = tf.less(tf.random.uniform([], 0.0, 1.0), 0.5)
+
+        def _apply_lr(x):
+            return tf.cond(flip_lr, lambda: tf.image.flip_left_right(x), lambda: x)
+
+        def _apply_ud(x):
+            return tf.cond(flip_ud, lambda: tf.image.flip_up_down(x), lambda: x)
+
+        x_nobnt = _apply_ud(_apply_lr(x_nobnt))
+        x_bnt = _apply_ud(_apply_lr(x_bnt))
+        return x_nobnt, x_bnt
+
+    if paired_bnt_nobnt_consistency:
+        def augmentation(example):
+            x = tf.gather(example[map_key], gather_indices, axis=-1)
+            noise = tf.random.normal(
+                shape=(field_npix, field_npix, nbins),
+                stddev=noise_std,
+            )
+            x_nobnt = x + noise
+            if zero_mean_maps:
+                # Demean once, before BNT split. BNT is linear across channels
+                # so B(x - m·1) is also zero-mean per channel — both views see
+                # a mass-sheet-degeneracy-respecting input.
+                x_nobnt = x_nobnt - tf.reduce_mean(
+                    x_nobnt, axis=[0, 1], keepdims=True,
+                )
+            x_bnt = apply_bnt_tf(x_nobnt)
+            x_nobnt, x_bnt = _flip_pair(x_nobnt, x_bnt)
+            theta = _rescale_h(example["theta"])
+            return {"maps_nobnt": x_nobnt, "maps_bnt": x_bnt, "theta": theta}
+
+        return augmentation
+
     def augmentation_noise(example):
         x = tf.gather(example[map_key], gather_indices, axis=-1)
         x += tf.random.normal(
             shape=(field_npix, field_npix, nbins), stddev=noise_std,
         )
+        if zero_mean_maps:
+            x = x - tf.reduce_mean(x, axis=[0, 1], keepdims=True)
         if apply_bnt:
             x = apply_bnt_tf(x)
         return {"maps": x, "theta": example["theta"]}
@@ -1308,8 +1674,7 @@ def build_augmentation(
         return {"maps": x, "theta": example["theta"]}
 
     def rescale_h(example):
-        x = example["theta"]
-        x = tf.tensor_scatter_nd_update(x, [[3]], [x[3] / 100.0])
+        x = _rescale_h(example["theta"])
         return {"maps": example["maps"], "theta": x}
 
     def augmentation(example):
@@ -1330,6 +1695,7 @@ def compress_dataset(
     comp_params: hk.Params,
     comp_state: hk.State,
     ds_batch_size: int,
+    paired_map_view: Optional[str] = None,
 ) -> Dict[str, np.ndarray]:
     """
     Load TFDS dataset, apply augmentation, compress via CNN.
@@ -1348,15 +1714,42 @@ def compress_dataset(
     x_list = []
     n_processed = 0
     t0 = time.time()
+    first_batch_reported = False
 
     for example in ds.as_numpy_iterator():
-        maps_np = example["maps"]   # (B, H, W, nbins)
+        if "maps" in example:
+            maps_np = example["maps"]   # (B, H, W, nbins)
+        elif "maps_nobnt" in example and "maps_bnt" in example:
+            if paired_map_view == "nobnt":
+                maps_np = example["maps_nobnt"]
+            elif paired_map_view == "bnt":
+                maps_np = example["maps_bnt"]
+            else:
+                raise KeyError(
+                    "Augmentation produced paired maps but no valid paired_map_view "
+                    f"was provided (got {paired_map_view!r})."
+                )
+        else:
+            raise KeyError(
+                "Augmentation output missing map tensor. Expected one of "
+                "['maps'] or paired ['maps_nobnt', 'maps_bnt']; got keys "
+                f"{sorted(example.keys())}."
+            )
         theta_np = example["theta"]  # (B, 6)
 
         # Skip any batch with NaNs
         if np.isnan(maps_np).any():
             print("    [!] Skipped batch with NaN maps")
             continue
+
+        if not first_batch_reported:
+            per_map_means = maps_np.mean(axis=(1, 2))  # (B, nbins)
+            print(
+                "    First-batch per-channel spatial-mean stats: "
+                f"abs max = {np.abs(per_map_means).max():.3e}, "
+                f"mean = {per_map_means.mean():.3e}"
+            )
+            first_batch_reported = True
 
         comp_y, _ = compressor.apply(
             comp_params, comp_state, None, maps_np,
@@ -1816,6 +2209,21 @@ def main():
         raise ValueError("--compressor-pool-stride must be >= 1.")
     if args.resnet_head_width < 1:
         raise ValueError("--resnet-head-width must be >= 1.")
+    if args.compressor_domain_hidden < 1:
+        raise ValueError("--compressor-domain-hidden must be >= 1.")
+    if args.compressor_consistency_weight < 0.0:
+        raise ValueError("--compressor-consistency-weight must be >= 0.")
+    if args.compressor_domain_adv_weight < 0.0:
+        raise ValueError("--compressor-domain-adv-weight must be >= 0.")
+    if (
+        args.compressor_domain_adversarial
+        and not args.compressor_paired_bnt_nobnt_consistency
+    ):
+        print(
+            "  Enabling --compressor-paired-bnt-nobnt-consistency because "
+            "--compressor-domain-adversarial requires paired domain views."
+        )
+        args.compressor_paired_bnt_nobnt_consistency = True
     if len(resnet_small_channels) != len(resnet_small_blocks):
         raise ValueError(
             "--resnet-small-channels and --resnet-small-blocks must have "
@@ -1896,6 +2304,7 @@ def main():
         tomo_bin_indices,
         args.sigma_e, args.galaxy_density, rng_obs,
         apply_bnt=args.apply_bnt,
+        zero_mean_maps=args.zero_mean_maps,
     )
 
     # ------------------------------------------------------------------
@@ -1974,10 +2383,15 @@ def main():
     compressor_params_ref: Optional[str] = None
     compressor_state_ref: Optional[str] = None
 
+    paired_consistency_training = bool(
+        args.train_compressor and args.compressor_paired_bnt_nobnt_consistency
+    )
     augmentation = build_augmentation(
         args.map_kind, args.sigma_e, args.galaxy_density,
         args.field_size, args.field_npix, args.nbins, tomo_bin_indices,
         apply_bnt=args.apply_bnt,
+        paired_bnt_nobnt_consistency=paired_consistency_training,
+        zero_mean_maps=args.zero_mean_maps,
     )
     curriculum_stages: Optional[list[Dict[str, object]]] = None
     if args.train_compressor and args.compressor_noise_curriculum:
@@ -2007,6 +2421,8 @@ def main():
                 tomo_bin_indices,
                 apply_bnt=args.apply_bnt,
                 sigma_e_override=stage_sigma_e,
+                paired_bnt_nobnt_consistency=paired_consistency_training,
+                zero_mean_maps=args.zero_mean_maps,
             )
             curriculum_stages.append(
                 {
@@ -2045,6 +2461,20 @@ def main():
             {"compressor/noise_curriculum": False},
             allow_val_change=True,
         )
+    wandb.config.update(
+        {
+            "compressor/paired_bnt_nobnt_consistency": bool(
+                paired_consistency_training
+            ),
+            "compressor/consistency_weight": float(args.compressor_consistency_weight),
+            "compressor/domain_adversarial": bool(
+                args.compressor_domain_adversarial and paired_consistency_training
+            ),
+            "compressor/domain_adv_weight": float(args.compressor_domain_adv_weight),
+            "compressor/domain_hidden": int(args.compressor_domain_hidden),
+        },
+        allow_val_change=True,
+    )
 
     if args.train_compressor:
         comp_save_dir = (
@@ -2073,6 +2503,13 @@ def main():
             compressor_val_split=args.compressor_val_split,
             plot_contours=args.compressor_plot_contours,
             noise_curriculum_stages=curriculum_stages,
+            paired_bnt_nobnt_consistency=paired_consistency_training,
+            consistency_weight=float(args.compressor_consistency_weight),
+            domain_adversarial=bool(
+                args.compressor_domain_adversarial and paired_consistency_training
+            ),
+            domain_adv_weight=float(args.compressor_domain_adv_weight),
+            domain_hidden=int(args.compressor_domain_hidden),
         )
         # Invalidate any cached compressed datasets
         cache_dir = Path(args.cache_dir) if args.cache_dir else None
@@ -2148,15 +2585,20 @@ def main():
             )
 
     if not cache_ok:
+        paired_map_view = (
+            "bnt" if args.apply_bnt else "nobnt"
+        ) if paired_consistency_training else None
         dataset_train = compress_dataset(
             args.tfds_name, args.nde_train_split,
             augmentation, compressor_eval, comp_params, comp_state,
             args.ds_batch_size,
+            paired_map_view=paired_map_view,
         )
         dataset_val = compress_dataset(
             args.tfds_name, args.nde_val_split,
             augmentation, compressor_eval, comp_params, comp_state,
             args.ds_batch_size,
+            paired_map_view=paired_map_view,
         )
         # Save cache
         if cache_dir is not None:
@@ -2260,6 +2702,12 @@ def main():
         "data/summary_dim": summary_dim,
         "data/compressor_arch": args.compressor_arch,
         "data/compressor_noise_curriculum": int(args.compressor_noise_curriculum),
+        "data/compressor_paired_bnt_nobnt_consistency": int(
+            args.compressor_paired_bnt_nobnt_consistency
+        ),
+        "data/compressor_consistency_weight": float(args.compressor_consistency_weight),
+        "data/compressor_domain_adversarial": int(args.compressor_domain_adversarial),
+        "data/compressor_domain_adv_weight": float(args.compressor_domain_adv_weight),
         "data/require_disjoint_train_examples": int(args.require_disjoint_train_examples),
         "data/train_x_min": float(dataset_train["x"].min()),
         "data/train_x_max": float(dataset_train["x"].max()),
@@ -2389,6 +2837,13 @@ def main():
             "compressor_curriculum_stage_fracs": str(
                 args.compressor_curriculum_stage_fracs
             ),
+            "compressor_paired_bnt_nobnt_consistency": bool(
+                args.compressor_paired_bnt_nobnt_consistency
+            ),
+            "compressor_consistency_weight": float(args.compressor_consistency_weight),
+            "compressor_domain_adversarial": bool(args.compressor_domain_adversarial),
+            "compressor_domain_adv_weight": float(args.compressor_domain_adv_weight),
+            "compressor_domain_hidden": int(args.compressor_domain_hidden),
             "resnet_small_channels": str(args.resnet_small_channels),
             "resnet_small_blocks": str(args.resnet_small_blocks),
             "resnet_head_width": int(args.resnet_head_width),
@@ -2411,6 +2866,7 @@ def main():
             "train_split_overlap": split_overlap_info,
             "apply_bnt": bool(args.apply_bnt),
             "bnt_matrix_version": BNT_MATRIX_VERSION if args.apply_bnt else "none",
+            "zero_mean_maps": bool(args.zero_mean_maps),
         }
         if flow_summary_path.exists():
             metadata["flow_training_summary"] = json.loads(
