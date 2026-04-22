@@ -1,0 +1,62 @@
+[
+  {
+    "rank": 1,
+    "name": "stageA_mixed60k20k",
+    "inflation": 0.9742174983307434,
+    "bnt_std_mean": 0.2131481170654297,
+    "nobnt_std_mean": 0.21878904600938162,
+    "bnt_bias_mean": 0.07936278353221775,
+    "nobnt_bias_mean": 0.06792073646299478,
+    "source": "scripts/sbi/bnt_tomo4_study/round1_stageA/quick_metrics_seed41_42_43.json"
+  },
+  {
+    "rank": 2,
+    "name": "stageJ_arch_nostd",
+    "inflation": 1.036271020251459,
+    "bnt_std_mean": 0.19541762272516885,
+    "nobnt_std_mean": 0.18857771654923758,
+    "bnt_bias_mean": 0.08131527264038164,
+    "nobnt_bias_mean": 0.08818491827240915,
+    "source": "scripts/sbi/bnt_tomo4_study/round1_stageJ_postproc/quick_metrics_seed41_42_43_nostd.json"
+  },
+  {
+    "rank": 3,
+    "name": "stageM_arch_nostd_gc0_wd1e4",
+    "inflation": 1.0381133574597698,
+    "bnt_std_mean": 0.19583544631799063,
+    "nobnt_std_mean": 0.18864553173383078,
+    "bnt_bias_mean": 0.08046256475010027,
+    "nobnt_bias_mean": 0.08605533032310164,
+    "source": "scripts/sbi/bnt_tomo4_study/round1_stageM_flowopt/quick_metrics_seed41_42_43_gc0_wd1e4.json"
+  },
+  {
+    "rank": 4,
+    "name": "stageL_arch_nostd_flowcap10k",
+    "inflation": 1.044871733121622,
+    "bnt_std_mean": 0.19934290647506714,
+    "nobnt_std_mean": 0.1907821794350942,
+    "bnt_bias_mean": 0.07898341077445466,
+    "nobnt_bias_mean": 0.08501244459111075,
+    "source": "scripts/sbi/bnt_tomo4_study/round1_stageL_nostd_flowcap/quick_metrics_seed41_42_43_nostd_flowcap.json"
+  },
+  {
+    "rank": 5,
+    "name": "stageH_arch_clip5",
+    "inflation": 1.0501887461680728,
+    "bnt_std_mean": 0.198688010374705,
+    "nobnt_std_mean": 0.18919266760349274,
+    "bnt_bias_mean": 0.07714496001542746,
+    "nobnt_bias_mean": 0.083647046592337,
+    "source": "scripts/sbi/bnt_tomo4_study/round1_stageH_arch/quick_metrics_seed41_42_43_arch.json"
+  },
+  {
+    "rank": 6,
+    "name": "stageD_matched60k_clip5",
+    "inflation": 1.0658956194279878,
+    "bnt_std_mean": 0.21349912881851196,
+    "nobnt_std_mean": 0.20030022164185843,
+    "bnt_bias_mean": 0.07978847454045832,
+    "nobnt_bias_mean": 0.07306238739272349,
+    "source": "scripts/sbi/bnt_tomo4_study/round1_stageD_clip/quick_metrics_seed41_42_43_clip5_matched60k.json"
+  }
+]

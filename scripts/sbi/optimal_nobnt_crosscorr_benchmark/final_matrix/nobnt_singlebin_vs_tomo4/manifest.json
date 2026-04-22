@@ -1,0 +1,30 @@
+{
+  "repo_root": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study",
+  "output_root": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/optimal_nobnt_crosscorr_benchmark/final_matrix/nobnt_singlebin_vs_tomo4",
+  "mode": "nobnt_only",
+  "methods": [
+    "cnn",
+    "l1",
+    "l1vmim"
+  ],
+  "variants": [
+    "bin1_20deg160",
+    "bin2_20deg160",
+    "bin3_20deg160",
+    "bin4_20deg160",
+    "tomo4_20deg160"
+  ],
+  "seeds": [
+    41,
+    42,
+    43
+  ],
+  "construction": "assembled from validated optimal-method roots",
+  "sources": {
+    "cnn": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/nobnt_tomo_bins_crosscorr_study",
+    "l1vmim": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/nobnt_tomo_bins_crosscorr_study",
+    "l1": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/nobnt_tomo_bins_crosscorr_study_l1_jaxili_bestcfg"
+  },
+  "selected_configs": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/optimal_nobnt_crosscorr_benchmark/selected_configs/final_method_configs.json",
+  "n_posteriors": 45
+}

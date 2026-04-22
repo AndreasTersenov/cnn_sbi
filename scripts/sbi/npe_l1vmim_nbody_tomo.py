@@ -117,6 +117,13 @@ if _WL_STATS_PATH not in sys.path:
     sys.path.insert(0, _WL_STATS_PATH)
 from wl_stats_torch import WLStatistics  # noqa: E402
 
+from bnt_utils import (
+    BNT_MATRIX_VERSION,
+    apply_bnt_numpy,
+    apply_bnt_tf,
+    validate_bnt_configuration,
+)
+
 
 def parse_tomo_bin_indices(spec: str) -> tuple[int, ...]:
     values = []
@@ -274,6 +281,11 @@ def parse_args() -> argparse.Namespace:
         type=str,
         default="1,2,3,4",
         help="Tomographic bins to use",
+    )
+    p.add_argument(
+        "--apply-bnt",
+        action="store_true",
+        help="Apply BNT transform after shape-noise injection.",
     )
 
     # VMIM compressor configuration
@@ -492,6 +504,7 @@ def load_observed_map(
     sigma_e: float,
     galaxy_density: float,
     rng_key: jax.Array,
+    apply_bnt: bool = False,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     print("######## OBSERVED DATA ########")
     with h5py.File(meta_path, "r") as f:
@@ -532,6 +545,8 @@ def load_observed_map(
     noise_std = pixel_noise_sigma(sigma_e, galaxy_density, field_size, field_npix)
     noise = jax.random.normal(rng_key, (field_npix, field_npix, nbins)) * noise_std
     m_data = np.array(jnp.asarray(m_data) + noise)
+    if apply_bnt:
+        m_data = apply_bnt_numpy(m_data)
     print(f"  Observed map shape = {m_data.shape}, noise_std/pixel = {noise_std:.6f}")
     return m_data, cosmo_params, truth
 
@@ -686,6 +701,7 @@ def build_augmentation(
     field_npix: int,
     nbins: int,
     tomo_bin_indices: tuple[int, ...],
+    apply_bnt: bool = False,
 ):
     noise_std = sigma_e / jnp.sqrt(galaxy_density * (field_size * 60 / field_npix) ** 2)
     map_key = {
@@ -698,6 +714,8 @@ def build_augmentation(
     def augmentation_noise(example):
         x = tf.gather(example[map_key], gather_indices, axis=-1)
         x += tf.random.normal(shape=(field_npix, field_npix, nbins), stddev=noise_std)
+        if apply_bnt:
+            x = apply_bnt_tf(x)
         return {"maps": x, "theta": example["theta"]}
 
     def augmentation_flip(example):
@@ -798,6 +816,8 @@ def build_l1_cache_metadata(
         "n_scales": int(args.n_scales),
         "tfds_name": str(args.tfds_name),
         "tomo_bin_indices": ",".join(str(b) for b in tomo_bin_indices),
+        "apply_bnt": bool(args.apply_bnt),
+        "bnt_matrix_version": BNT_MATRIX_VERSION if args.apply_bnt else "none",
     }
 
 
@@ -909,6 +929,8 @@ def build_compressed_cache_metadata(
         "subtract_coarse_mean": bool(subtract_coarse_mean),
         "l1_implementation": str(args.l1_implementation),
         "n_scales": int(args.n_scales),
+        "apply_bnt": bool(args.apply_bnt),
+        "bnt_matrix_version": BNT_MATRIX_VERSION if args.apply_bnt else "none",
         "standardize_summary": bool(args.standardize_summary),
         "summary_clip_value": float(args.summary_clip_value),
         "compressor_log1p_input": bool(args.compressor_log1p_input),
@@ -1765,6 +1787,8 @@ def main() -> None:
             f"to match selected bins {tomo_bin_indices}."
         )
         args.nbins = len(tomo_bin_indices)
+    if args.apply_bnt:
+        validate_bnt_configuration(args.nbins, tomo_bin_indices)
 
     torch_device = setup_environment(args.cuda_visible_devices)
     rng = jax.random.PRNGKey(args.seed)
@@ -1803,6 +1827,7 @@ def main() -> None:
         f"std{int(args.standardize_summary)}",
         f"log1p{int(args.compressor_log1p_input)}",
         f"l1impl-{args.l1_implementation}",
+        f"bnt{int(args.apply_bnt)}",
     ]
     user_tags = [t.strip() for t in args.wandb_tags.split(",") if t.strip()]
     wandb_tags = list(dict.fromkeys(base_tags + user_tags))
@@ -1815,6 +1840,7 @@ def main() -> None:
         f"map={args.map_kind}|impl={args.l1_implementation}|nbins={args.nbins}"
         f"|cdim={args.compressor_dim}|std={int(args.standardize_summary)}"
         f"|log1p={int(args.compressor_log1p_input)}"
+        f"|bnt={int(args.apply_bnt)}"
     )
 
     if not args.no_wandb:
@@ -1857,6 +1883,7 @@ def main() -> None:
         args.sigma_e,
         args.galaxy_density,
         rng_obs,
+        apply_bnt=args.apply_bnt,
     )
 
     # 2) L1 computer + SNR policy
@@ -1887,6 +1914,7 @@ def main() -> None:
         args.field_npix,
         args.nbins,
         tomo_bin_indices,
+        apply_bnt=args.apply_bnt,
     )
 
     cache_dir = Path(args.cache_dir) if args.cache_dir else None

@@ -1,0 +1,206 @@
+{
+  "attempted": 28,
+  "uploaded_count": 28,
+  "skipped_existing_count": 0,
+  "group_count_after": 28,
+  "project_url": "https://wandb.ai/cosmostat/cnn_sbi_bnt",
+  "group_url": "https://wandb.ai/cosmostat/cnn_sbi_bnt/groups/cnn_bnt_optimization_round1",
+  "runs": [
+    {
+      "run_name": "cnn_tomo4_20deg160_bnt_arch_s41",
+      "stage": "stageH_arch_clip5",
+      "condition": "bnt",
+      "seed": 41,
+      "url": "https://wandb.ai/cosmostat/cnn_sbi_bnt/runs/09tur9bk"
+    },
+    {
+      "run_name": "cnn_tomo4_20deg160_bnt_arch_s42",
+      "stage": "stageH_arch_clip5",
+      "condition": "bnt",
+      "seed": 42,
+      "url": "https://wandb.ai/cosmostat/cnn_sbi_bnt/runs/kay3a2fp"
+    },
+    {
+      "run_name": "cnn_tomo4_20deg160_bnt_arch_s43",
+      "stage": "stageH_arch_clip5",
+      "condition": "bnt",
+      "seed": 43,
+      "url": "https://wandb.ai/cosmostat/cnn_sbi_bnt/runs/45omc9sr"
+    },
+    {
+      "run_name": "cnn_tomo4_20deg160_nobnt_arch_s41",
+      "stage": "stageH_arch_clip5",
+      "condition": "nobnt",
+      "seed": 41,
+      "url": "https://wandb.ai/cosmostat/cnn_sbi_bnt/runs/t07yqmjg"
+    },
+    {
+      "run_name": "cnn_tomo4_20deg160_nobnt_arch_s42",
+      "stage": "stageH_arch_clip5",
+      "condition": "nobnt",
+      "seed": 42,
+      "url": "https://wandb.ai/cosmostat/cnn_sbi_bnt/runs/y3a6g21f"
+    },
+    {
+      "run_name": "cnn_tomo4_20deg160_nobnt_arch_s43",
+      "stage": "stageH_arch_clip5",
+      "condition": "nobnt",
+      "seed": 43,
+      "url": "https://wandb.ai/cosmostat/cnn_sbi_bnt/runs/4s9kj8xo"
+    },
+    {
+      "run_name": "cnn_tomo4_20deg160_bnt_arch_nostd_s41",
+      "stage": "stageJ_arch_nostd",
+      "condition": "bnt",
+      "seed": 41,
+      "url": "https://wandb.ai/cosmostat/cnn_sbi_bnt/runs/z2oqweo3"
+    },
+    {
+      "run_name": "cnn_tomo4_20deg160_bnt_arch_nostd_s42",
+      "stage": "stageJ_arch_nostd",
+      "condition": "bnt",
+      "seed": 42,
+      "url": "https://wandb.ai/cosmostat/cnn_sbi_bnt/runs/ld9bbdul"
+    },
+    {
+      "run_name": "cnn_tomo4_20deg160_bnt_arch_nostd_s43",
+      "stage": "stageJ_arch_nostd",
+      "condition": "bnt",
+      "seed": 43,
+      "url": "https://wandb.ai/cosmostat/cnn_sbi_bnt/runs/386c9qht"
+    },
+    {
+      "run_name": "cnn_tomo4_20deg160_bnt_arch_nostd_s44",
+      "stage": "stageJ_arch_nostd",
+      "condition": "bnt",
+      "seed": 44,
+      "url": "https://wandb.ai/cosmostat/cnn_sbi_bnt/runs/yc5ejost"
+    },
+    {
+      "run_name": "cnn_tomo4_20deg160_bnt_arch_nostd_s45",
+      "stage": "stageJ_arch_nostd",
+      "condition": "bnt",
+      "seed": 45,
+      "url": "https://wandb.ai/cosmostat/cnn_sbi_bnt/runs/fk08odjq"
+    },
+    {
+      "run_name": "cnn_tomo4_20deg160_nobnt_arch_nostd_s41",
+      "stage": "stageJ_arch_nostd",
+      "condition": "nobnt",
+      "seed": 41,
+      "url": "https://wandb.ai/cosmostat/cnn_sbi_bnt/runs/9dbiu6hv"
+    },
+    {
+      "run_name": "cnn_tomo4_20deg160_nobnt_arch_nostd_s42",
+      "stage": "stageJ_arch_nostd",
+      "condition": "nobnt",
+      "seed": 42,
+      "url": "https://wandb.ai/cosmostat/cnn_sbi_bnt/runs/26p5che0"
+    },
+    {
+      "run_name": "cnn_tomo4_20deg160_nobnt_arch_nostd_s43",
+      "stage": "stageJ_arch_nostd",
+      "condition": "nobnt",
+      "seed": 43,
+      "url": "https://wandb.ai/cosmostat/cnn_sbi_bnt/runs/ia4qb5ml"
+    },
+    {
+      "run_name": "cnn_tomo4_20deg160_nobnt_arch_nostd_s44",
+      "stage": "stageJ_arch_nostd",
+      "condition": "nobnt",
+      "seed": 44,
+      "url": "https://wandb.ai/cosmostat/cnn_sbi_bnt/runs/v9843oyn"
+    },
+    {
+      "run_name": "cnn_tomo4_20deg160_nobnt_arch_nostd_s45",
+      "stage": "stageJ_arch_nostd",
+      "condition": "nobnt",
+      "seed": 45,
+      "url": "https://wandb.ai/cosmostat/cnn_sbi_bnt/runs/i469zh2g"
+    },
+    {
+      "run_name": "cnn_tomo4_20deg160_bnt_gc0_wd1e4_s41",
+      "stage": "stageM_arch_nostd_gc0_wd1e4",
+      "condition": "bnt",
+      "seed": 41,
+      "url": "https://wandb.ai/cosmostat/cnn_sbi_bnt/runs/irnubaeq"
+    },
+    {
+      "run_name": "cnn_tomo4_20deg160_bnt_gc0_wd1e4_s42",
+      "stage": "stageM_arch_nostd_gc0_wd1e4",
+      "condition": "bnt",
+      "seed": 42,
+      "url": "https://wandb.ai/cosmostat/cnn_sbi_bnt/runs/exvevnde"
+    },
+    {
+      "run_name": "cnn_tomo4_20deg160_bnt_gc0_wd1e4_s43",
+      "stage": "stageM_arch_nostd_gc0_wd1e4",
+      "condition": "bnt",
+      "seed": 43,
+      "url": "https://wandb.ai/cosmostat/cnn_sbi_bnt/runs/f4r9i29y"
+    },
+    {
+      "run_name": "cnn_tomo4_20deg160_nobnt_gc0_wd1e4_s41",
+      "stage": "stageM_arch_nostd_gc0_wd1e4",
+      "condition": "nobnt",
+      "seed": 41,
+      "url": "https://wandb.ai/cosmostat/cnn_sbi_bnt/runs/9k54sq0t"
+    },
+    {
+      "run_name": "cnn_tomo4_20deg160_nobnt_gc0_wd1e4_s42",
+      "stage": "stageM_arch_nostd_gc0_wd1e4",
+      "condition": "nobnt",
+      "seed": 42,
+      "url": "https://wandb.ai/cosmostat/cnn_sbi_bnt/runs/ggdydkkv"
+    },
+    {
+      "run_name": "cnn_tomo4_20deg160_nobnt_gc0_wd1e4_s43",
+      "stage": "stageM_arch_nostd_gc0_wd1e4",
+      "condition": "nobnt",
+      "seed": 43,
+      "url": "https://wandb.ai/cosmostat/cnn_sbi_bnt/runs/o6bp2h6z"
+    },
+    {
+      "run_name": "cnn_tomo4_20deg160_bnt_arch_nostd_flowcap_s41",
+      "stage": "stageL_arch_nostd_flowcap10k",
+      "condition": "bnt",
+      "seed": 41,
+      "url": "https://wandb.ai/cosmostat/cnn_sbi_bnt/runs/nzzxflm8"
+    },
+    {
+      "run_name": "cnn_tomo4_20deg160_bnt_arch_nostd_flowcap_s42",
+      "stage": "stageL_arch_nostd_flowcap10k",
+      "condition": "bnt",
+      "seed": 42,
+      "url": "https://wandb.ai/cosmostat/cnn_sbi_bnt/runs/0l33rsd0"
+    },
+    {
+      "run_name": "cnn_tomo4_20deg160_bnt_arch_nostd_flowcap_s43",
+      "stage": "stageL_arch_nostd_flowcap10k",
+      "condition": "bnt",
+      "seed": 43,
+      "url": "https://wandb.ai/cosmostat/cnn_sbi_bnt/runs/mjn974uv"
+    },
+    {
+      "run_name": "cnn_tomo4_20deg160_nobnt_arch_nostd_flowcap_s41",
+      "stage": "stageL_arch_nostd_flowcap10k",
+      "condition": "nobnt",
+      "seed": 41,
+      "url": "https://wandb.ai/cosmostat/cnn_sbi_bnt/runs/cd1llaa0"
+    },
+    {
+      "run_name": "cnn_tomo4_20deg160_nobnt_arch_nostd_flowcap_s42",
+      "stage": "stageL_arch_nostd_flowcap10k",
+      "condition": "nobnt",
+      "seed": 42,
+      "url": "https://wandb.ai/cosmostat/cnn_sbi_bnt/runs/94yaaj2l"
+    },
+    {
+      "run_name": "cnn_tomo4_20deg160_nobnt_arch_nostd_flowcap_s43",
+      "stage": "stageL_arch_nostd_flowcap10k",
+      "condition": "nobnt",
+      "seed": 43,
+      "url": "https://wandb.ai/cosmostat/cnn_sbi_bnt/runs/xn90mk2w"
+    }
+  ]
+}

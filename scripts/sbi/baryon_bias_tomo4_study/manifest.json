@@ -1,0 +1,103 @@
+{
+  "repo_root": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study",
+  "output_root": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/baryon_bias_tomo4_study",
+  "study_type": "baryon_bias_tomo4_no_bary_training",
+  "methods": [
+    "cnn",
+    "l1",
+    "l1vmim"
+  ],
+  "seeds": [
+    41,
+    42,
+    43
+  ],
+  "perm_indices": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19
+  ],
+  "gpus": [
+    "0",
+    "1",
+    "2"
+  ],
+  "map_kind": "nbody",
+  "tfds_name": "NbodyCosmogridDatasetTomo/grid_20deg_160px",
+  "field_size": 20,
+  "field_npix": 160,
+  "nbins": 4,
+  "tomo_bin_indices": "1,2,3,4",
+  "npe_samples": 100000,
+  "fiducial_root": "/nas/stage3_forecast/fiducial/cosmo_fiducial",
+  "fiducial_map_name": "projected_probes_maps_baryonified512.h5",
+  "perm_map_paths": {
+    "0": "/nas/stage3_forecast/fiducial/cosmo_fiducial/perm_0000/projected_probes_maps_baryonified512.h5",
+    "1": "/nas/stage3_forecast/fiducial/cosmo_fiducial/perm_0001/projected_probes_maps_baryonified512.h5",
+    "2": "/nas/stage3_forecast/fiducial/cosmo_fiducial/perm_0002/projected_probes_maps_baryonified512.h5",
+    "3": "/nas/stage3_forecast/fiducial/cosmo_fiducial/perm_0003/projected_probes_maps_baryonified512.h5",
+    "4": "/nas/stage3_forecast/fiducial/cosmo_fiducial/perm_0004/projected_probes_maps_baryonified512.h5",
+    "5": "/nas/stage3_forecast/fiducial/cosmo_fiducial/perm_0005/projected_probes_maps_baryonified512.h5",
+    "6": "/nas/stage3_forecast/fiducial/cosmo_fiducial/perm_0006/projected_probes_maps_baryonified512.h5",
+    "7": "/nas/stage3_forecast/fiducial/cosmo_fiducial/perm_0007/projected_probes_maps_baryonified512.h5",
+    "8": "/nas/stage3_forecast/fiducial/cosmo_fiducial/perm_0008/projected_probes_maps_baryonified512.h5",
+    "9": "/nas/stage3_forecast/fiducial/cosmo_fiducial/perm_0009/projected_probes_maps_baryonified512.h5",
+    "10": "/nas/stage3_forecast/fiducial/cosmo_fiducial/perm_0010/projected_probes_maps_baryonified512.h5",
+    "11": "/nas/stage3_forecast/fiducial/cosmo_fiducial/perm_0011/projected_probes_maps_baryonified512.h5",
+    "12": "/nas/stage3_forecast/fiducial/cosmo_fiducial/perm_0012/projected_probes_maps_baryonified512.h5",
+    "13": "/nas/stage3_forecast/fiducial/cosmo_fiducial/perm_0013/projected_probes_maps_baryonified512.h5",
+    "14": "/nas/stage3_forecast/fiducial/cosmo_fiducial/perm_0014/projected_probes_maps_baryonified512.h5",
+    "15": "/nas/stage3_forecast/fiducial/cosmo_fiducial/perm_0015/projected_probes_maps_baryonified512.h5",
+    "16": "/nas/stage3_forecast/fiducial/cosmo_fiducial/perm_0016/projected_probes_maps_baryonified512.h5",
+    "17": "/nas/stage3_forecast/fiducial/cosmo_fiducial/perm_0017/projected_probes_maps_baryonified512.h5",
+    "18": "/nas/stage3_forecast/fiducial/cosmo_fiducial/perm_0018/projected_probes_maps_baryonified512.h5",
+    "19": "/nas/stage3_forecast/fiducial/cosmo_fiducial/perm_0019/projected_probes_maps_baryonified512.h5"
+  },
+  "baseline_roots": {
+    "cnn": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/nobnt_tomo_bins_crosscorr_study",
+    "l1": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/nobnt_tomo_bins_crosscorr_study_l1_jaxili_bestcfg",
+    "l1vmim": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/nobnt_tomo_bins_crosscorr_study"
+  },
+  "no_bary_posterior_baselines": {
+    "cnn": {
+      "41": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/nobnt_tomo_bins_crosscorr_study/posteriors/cnn_tomo4_20deg160_nobnt_s41.npy",
+      "42": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/nobnt_tomo_bins_crosscorr_study/posteriors/cnn_tomo4_20deg160_nobnt_s42.npy",
+      "43": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/nobnt_tomo_bins_crosscorr_study/posteriors/cnn_tomo4_20deg160_nobnt_s43.npy"
+    },
+    "l1": {
+      "41": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/nobnt_tomo_bins_crosscorr_study_l1_jaxili_bestcfg/posteriors/l1_tomo4_20deg160_nobnt_s41.npy",
+      "42": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/nobnt_tomo_bins_crosscorr_study_l1_jaxili_bestcfg/posteriors/l1_tomo4_20deg160_nobnt_s42.npy",
+      "43": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/nobnt_tomo_bins_crosscorr_study_l1_jaxili_bestcfg/posteriors/l1_tomo4_20deg160_nobnt_s43.npy"
+    },
+    "l1vmim": {
+      "41": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/nobnt_tomo_bins_crosscorr_study/posteriors/l1vmim_tomo4_20deg160_nobnt_s41.npy",
+      "42": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/nobnt_tomo_bins_crosscorr_study/posteriors/l1vmim_tomo4_20deg160_nobnt_s42.npy",
+      "43": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/nobnt_tomo_bins_crosscorr_study/posteriors/l1vmim_tomo4_20deg160_nobnt_s43.npy"
+    }
+  },
+  "cnn_compressor_paths": {
+    "params": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/nobnt_tomo_bins_crosscorr_study/cnn_compressor/tomo4_20deg160/vmim/nbody/sigma_0.26/gal_density_30/bin_4/params_nd_compressor_batch60000.pkl",
+    "state": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/nobnt_tomo_bins_crosscorr_study/cnn_compressor/tomo4_20deg160/vmim/nbody/sigma_0.26/gal_density_30/bin_4/opt_state_resnet_batch60000.pkl"
+  },
+  "l1vmim_compressor_paths": {
+    "params": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/nobnt_tomo_bins_crosscorr_study/l1vmim_compressor/tomo4_20deg160/vmim_l1/nbody/sigma_0.26/gal_density_30/bin_4/params_nd_compressor_best.pkl",
+    "state": "/mnt/home/tersenov/software/cnn_sbi/.worktrees/bnt_tomo_study/scripts/sbi/nobnt_tomo_bins_crosscorr_study/l1vmim_compressor/tomo4_20deg160/vmim_l1/nbody/sigma_0.26/gal_density_30/bin_4/opt_state_resnet_best.pkl"
+  }
+}
