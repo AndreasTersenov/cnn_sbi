@@ -306,14 +306,14 @@ def _stage_vmim_input_stats(
         baseline_root
         / "l1vmim_compressor"
         / "tomo4_20deg160"
-        / "l1_vmim_jaxili"
+        / "l1_vmim"
         / "nbody"
         / "l1_vmim_compressor_input_standardization.npz"
     )
     if not src.exists():
         return None
 
-    dst_dir = seed_eval_dir / "l1_vmim_jaxili" / "nbody"
+    dst_dir = seed_eval_dir / "l1_vmim" / "nbody"
     dst_dir.mkdir(parents=True, exist_ok=True)
     dst = dst_dir / "l1_vmim_compressor_input_standardization.npz"
     if not dst.exists():
@@ -346,9 +346,9 @@ def main() -> None:
     out_root.mkdir(parents=True, exist_ok=True)
 
     script_dir = repo_root / "scripts" / "sbi"
-    cnn_script = str(script_dir / "npe_cnn_jaxili_nbody_tomo.py")
+    cnn_script = str(script_dir / "npe_cnn_nbody_tomo.py")
     l1_script = str(script_dir / "npe_l1norm_jaxili_nbody_tomo.py")
-    vmim_script = str(script_dir / "npe_l1vmim_jaxili_nbody_tomo.py")
+    vmim_script = str(script_dir / "npe_l1vmim_nbody_tomo.py")
 
     gpus = _csv_tokens(args.gpus)
     if not gpus:
@@ -377,28 +377,14 @@ def main() -> None:
         _require_exists(mp, f"baryonified fiducial map for perm_{perm:04d}")
         perm_map_paths[perm] = mp
 
-    cnn_comp: Optional[Dict[str, Path]] = None
-    vmim_comp: Optional[Dict[str, Path]] = None
-    if "cnn" in methods:
-        cnn_comp = _resolve_cnn_compressor_paths(cnn_baseline_root, args.cnn_compressor_steps)
-    if "l1vmim" in methods:
-        vmim_comp = _resolve_l1vmim_compressor_paths(l1vmim_baseline_root)
+    cnn_comp = _resolve_cnn_compressor_paths(cnn_baseline_root, args.cnn_compressor_steps)
+    vmim_comp = _resolve_l1vmim_compressor_paths(l1vmim_baseline_root)
 
     # Validate no-train baseline artifacts per seed.
     for seed in seeds:
         if "cnn" in methods:
-            cnn_seed_dir = (
-                cnn_baseline_root
-                / "cnn_eval"
-                / "tomo4_20deg160"
-                / f"seed_{seed}"
-                / "cnn_jaxili"
-                / "nbody"
-            )
-            _require_exists(
-                cnn_seed_dir / "params_cnn_jaxili",
-                f"CNN-jaxili checkpoint root for seed {seed}",
-            )
+            cnn_seed_dir = cnn_baseline_root / "cnn_eval" / "tomo4_20deg160" / f"seed_{seed}" / "cnn_vmim" / "nbody"
+            _require_exists(cnn_seed_dir / "params_cnn_flow_best.pkl", f"CNN no-train flow checkpoint for seed {seed}")
 
         if "l1" in methods:
             l1_seed_dir = l1_baseline_root / "l1_eval" / "tomo4_20deg160" / f"seed_{seed}" / "l1norm_jaxili" / "nbody"
@@ -408,11 +394,8 @@ def main() -> None:
 
         if "l1vmim" in methods:
             vm_seed_eval = l1vmim_baseline_root / "l1vmim_eval" / "tomo4_20deg160" / f"seed_{seed}"
-            vm_seed_flow = vm_seed_eval / "l1_vmim_jaxili" / "nbody"
-            _require_exists(
-                vm_seed_flow / "params_l1vmim_jaxili",
-                f"L1-VMIM-jaxili checkpoint root for seed {seed}",
-            )
+            vm_seed_flow = vm_seed_eval / "l1_vmim" / "nbody"
+            _require_exists(vm_seed_flow / "params_l1vmim_flow_best.pkl", f"L1-VMIM no-train flow checkpoint for seed {seed}")
             if args.vmim_standardize_summary:
                 _require_exists(vm_seed_flow / "l1_vmim_summary_standardization.npz", f"L1-VMIM summary standardization stats for seed {seed}")
             if args.stage_vmim_compressor_input_stats:
@@ -420,7 +403,7 @@ def main() -> None:
                 if staged is None:
                     raise FileNotFoundError(
                         "Missing source L1-VMIM compressor input stats under "
-                        f"{l1vmim_baseline_root / 'l1vmim_compressor' / 'tomo4_20deg160' / 'l1_vmim_jaxili' / 'nbody'}"
+                        f"{l1vmim_baseline_root / 'l1vmim_compressor' / 'tomo4_20deg160' / 'l1_vmim' / 'nbody'}"
                     )
             if args.stage_vmim_compressor_input_stats:
                 _require_exists(
@@ -458,12 +441,8 @@ def main() -> None:
             "l1vmim": str(l1vmim_baseline_root),
         },
         "no_bary_posterior_baselines": no_bary_baselines,
-        "cnn_compressor_paths": (
-            {k: str(v) for k, v in cnn_comp.items()} if cnn_comp is not None else None
-        ),
-        "l1vmim_compressor_paths": (
-            {k: str(v) for k, v in vmim_comp.items()} if vmim_comp is not None else None
-        ),
+        "cnn_compressor_paths": {k: str(v) for k, v in cnn_comp.items()},
+        "l1vmim_compressor_paths": {k: str(v) for k, v in vmim_comp.items()},
     }
     (out_root / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
 
@@ -474,8 +453,6 @@ def main() -> None:
             tag = f"tomo4_20deg160_bary_perm{perm:04d}_s{seed}"
 
             if "cnn" in methods:
-                if cnn_comp is None:
-                    raise RuntimeError("Internal error: CNN compressor paths were not resolved.")
                 posterior_out = out_root / "posteriors" / f"cnn_{tag}.npy"
                 cnn_seed_save = cnn_baseline_root / "cnn_eval" / "tomo4_20deg160" / f"seed_{seed}"
                 cmd = [
@@ -511,6 +488,14 @@ def main() -> None:
                     str(cnn_comp["params"]),
                     "--compressor-state",
                     str(cnn_comp["state"]),
+                    "--compressor-conv-channels",
+                    args.cnn_compressor_conv_channels,
+                    "--compressor-dense-width",
+                    str(args.cnn_compressor_dense_width),
+                    "--compressor-pool-window",
+                    str(args.cnn_compressor_pool_window),
+                    "--compressor-pool-stride",
+                    str(args.cnn_compressor_pool_stride),
                     "--total-steps",
                     str(args.cnn_flow_steps),
                     "--save-every",
@@ -519,6 +504,14 @@ def main() -> None:
                     str(args.flow_patience),
                     "--batch-size",
                     str(args.cnn_batch_size),
+                    "--nvp-layers",
+                    str(args.cnn_nvp_layers),
+                    "--nvp-hidden",
+                    str(args.cnn_nvp_hidden),
+                    "--weight-decay",
+                    str(args.cnn_weight_decay),
+                    "--grad-clip",
+                    str(args.cnn_grad_clip),
                     "--npe-samples",
                     str(args.npe_samples),
                     "--posterior-out",
@@ -538,7 +531,7 @@ def main() -> None:
                         [
                             "--plot",
                             "--figure-out",
-                            str(out_root / "figures" / f"cnn_{tag}.pdf"),
+                            str(out_root / "figures" / f"cnn_{tag}.png"),
                         ]
                     )
                 jobs.append(
@@ -617,7 +610,7 @@ def main() -> None:
                         [
                             "--plot",
                             "--figure-out",
-                            str(out_root / "figures" / f"l1_{tag}.pdf"),
+                            str(out_root / "figures" / f"l1_{tag}.png"),
                         ]
                     )
                 jobs.append(
@@ -630,8 +623,6 @@ def main() -> None:
                 )
 
             if "l1vmim" in methods:
-                if vmim_comp is None:
-                    raise RuntimeError("Internal error: L1-VMIM compressor paths were not resolved.")
                 posterior_out = out_root / "posteriors" / f"l1vmim_{tag}.npy"
                 vm_seed_save = l1vmim_baseline_root / "l1vmim_eval" / "tomo4_20deg160" / f"seed_{seed}"
                 cmd = [
@@ -720,7 +711,7 @@ def main() -> None:
                         [
                             "--plot",
                             "--figure-out",
-                            str(out_root / "figures" / f"l1vmim_{tag}.pdf"),
+                            str(out_root / "figures" / f"l1vmim_{tag}.png"),
                         ]
                     )
                 jobs.append(
@@ -745,3 +736,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

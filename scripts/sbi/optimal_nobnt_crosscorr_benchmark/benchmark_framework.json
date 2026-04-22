@@ -1,0 +1,37 @@
+{
+  "name": "optimal_nobnt_crosscorr_benchmark",
+  "purpose": "Clean and reproducible CNN vs L1 vs L1-VMIM benchmark for no-BNT single-bin vs tomo4.",
+  "benchmark_root": "scripts/sbi/optimal_nobnt_crosscorr_benchmark",
+  "subdirectories": {
+    "sweeps": "scripts/sbi/optimal_nobnt_crosscorr_benchmark/sweeps",
+    "selected_configs": "scripts/sbi/optimal_nobnt_crosscorr_benchmark/selected_configs",
+    "final_matrix": "scripts/sbi/optimal_nobnt_crosscorr_benchmark/final_matrix",
+    "reports": "scripts/sbi/optimal_nobnt_crosscorr_benchmark/reports"
+  },
+  "phases": [
+    {
+      "id": "phase1-sweep",
+      "script": "scripts/sbi/run_l1_jaxili_tomo4_opt_sweep.py",
+      "goal": "Run focused tomo4 no-BNT L1+jaxili sweep and rank configs.",
+      "outputs": "sweeps/l1_tomo4_opt_sweep"
+    },
+    {
+      "id": "phase2-final-matrix",
+      "script": "scripts/sbi/run_nobnt_tomo_bins_crosscorr_study.py",
+      "goal": "Run full CNN/L1/L1-VMIM matrix across bin1..bin4 and tomo4.",
+      "outputs": "final_matrix/nobnt_singlebin_vs_tomo4"
+    },
+    {
+      "id": "phase3-analysis",
+      "script": "scripts/sbi/analyze_nobnt_tomo_bins_fom.py",
+      "goal": "Compute FoM3 per-run and aggregate summaries.",
+      "outputs": "reports/fom3_analysis.json + CSV summaries"
+    },
+    {
+      "id": "phase4-overlays",
+      "script": "scripts/sbi/plot_tomo_bin_method_overlays.py",
+      "goal": "Generate trio contour overlays for selected variants/seeds.",
+      "outputs": "reports/overlays"
+    }
+  ]
+}

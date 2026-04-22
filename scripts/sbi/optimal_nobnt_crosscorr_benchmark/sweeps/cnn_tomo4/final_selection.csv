@@ -1,0 +1,2 @@
+rank_robust,config_id,conv_channels,dense_width,standardize_summary,flow_steps,batch_size,seed41_fom3,fom3_mean,fom3_std,n_valid,n_total,all_returncode_zero,all_posteriors_present,all_logs_clean_no_traceback
+1,conv_96x192x384__dw_128__std_on__flow_5000__bs_256,"96,192,384",128,True,5000,256,10715.882821835121,10188.328036813873,609.1976487332423,3,3,True,True,True

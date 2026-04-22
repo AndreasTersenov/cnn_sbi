@@ -1,0 +1,67 @@
+{
+  "selection_policy": "method-optimal no-BNT benchmark",
+  "cnn": {
+    "source": "validated_stageJ_no_standardize_family",
+    "reason": "Higher validated no-BNT performance than the fast tomo4 sweep that used compressor_steps=500.",
+    "sweep_reference": "scripts/sbi/optimal_nobnt_crosscorr_benchmark/sweeps/cnn_tomo4/final_selection.json",
+    "sweep_best_config_id": "conv_96x192x384__dw_128__std_on__flow_5000__bs_256",
+    "config": {
+      "compressor_conv_channels": "64,128,256",
+      "compressor_dense_width": 128,
+      "compressor_steps": 60000,
+      "compressor_save_every": 2000,
+      "standardize_summary": false,
+      "flow_steps": 5000,
+      "batch_size": 256,
+      "summary_clip_value": 0.0,
+      "nvp_layers": 4,
+      "nvp_hidden": 128,
+      "weight_decay": 0.0001,
+      "grad_clip": 1.0,
+      "ds_batch_size": 500
+    }
+  },
+  "l1": {
+    "source": "scripts/sbi/optimal_nobnt_crosscorr_benchmark/sweeps/l1_tomo4/final_selection.json",
+    "config": {
+      "estimator": "jaxili",
+      "pca_components": 0,
+      "n_scales": 5,
+      "l1_nbins": 40,
+      "l1_min_snr": -13.0,
+      "l1_max_snr": 13.0,
+      "summary_transform": "log1p-zscore",
+      "clip_value": 5.0,
+      "learning_rate": 0.0003,
+      "epochs": 5000,
+      "batch_size": 128,
+      "flow_steps": 5000,
+      "nvp_layers": 4,
+      "nvp_hidden": 128,
+      "weight_decay": 0.0001,
+      "grad_clip": 1.0,
+      "ds_batch_size": 96
+    }
+  },
+  "l1vmim": {
+    "source": "scripts/sbi/optimal_nobnt_crosscorr_benchmark/sweeps/l1vmim_tomo4/final_selection.json",
+    "config": {
+      "compressor_dim": 64,
+      "compressor_hidden": "768,768",
+      "compressor_nf_layers": 10,
+      "compressor_nf_hidden": 384,
+      "compressor_input_clip": 6.0,
+      "compressor_steps": 12000,
+      "compressor_save_every": 500,
+      "compressor_batch_size": 128,
+      "compressor_lr": 0.0003,
+      "flow_steps": 12000,
+      "batch_size": 256,
+      "nvp_layers": 4,
+      "nvp_hidden": 128,
+      "weight_decay": 0.0001,
+      "grad_clip": 1.0,
+      "summary_clip_value": 0.0
+    }
+  }
+}
