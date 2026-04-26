@@ -1,0 +1,47 @@
+{
+  "method": "l1norm_jaxili",
+  "posterior_file": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/cross_maps_campaign/jaxili_auto_nobnt/posteriors/l1_tomo4_20deg160_nobnt_s43.npy",
+  "fom_file": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/cross_maps_campaign/jaxili_auto_nobnt/posteriors/l1_tomo4_20deg160_nobnt_s43.fom.json",
+  "checkpoint_path": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/cross_maps_campaign/jaxili_auto_nobnt/seed_43/l1norm_jaxili/nbody/params_l1norm_jaxili",
+  "preprocessing_stats_source": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/cross_maps_campaign/jaxili_auto_nobnt/seed_43/l1norm_jaxili/nbody/l1_jaxili_standardization.npz",
+  "feature_mask_source": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/cross_maps_campaign/jaxili_auto_nobnt/seed_43/l1norm_jaxili/nbody/l1_jaxili_feature_mask.npz",
+  "training_summary_source": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/cross_maps_campaign/jaxili_auto_nobnt/seed_43/l1norm_jaxili/nbody/jaxili_training_summary.json",
+  "l1_implementation": "cnn_sbi",
+  "summary_transform": "log1p-zscore",
+  "summary_clip_value": 5.0,
+  "pca_applied": false,
+  "pca_source": "none",
+  "npe_samples_requested": 100000,
+  "npe_samples_finite": 100000,
+  "npe_epochs": 5000,
+  "npe_batch_size": 256,
+  "npe_learning_rate": 0.0001,
+  "npe_warmup_steps": 128,
+  "npe_decay_steps": 10000,
+  "npe_split_seed": 44,
+  "min_feature_variance": 1e-05,
+  "truth_parameters": [
+    0.26,
+    0.84,
+    -1.0,
+    0.6736,
+    0.9649,
+    0.0493
+  ],
+  "tomo_bin_indices": [
+    1,
+    2,
+    3,
+    4
+  ],
+  "tfds_name": "NbodyCosmogridDatasetTomo/grid_20deg_160px",
+  "map_kind": "nbody",
+  "apply_bnt": false,
+  "bnt_matrix_version": "none",
+  "fom3": {
+    "fom3": 7572.2427214762765,
+    "det_cov3": 1.7440179363757393e-08,
+    "logdet_cov3": -17.864489133899347,
+    "valid_fom3": true
+  }
+}
