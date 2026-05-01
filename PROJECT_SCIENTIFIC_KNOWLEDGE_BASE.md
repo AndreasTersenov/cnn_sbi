@@ -449,8 +449,66 @@ Every CNN-VMIM posterior produced in this repo prior to 2026-04-21 over-states i
 
 ---
 
-## 14) Final status
+## 14) Full-sphere harmonic-space cross-maps for L1 (2026-05-01)
+
+### 14.1 Motivation
+
+Two confounds were carried by the flat-sky `jaxili_cross_*_pct1` cross-maps campaign that produced the prior reading "auto+cross L1 channels improve FoM3 in BNT (+46%) but **hurt** it in no-BNT (−12%)":
+
+1. **Flat-sky vs full-sphere geometry.** Patches were produced by gnomonic-projecting NSIDE=512 HEALPix κ maps to 20°/160 px tiles, then cross-maps were computed by FFT *on the patches*. Cross-information at scales > 20° or that crosses patch boundaries is invisible to that route.
+2. **FFT vs SHT cross-product.** Flat-sky uses $\tilde\kappa^{ij}(\vec k)=\tilde\kappa^i(\vec k)\,\tilde\kappa^j(\vec k)$ on apodized patches; the full-sphere construction (Zürcher et al. 2022) uses element-wise $a_{\ell m}^{(ij)}=a_{\ell m}^{(i)}\,a_{\ell m}^{(j)}$ on the sphere.
+
+A new pipeline was built to do the cross-maps on the full sphere first, then patch and run the existing L1 + NPE machinery, holding all other knobs identical to the flat-sky `pct1` arm.
+
+### 14.2 Implementation
+
+- New cache builder `scripts/sbi/build_full_sphere_cross_cache.py` (HEALPix NSIDE=512, lmax=1024, σ_e=0.26, n_gal=10, BNT applied in `a_ℓm` space since SHT is linear and commutes with the bin-mixing matrix). For each (cosmology, perm, regime): noise on the sphere → SHT → BNT (regime=bnt only) → 6 element-wise cross products → ISHT → 4 auto + 6 cross full-sphere maps → gnomonic-project to 48 deterministic 20°/160px patches matching the flat-sky TFDS layout → demean per (patch, channel).
+- New L1-script entry path `--full-sphere-cross-cache PATH` in `scripts/sbi/npe_l1norm_cross_jaxili_nbody_tomo.py` bypasses the on-the-fly TFDS load + FFT-cross-map step and streams the precomputed 10-channel patches directly. SNR-percentile calibration, L1 build, and NPE training are unchanged. Train/val splits exactly mirror the flat-sky TFDS (cosmologies 1–899 train, 900–1299 val, fiducial reserved for observation).
+- Production cache `scripts/sbi/results/exploratory/cross_maps_campaign/full_sphere_cache_grid` (623 GB, 18 186 .npz files, manifest sha256 `0a68ea89669da18f...`, both regimes) built in 56 min wall on 50 CPU workers.
+
+### 14.3 Headline result (3-seed pool, 41/42/43)
+
+Identical L1/NPE settings to `jaxili_cross_*_pct1` (`--cross-snr-percentile 1.0`, 5 scales, 40 SNR bins, [-13, 13], 5000 steps, 3 seeds), only the cross-map construction differs.
+
+| arm | FoM3 | Δ vs auto-only | Δ vs flat-sky cross |
+|---|---:|---:|---:|
+| auto_zm_bnt              |    789 | —     | —     |
+| cross_bnt_pct1 (flat)    |   1156 | +46%  | —     |
+| **harm_cross_bnt**       |  **5161** | **+554%** | **+347%** |
+| auto_zm_nobnt            |  13131 | —     | —     |
+| cross_nobnt_pct1 (flat)  |  11545 | −12%  | —     |
+| **harm_cross_nobnt**     | **59243** | **+351%** | **+413%** |
+
+All six runs verified harmonic route (`cross_maps_route=harmonic`, `n_l1_channels=10`, manifest sha = grid sha) and truth coverage |z| ≤ 1.1 across all (seed × parameter) cells; harm_cross_nobnt is exceptionally well-centered (|z| ≤ 0.4). Per-seed FoM3 dispersion is proportionally tighter than the flat-sky arms (harm_cross_bnt σ(FoM3) = 339 on mean 5161; harm_cross_nobnt σ(FoM3) = 3300 on mean 59243).
+
+### 14.4 Implications for earlier claims
+
+| Section | Claim (pre-patch) | Status after §14 |
+|---|---|---|
+| flat-sky cross campaign | no-BNT cross channels carry no extractable signal beyond auto channels at any percentile | **Retracted.** The conclusion was an artifact of the FFT-on-patches construction. Harmonic-space cross-maps deliver +351% FoM3 over auto-only in no-BNT. |
+| flat-sky cross campaign | BNT-regime cross channels add +46% FoM3 | Survives but is a severe under-statement. Harmonic version delivers +554%. |
+| §10.3 "Practical working hypothesis" | Learned channelized summaries recover much more cross-bin info than handcrafted summaries (revised in §13 to "no-BNT part only weakly supported"). | The no-BNT cross-bin recovery story is now strongly supported again — but for **handcrafted L1** on full-sphere cross-maps, not for the CNN. |
+
+The flat-sky FFT cross-maps must now be regarded as a known-lossy approximation: they discard (a) cross-information at scales > 20°, (b) cross-information that bridges patch boundaries, (c) non-axisymmetric multipole pairs that gnomonic apodization smears. The Zürcher-style harmonic construction is the new default for any cross-map L1 result going into the paper.
+
+### 14.5 Caveats and next checks
+
+1. The element-wise $a_{\ell m}^{(i)}\cdot a_{\ell m}^{(j)}$ product is **not** a true spherical convolution (that would require an axisymmetric kernel); it is a heuristic that breaks $m$-axis isotropy. This is acknowledged in Zürcher 2022 and is the intended construction; just be careful not to describe it in the paper as "the spherical analog of the FFT cross-map".
+2. The mild persistent BNT-regime bias (Ω_m ≈ +0.04, w_0 ≈ −0.16 below truth, all sub-1σ but consistent across the three seeds) deserves a coverage check — likely a prior-boundary or projection effect, but worth confirming with simulation-based calibration before paper submission.
+3. Recommend an independent second-cosmology check (e.g. one of the `cosmo_delta_*` corners as observation) to verify the harmonic-cache posteriors track parameter shifts at the right amplitude.
+
+### 14.6 Evidence
+
+- `scripts/sbi/results/exploratory/cross_maps_campaign/cross_summary/summary.{md,json}` — extended with `harm_cross_{bnt,nobnt}` arms.
+- `scripts/sbi/results/exploratory/cross_maps_campaign/cross_summary/harmonic_results.md` — interpretive write-up + per-seed truth coverage table.
+- `scripts/sbi/results/exploratory/cross_maps_campaign/cross_summary/overlay_harm_vs_flat_vs_auto_{bnt,nobnt}.pdf` — triple-overlay corner plots (auto vs flat-sky cross vs harmonic cross).
+- `scripts/sbi/results/exploratory/cross_maps_campaign/jaxili_harm_cross_{bnt,nobnt}/posteriors/l1cross_tomo4_20deg160mp_harm_{bnt,nobnt}_p1_s{41,42,43}.npy` — 6 raw posteriors with `.meta.json` and `.fom.json` siblings.
+- Cache + manifest: `scripts/sbi/results/exploratory/cross_maps_campaign/full_sphere_cache_grid/manifest.json` (args sha `0a68ea89669da18f...`).
+
+---
+
+## 15) Final status
 
 This knowledge base is intended to be the main scientific source document for drafting the A&A letter. It should be updated only when new campaign outputs materially change quantitative conclusions.
 
-Last materially significant update: **2026-04-22, §13** (mass-sheet-degeneracy correction via `--zero-mean-maps`).
+Last materially significant update: **2026-05-01, §14** (full-sphere harmonic cross-maps overturn the flat-sky no-BNT null result).
