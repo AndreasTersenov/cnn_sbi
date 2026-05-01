@@ -267,6 +267,334 @@ def _compute_cross_maps_np(x: np.ndarray, apod: np.ndarray) -> np.ndarray:
     return np.concatenate([x.astype(np.float32), cross_stack], axis=-1)
 
 
+# =============================================================================
+# Harmonic full-sphere cross-maps cache loader
+# =============================================================================
+# Cache layout (built by `build_full_sphere_cross_cache.py`):
+#   <cache_dir>/manifest.json
+#   <cache_dir>/{bnt,nobnt}/{train,val,obs}/{cosmo_id}_perm{perm}.npz
+# Each .npz holds:
+#   patches: (n_centers=48, H, W, 10) float32 — auto+cross, demeaned per patch
+#   theta:   (6,) float64 — [Om, s8, w0, H0, ns, Ob] (H0 not yet divided by 100)
+
+
+def _read_harmonic_manifest_sha(cache_dir: Path) -> str:
+    manifest_path = cache_dir / "manifest.json"
+    if not manifest_path.exists():
+        raise FileNotFoundError(
+            f"Missing harmonic-cache manifest at {manifest_path}. "
+            "Build the cache with build_full_sphere_cross_cache.py first."
+        )
+    payload = json.loads(manifest_path.read_text())
+    sha = payload.get("args_sha256")
+    if not isinstance(sha, str):
+        raise ValueError(f"Manifest at {manifest_path} missing 'args_sha256'.")
+    return sha
+
+
+def _list_harmonic_cache_files(cache_dir: Path, regime: str, split: str) -> list[Path]:
+    if regime not in ("bnt", "nobnt"):
+        raise ValueError(f"regime must be 'bnt' or 'nobnt', got {regime}")
+    split_dir = cache_dir / regime / split
+    if not split_dir.exists():
+        raise FileNotFoundError(
+            f"Harmonic cache split missing: {split_dir}. "
+            "Did the build script complete this regime/split?"
+        )
+    files = sorted(p for p in split_dir.iterdir() if p.suffix == ".npz")
+    if not files:
+        raise FileNotFoundError(f"No .npz files found under {split_dir}.")
+    return files
+
+
+def _harmonic_random_flip(maps: np.ndarray, rng: np.random.Generator) -> np.ndarray:
+    """LR/UD random flips per example, matching the tf.data flip augmentation.
+
+    Operates on a (n_patches, H, W, C) array (one realization). Per-patch
+    independent flip choices.
+    """
+    out = maps
+    flip_lr = rng.integers(0, 2, size=maps.shape[0]).astype(bool)
+    flip_ud = rng.integers(0, 2, size=maps.shape[0]).astype(bool)
+    if flip_lr.any():
+        idx = np.where(flip_lr)[0]
+        out = out.copy()
+        out[idx] = out[idx, :, ::-1, :]
+    if flip_ud.any():
+        idx = np.where(flip_ud)[0]
+        if out is maps:
+            out = out.copy()
+        out[idx] = out[idx, ::-1, :, :]
+    return out
+
+
+def iter_harmonic_examples(
+    cache_dir: Path,
+    regime: str,
+    split: str,
+    rng: np.random.Generator | None = None,
+    flip: bool = True,
+    n_take: int | None = None,
+):
+    """Yield per-realization tensors from the harmonic cache.
+
+    Each yield is `(maps, theta)` where:
+      maps  : (n_patches, H, W, 10) float32  (h_0 NOT yet rescaled in theta)
+      theta : (6,) float64 — H0 not yet divided by 100
+
+    `n_take` lets the caller bound the number of realizations consumed (used
+    by the SNR calibration walk). Set to None to iterate the full split.
+    """
+    files = _list_harmonic_cache_files(cache_dir, regime, split)
+    if n_take is not None:
+        files = files[:n_take]
+    if rng is None:
+        rng = np.random.default_rng(0)
+    for f in files:
+        with np.load(f, allow_pickle=False) as d:
+            patches = np.asarray(d["patches"], dtype=np.float32)
+            theta = np.asarray(d["theta"], dtype=np.float64)
+        if flip:
+            patches = _harmonic_random_flip(patches, rng)
+        yield patches, theta, str(f)
+
+
+def load_observed_from_harmonic_cache(
+    cache_dir: Path,
+    regime: str,
+    cosmo_id: str = "cosmo_fiducial",
+    perm: int = 0,
+    patch_idx: int = 0,
+    meta_path: str | None = None,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Load (m_data, cosmo_params, truth) for the observed map from the cache.
+
+    `m_data` is `(H, W, 10)` float32. Truth is read from the metainfo file if
+    provided (matches the flat-sky `load_observed_map` behavior), otherwise
+    falls back to the theta stored in the cached .npz.
+    """
+    print("######## OBSERVED DATA (harmonic cache) ########")
+    npz_path = cache_dir / regime / "obs" / f"{cosmo_id}_perm{perm}.npz"
+    if not npz_path.exists():
+        raise FileNotFoundError(
+            f"Observed cache file missing: {npz_path}. The build script must "
+            f"include cosmo_id={cosmo_id} (split=obs) for this regime."
+        )
+    with np.load(npz_path, allow_pickle=False) as d:
+        patches = np.asarray(d["patches"], dtype=np.float32)
+        theta_npz = np.asarray(d["theta"], dtype=np.float64)
+    if patch_idx < 0 or patch_idx >= patches.shape[0]:
+        raise IndexError(
+            f"--harmonic-obs-patch-idx={patch_idx} out of range [0, {patches.shape[0]}). "
+            f"Cache has {patches.shape[0]} patches per realization."
+        )
+    m_data = patches[patch_idx]
+
+    if meta_path is not None and Path(meta_path).exists():
+        with h5py.File(meta_path, "r") as f:
+            ds = f["parameters"]["fiducial"]
+            cosmo_params = np.array(
+                [
+                    ds["Om"],
+                    ds["s8"],
+                    ds["w0"],
+                    np.array(ds["H0"]) / 100.0,
+                    ds["ns"],
+                    ds["Ob"],
+                ],
+                dtype=np.float64,
+            ).T
+        truth = cosmo_params[0].copy()
+    else:
+        truth = theta_npz.copy()
+        truth[3] = truth[3] / 100.0
+        cosmo_params = truth.reshape(1, -1)
+
+    print(f"  Source = {npz_path}  (patch {patch_idx} of {patches.shape[0]})")
+    print(f"  Truth  = {truth}")
+    print(f"  Observed map shape = {m_data.shape}")
+    return m_data, cosmo_params, truth
+
+
+def calibrate_snr_range_from_harmonic_cache(
+    stats: WLStatistics,
+    cache_dir: Path,
+    regime: str,
+    noise_sigma: float,
+    nbins: int,
+    n_l1_channels: int,
+    l1_implementation: str = "cnn_sbi",
+    n_calibration_realizations: int = 16,
+    subtract_coarse_mean: bool = True,
+    margin: float = 0.05,
+    cross_snr_percentile: float = 0.0,
+    reservoir_per_batch: int = 8000,
+    rng: np.random.Generator | None = None,
+) -> Tuple[float, float, float, float]:
+    """Mirror of `calibrate_snr_range` over a harmonic-cache walk.
+
+    Each realization in the cache contributes `n_centers` patches; we treat
+    each realization as one "batch" of patches.
+    """
+    print("######## CALIBRATING SNR RANGE (harmonic cache) ########")
+    n_cross_channels = n_l1_channels - nbins
+    if n_cross_channels > 0 and cross_snr_percentile > 0:
+        print(
+            f"  Cross channels: percentile mode "
+            f"({cross_snr_percentile:.2f}/{100 - cross_snr_percentile:.2f})"
+        )
+
+    device = stats.device
+    auto_min = float("inf")
+    auto_max = float("-inf")
+    cross_min = float("inf")
+    cross_max = float("-inf")
+    cross_reservoirs: list[list[torch.Tensor]] = [
+        [] for _ in range(n_cross_channels)
+    ]
+    n_used = 0
+    map_dtype = np.float32 if l1_implementation == "cosmoford" else np.float64
+
+    for maps_np, _theta, _path in iter_harmonic_examples(
+        cache_dir, regime, split="train",
+        rng=rng, flip=False, n_take=n_calibration_realizations,
+    ):
+        if np.isnan(maps_np).any():
+            continue
+        for b in range(n_l1_channels):
+            img_batch = torch.from_numpy(
+                maps_np[:, :, :, b].astype(map_dtype)
+            ).to(device)
+            if l1_implementation == "cosmoford":
+                stats.compute_wavelet_transform(img_batch.float(), float(noise_sigma))
+            else:
+                stats.compute_wavelet_transform(
+                    img_batch,
+                    noise_sigma,
+                    subtract_coarse_mean=subtract_coarse_mean,
+                )
+            snr = stats.snr_coeffs
+            if b < nbins:
+                auto_min = min(auto_min, snr.min().item())
+                auto_max = max(auto_max, snr.max().item())
+            else:
+                if cross_snr_percentile > 0:
+                    flat = snr.reshape(-1)
+                    n = flat.numel()
+                    if n > reservoir_per_batch:
+                        idx = torch.randint(
+                            0, n, (reservoir_per_batch,), device=flat.device
+                        )
+                        sample = flat[idx]
+                    else:
+                        sample = flat
+                    cross_reservoirs[b - nbins].append(sample.detach().cpu())
+                else:
+                    cross_min = min(cross_min, snr.min().item())
+                    cross_max = max(cross_max, snr.max().item())
+        n_used += maps_np.shape[0]
+
+    auto_span = auto_max - auto_min
+    auto_min -= margin * auto_span
+    auto_max += margin * auto_span
+    print(f"  Calibrated from {n_used} patches")
+    print(f"  Auto-channel SNR range:  [{auto_min:.4f}, {auto_max:.4f}]")
+
+    if n_cross_channels > 0:
+        if cross_snr_percentile > 0:
+            pooled = torch.cat([torch.cat(r) for r in cross_reservoirs])
+            lo_q = cross_snr_percentile / 100.0
+            hi_q = 1.0 - lo_q
+            cross_min = float(torch.quantile(pooled, lo_q).item())
+            cross_max = float(torch.quantile(pooled, hi_q).item())
+            cross_span = cross_max - cross_min
+            cross_min -= margin * cross_span
+            cross_max += margin * cross_span
+            print(
+                f"  Cross-channel SNR range (percentile "
+                f"{cross_snr_percentile:.2f}/{100 - cross_snr_percentile:.2f}, "
+                f"{pooled.numel()} samples): "
+                f"[{cross_min:.4f}, {cross_max:.4f}]"
+            )
+        else:
+            cross_span = cross_max - cross_min
+            cross_min -= margin * cross_span
+            cross_max += margin * cross_span
+            print(f"  Cross-channel SNR range: [{cross_min:.4f}, {cross_max:.4f}]")
+    else:
+        cross_min, cross_max = auto_min, auto_max
+
+    return auto_min, auto_max, cross_min, cross_max
+
+
+def compute_l1_dataset_from_harmonic_cache(
+    cache_dir: Path,
+    regime: str,
+    split: str,
+    stats: WLStatistics,
+    noise_sigma: float,
+    l1_nbins: int,
+    nbins: int,
+    n_l1_channels: int,
+    l1_min_snr: float,
+    l1_max_snr: float,
+    l1_min_snr_cross: float,
+    l1_max_snr_cross: float,
+    clamp_overflow: bool = False,
+    subtract_coarse_mean: bool = True,
+    l1_implementation: str = "cnn_sbi",
+    rng: np.random.Generator | None = None,
+    flip: bool = True,
+    log_every: int = 100,
+) -> Dict[str, np.ndarray]:
+    """Mirror of `compute_l1_dataset` walking the harmonic cache."""
+    print(f"  Loading harmonic cache regime={regime} split={split} ...")
+    theta_list: List[np.ndarray] = []
+    x_list: List[np.ndarray] = []
+    n_processed = 0
+    n_realizations = 0
+    t0 = time.time()
+    for maps_np, theta_np, _path in iter_harmonic_examples(
+        cache_dir, regime, split=split, rng=rng, flip=flip,
+    ):
+        if np.isnan(maps_np).any():
+            print("    [!] Skipped realization with NaN maps")
+            continue
+        # Replicate theta per patch and apply h0 rescale (matches `rescale_h`).
+        theta_batch = np.broadcast_to(theta_np, (maps_np.shape[0], theta_np.shape[0])).copy()
+        theta_batch[:, 3] = theta_batch[:, 3] / 100.0
+        l1_vec = compute_l1_batch(
+            maps_np,
+            noise_sigma,
+            stats,
+            l1_nbins,
+            nbins,
+            l1_min_snr=l1_min_snr,
+            l1_max_snr=l1_max_snr,
+            clamp_overflow=clamp_overflow,
+            subtract_coarse_mean=subtract_coarse_mean,
+            l1_implementation=l1_implementation,
+            n_l1_channels=n_l1_channels,
+            l1_min_snr_cross=l1_min_snr_cross,
+            l1_max_snr_cross=l1_max_snr_cross,
+        )
+        x_list.append(l1_vec)
+        theta_list.append(theta_batch)
+        n_processed += maps_np.shape[0]
+        n_realizations += 1
+        if log_every and n_realizations % log_every == 0:
+            elapsed = time.time() - t0
+            print(f"    Processed {n_realizations} realizations / "
+                  f"{n_processed} patches ({elapsed:.1f}s)")
+
+    elapsed = time.time() - t0
+    print(f"  Done: {n_realizations} realizations / {n_processed} patches in {elapsed:.1f}s")
+    return {
+        "theta": np.concatenate(theta_list, axis=0),
+        "x": np.concatenate(x_list, axis=0),
+    }
+
+
 def calibrate_snr_range(
     stats: WLStatistics,
     augmentation_fn,
@@ -958,6 +1286,66 @@ def parse_args() -> argparse.Namespace:
         ),
     )
 
+    # Harmonic full-sphere cross-maps cache (built by
+    # `build_full_sphere_cross_cache.py`). When set, the script bypasses TFDS
+    # loading, FFT cross-maps, BNT, noise injection, and per-patch demean —
+    # those are all baked into the cache. The auto/cross channel layout
+    # (4 + 6 = 10) is forced; --cross-maps is implicitly true.
+    p.add_argument(
+        "--full-sphere-cross-cache",
+        type=str,
+        default=None,
+        help=(
+            "Path to a directory built by build_full_sphere_cross_cache.py. "
+            "When provided, switches the pipeline to harmonic-route mode: "
+            "TFDS load, FFT cross-maps, BNT, noise, and demean are all "
+            "bypassed (baked into the cache). --apply-bnt selects the "
+            "regime subdir (bnt vs nobnt). --cross-maps, --cross-map-*, "
+            "--zero-mean-maps become no-ops with a warning."
+        ),
+    )
+    p.add_argument(
+        "--cross-maps-route",
+        type=str,
+        default=None,
+        choices=["flat", "harmonic"],
+        help=(
+            "Override how cross-maps are computed. Default behavior auto-"
+            "selects 'harmonic' when --full-sphere-cross-cache is set, "
+            "'flat' otherwise."
+        ),
+    )
+    p.add_argument(
+        "--harmonic-obs-cosmo-id",
+        type=str,
+        default="cosmo_fiducial",
+        help="Cosmology id for the observed map when using a harmonic cache.",
+    )
+    p.add_argument(
+        "--harmonic-obs-perm",
+        type=int,
+        default=0,
+        help="Realization perm for the observed map when using a harmonic cache.",
+    )
+    p.add_argument(
+        "--harmonic-obs-patch-idx",
+        type=int,
+        default=0,
+        help=(
+            "Index of the patch (0..n_centers-1) drawn from the observed "
+            "realization when using a harmonic cache. Default 0."
+        ),
+    )
+    p.add_argument(
+        "--harmonic-calibration-realizations",
+        type=int,
+        default=16,
+        help=(
+            "Number of harmonic-cache training realizations consumed for SNR "
+            "calibration (each contributes n_centers patches). 16 × 48 = 768."
+        ),
+    )
+
     # Summary preprocessing
     p.add_argument("--pca-components", type=int, default=50, help="PCA components (0 disables PCA)")
     p.add_argument(
@@ -1074,6 +1462,8 @@ def build_l1_cache_metadata(
     l1_min_snr_cross: float,
     l1_max_snr_cross: float,
     n_l1_channels: int,
+    cross_maps_route: str = "flat",
+    full_sphere_cache_manifest_sha256: str = "",
 ) -> Dict[str, object]:
     return {
         "l1_min_snr": float(l1_min_snr),
@@ -1089,6 +1479,8 @@ def build_l1_cache_metadata(
         "zero_mean_maps": bool(args.zero_mean_maps),
         "cross_maps": bool(args.cross_maps),
         "cross_map_apodize": str(args.cross_map_apodize),
+        "cross_maps_route": str(cross_maps_route),
+        "full_sphere_cache_manifest_sha256": str(full_sphere_cache_manifest_sha256),
         "n_l1_channels": int(n_l1_channels),
         "n_scales": int(args.n_scales),
         "tfds_name": str(args.tfds_name),
@@ -1404,6 +1796,49 @@ def main() -> None:
             config=vars(args),
         )
 
+    # Resolve the cross-maps computation route. A harmonic cache implies
+    # `harmonic` and forces the 4+6=10 channel layout; the user-passed
+    # `--cross-maps`, `--cross-map-*`, `--zero-mean-maps` knobs become
+    # no-ops because those operations are baked into the cache.
+    if args.full_sphere_cross_cache:
+        cross_maps_route = args.cross_maps_route or "harmonic"
+        if cross_maps_route != "harmonic":
+            raise ValueError(
+                f"--full-sphere-cross-cache requires --cross-maps-route=harmonic "
+                f"(got {cross_maps_route})."
+            )
+        if args.cross_maps:
+            print(
+                "  [warn] --cross-maps is a no-op when --full-sphere-cross-cache "
+                "is set (cross channels are baked into the cache)."
+            )
+        if not args.zero_mean_maps:
+            print(
+                "  [warn] Forcing zero_mean_maps=True for harmonic-cache route "
+                "(per-patch demean already applied at cache-build time)."
+            )
+        # Force config consistent with the harmonic cache layout so downstream
+        # channel counting (n_l1_channels=10), L1 binning, and cache metadata
+        # all agree.
+        args.cross_maps = True
+        args.zero_mean_maps = True
+        full_sphere_cache_dir = Path(args.full_sphere_cross_cache).resolve()
+        full_sphere_cache_manifest_sha = _read_harmonic_manifest_sha(full_sphere_cache_dir)
+        harmonic_regime = "bnt" if args.apply_bnt else "nobnt"
+        print(f"  cross_maps_route = harmonic")
+        print(f"  harmonic cache    = {full_sphere_cache_dir}")
+        print(f"  harmonic regime   = {harmonic_regime}")
+        print(f"  manifest sha256   = {full_sphere_cache_manifest_sha[:16]}...")
+    else:
+        cross_maps_route = args.cross_maps_route or "flat"
+        if cross_maps_route != "flat":
+            raise ValueError(
+                f"--cross-maps-route=harmonic requires --full-sphere-cross-cache."
+            )
+        full_sphere_cache_dir = None
+        full_sphere_cache_manifest_sha = ""
+        harmonic_regime = ""
+
     pixel_arcmin = args.field_size * 60.0 / args.field_npix
     noise_sigma = pixel_noise_sigma(
         args.sigma_e, args.galaxy_density, args.field_size, args.field_npix
@@ -1428,22 +1863,32 @@ def main() -> None:
     checkpoint_path = (save_path / args.checkpoint_name).resolve()
 
     # 1) Observed map
-    m_data, _, truth = load_observed_map(
-        args.cosmogrid_meta,
-        args.fiducial_map,
-        args.field_size,
-        args.field_npix,
-        args.nside,
-        args.nbins,
-        tomo_bin_indices,
-        args.sigma_e,
-        args.galaxy_density,
-        rng_obs,
-        apply_bnt=args.apply_bnt,
-        zero_mean_maps=args.zero_mean_maps,
-        cross_maps=args.cross_maps,
-        cross_map_apodize=args.cross_map_apodize,
-    )
+    if cross_maps_route == "harmonic":
+        m_data, _, truth = load_observed_from_harmonic_cache(
+            cache_dir=full_sphere_cache_dir,
+            regime=harmonic_regime,
+            cosmo_id=args.harmonic_obs_cosmo_id,
+            perm=args.harmonic_obs_perm,
+            patch_idx=args.harmonic_obs_patch_idx,
+            meta_path=args.cosmogrid_meta,
+        )
+    else:
+        m_data, _, truth = load_observed_map(
+            args.cosmogrid_meta,
+            args.fiducial_map,
+            args.field_size,
+            args.field_npix,
+            args.nside,
+            args.nbins,
+            tomo_bin_indices,
+            args.sigma_e,
+            args.galaxy_density,
+            rng_obs,
+            apply_bnt=args.apply_bnt,
+            zero_mean_maps=args.zero_mean_maps,
+            cross_maps=args.cross_maps,
+            cross_map_apodize=args.cross_map_apodize,
+        )
 
     # 2) L1 computer + SNR policy
     stats = build_l1_computer(
@@ -1465,19 +1910,22 @@ def main() -> None:
         effective_l1_clamp = False
         effective_subtract_coarse_mean = False
 
-    augmentation = build_augmentation(
-        args.map_kind,
-        args.sigma_e,
-        args.galaxy_density,
-        args.field_size,
-        args.field_npix,
-        args.nbins,
-        tomo_bin_indices,
-        apply_bnt=args.apply_bnt,
-        zero_mean_maps=args.zero_mean_maps,
-        cross_maps=args.cross_maps,
-        cross_map_apodize=args.cross_map_apodize,
-    )
+    if cross_maps_route == "flat":
+        augmentation = build_augmentation(
+            args.map_kind,
+            args.sigma_e,
+            args.galaxy_density,
+            args.field_size,
+            args.field_npix,
+            args.nbins,
+            tomo_bin_indices,
+            apply_bnt=args.apply_bnt,
+            zero_mean_maps=args.zero_mean_maps,
+            cross_maps=args.cross_maps,
+            cross_map_apodize=args.cross_map_apodize,
+        )
+    else:
+        augmentation = None  # not used by the harmonic-cache path
 
     cache_dir = Path(args.cache_dir) if args.cache_dir else None
     cache_meta_expected: Optional[Dict[str, object]] = None
@@ -1538,25 +1986,46 @@ def main() -> None:
                 )
                 loaded_from_cache = True
         if not loaded_from_cache:
-            (
-                l1_min_snr,
-                l1_max_snr,
-                l1_min_snr_cross,
-                l1_max_snr_cross,
-            ) = calibrate_snr_range(
-                stats,
-                augmentation,
-                args.tfds_name,
-                noise_sigma,
-                args.nbins,
-                l1_implementation=args.l1_implementation,
-                n_calibration=args.calibration_samples,
-                ds_batch_size=args.ds_batch_size,
-                subtract_coarse_mean=effective_subtract_coarse_mean,
-                margin=args.calibration_margin,
-                n_cross_channels=n_cross_pairs,
-                cross_snr_percentile=float(args.cross_snr_percentile),
-            )
+            if cross_maps_route == "harmonic":
+                (
+                    l1_min_snr,
+                    l1_max_snr,
+                    l1_min_snr_cross,
+                    l1_max_snr_cross,
+                ) = calibrate_snr_range_from_harmonic_cache(
+                    stats=stats,
+                    cache_dir=full_sphere_cache_dir,
+                    regime=harmonic_regime,
+                    noise_sigma=noise_sigma,
+                    nbins=args.nbins,
+                    n_l1_channels=n_l1_channels,
+                    l1_implementation=args.l1_implementation,
+                    n_calibration_realizations=int(args.harmonic_calibration_realizations),
+                    subtract_coarse_mean=effective_subtract_coarse_mean,
+                    margin=args.calibration_margin,
+                    cross_snr_percentile=float(args.cross_snr_percentile),
+                    rng=np.random.default_rng(int(args.seed)),
+                )
+            else:
+                (
+                    l1_min_snr,
+                    l1_max_snr,
+                    l1_min_snr_cross,
+                    l1_max_snr_cross,
+                ) = calibrate_snr_range(
+                    stats,
+                    augmentation,
+                    args.tfds_name,
+                    noise_sigma,
+                    args.nbins,
+                    l1_implementation=args.l1_implementation,
+                    n_calibration=args.calibration_samples,
+                    ds_batch_size=args.ds_batch_size,
+                    subtract_coarse_mean=effective_subtract_coarse_mean,
+                    margin=args.calibration_margin,
+                    n_cross_channels=n_cross_pairs,
+                    cross_snr_percentile=float(args.cross_snr_percentile),
+                )
             if args.cross_maps and not args.cross_map_auto_calibrate_snr:
                 l1_min_snr_cross = args.cross_map_min_snr
                 l1_max_snr_cross = args.cross_map_max_snr
@@ -1585,6 +2054,8 @@ def main() -> None:
         l1_min_snr_cross=l1_min_snr_cross,
         l1_max_snr_cross=l1_max_snr_cross,
         n_l1_channels=n_l1_channels,
+        cross_maps_route=cross_maps_route,
+        full_sphere_cache_manifest_sha256=full_sphere_cache_manifest_sha,
     )
 
     print("######## L1-NORM: OBSERVED MAP ########")
@@ -1629,42 +2100,82 @@ def main() -> None:
                 )
 
     if not cache_ok:
-        dataset_train = compute_l1_dataset(
-            args.tfds_name,
-            "train",
-            augmentation,
-            stats,
-            noise_sigma,
-            args.l1_nbins,
-            args.nbins,
-            args.ds_batch_size,
-            l1_min_snr=l1_min_snr,
-            l1_max_snr=l1_max_snr,
-            clamp_overflow=effective_l1_clamp,
-            subtract_coarse_mean=effective_subtract_coarse_mean,
-            l1_implementation=args.l1_implementation,
-            n_l1_channels=n_l1_channels,
-            l1_min_snr_cross=l1_min_snr_cross,
-            l1_max_snr_cross=l1_max_snr_cross,
-        )
-        dataset_val = compute_l1_dataset(
-            args.tfds_name,
-            "test",
-            augmentation,
-            stats,
-            noise_sigma,
-            args.l1_nbins,
-            args.nbins,
-            args.ds_batch_size,
-            l1_min_snr=l1_min_snr,
-            l1_max_snr=l1_max_snr,
-            clamp_overflow=effective_l1_clamp,
-            subtract_coarse_mean=effective_subtract_coarse_mean,
-            l1_implementation=args.l1_implementation,
-            n_l1_channels=n_l1_channels,
-            l1_min_snr_cross=l1_min_snr_cross,
-            l1_max_snr_cross=l1_max_snr_cross,
-        )
+        if cross_maps_route == "harmonic":
+            dataset_train = compute_l1_dataset_from_harmonic_cache(
+                cache_dir=full_sphere_cache_dir,
+                regime=harmonic_regime,
+                split="train",
+                stats=stats,
+                noise_sigma=noise_sigma,
+                l1_nbins=args.l1_nbins,
+                nbins=args.nbins,
+                n_l1_channels=n_l1_channels,
+                l1_min_snr=l1_min_snr,
+                l1_max_snr=l1_max_snr,
+                l1_min_snr_cross=l1_min_snr_cross,
+                l1_max_snr_cross=l1_max_snr_cross,
+                clamp_overflow=effective_l1_clamp,
+                subtract_coarse_mean=effective_subtract_coarse_mean,
+                l1_implementation=args.l1_implementation,
+                rng=np.random.default_rng(int(args.seed) + 1001),
+                flip=True,
+            )
+            dataset_val = compute_l1_dataset_from_harmonic_cache(
+                cache_dir=full_sphere_cache_dir,
+                regime=harmonic_regime,
+                split="val",
+                stats=stats,
+                noise_sigma=noise_sigma,
+                l1_nbins=args.l1_nbins,
+                nbins=args.nbins,
+                n_l1_channels=n_l1_channels,
+                l1_min_snr=l1_min_snr,
+                l1_max_snr=l1_max_snr,
+                l1_min_snr_cross=l1_min_snr_cross,
+                l1_max_snr_cross=l1_max_snr_cross,
+                clamp_overflow=effective_l1_clamp,
+                subtract_coarse_mean=effective_subtract_coarse_mean,
+                l1_implementation=args.l1_implementation,
+                rng=np.random.default_rng(int(args.seed) + 2001),
+                flip=False,  # deterministic val
+            )
+        else:
+            dataset_train = compute_l1_dataset(
+                args.tfds_name,
+                "train",
+                augmentation,
+                stats,
+                noise_sigma,
+                args.l1_nbins,
+                args.nbins,
+                args.ds_batch_size,
+                l1_min_snr=l1_min_snr,
+                l1_max_snr=l1_max_snr,
+                clamp_overflow=effective_l1_clamp,
+                subtract_coarse_mean=effective_subtract_coarse_mean,
+                l1_implementation=args.l1_implementation,
+                n_l1_channels=n_l1_channels,
+                l1_min_snr_cross=l1_min_snr_cross,
+                l1_max_snr_cross=l1_max_snr_cross,
+            )
+            dataset_val = compute_l1_dataset(
+                args.tfds_name,
+                "test",
+                augmentation,
+                stats,
+                noise_sigma,
+                args.l1_nbins,
+                args.nbins,
+                args.ds_batch_size,
+                l1_min_snr=l1_min_snr,
+                l1_max_snr=l1_max_snr,
+                clamp_overflow=effective_l1_clamp,
+                subtract_coarse_mean=effective_subtract_coarse_mean,
+                l1_implementation=args.l1_implementation,
+                n_l1_channels=n_l1_channels,
+                l1_min_snr_cross=l1_min_snr_cross,
+                l1_max_snr_cross=l1_max_snr_cross,
+            )
         if cache_dir is not None:
             cache_dir.mkdir(parents=True, exist_ok=True)
             np.savez(cache_dir / "l1_train.npz", theta=dataset_train["theta"], x=dataset_train["x"])
