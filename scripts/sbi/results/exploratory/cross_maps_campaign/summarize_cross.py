@@ -43,6 +43,10 @@ def load(template):
     return [np.load(template.format(s=s)) for s in SEEDS]
 
 
+def _all_present(template) -> bool:
+    return all(Path(template.format(s=s)).exists() for s in SEEDS)
+
+
 def main():
     arms = {
         "cross_bnt_pct1":   ROOT / "jaxili_cross_bnt_pct1"   / "posteriors" / "l1cross_tomo4_20deg160mp_bnt_p1_s{s}.npy",
@@ -53,7 +57,13 @@ def main():
         "auto_zm_nobnt":    ROOT / "jaxili_auto_zm_nobnt"    / "posteriors" / "l1_tomo4_20deg160mp_zm_nobnt_s{s}.npy",
         "auto_bnt":         ROOT / "jaxili_auto_bnt"         / "posteriors" / "l1_tomo4_20deg160_bnt_s{s}.npy",
         "auto_nobnt":       ROOT / "jaxili_auto_nobnt"       / "posteriors" / "l1_tomo4_20deg160_nobnt_s{s}.npy",
+        "harm_cross_bnt":   ROOT / "jaxili_harm_cross_bnt"   / "posteriors" / "l1cross_tomo4_20deg160mp_harm_bnt_p1_s{s}.npy",
+        "harm_cross_nobnt": ROOT / "jaxili_harm_cross_nobnt" / "posteriors" / "l1cross_tomo4_20deg160mp_harm_nobnt_p1_s{s}.npy",
     }
+    skipped = [name for name, t in arms.items() if not _all_present(str(t))]
+    if skipped:
+        print(f"# skipped (missing posteriors): {skipped}")
+    arms = {n: t for n, t in arms.items() if n not in skipped}
     summaries = {name: agg(load(str(t))) for name, t in arms.items()}
 
     md = [
