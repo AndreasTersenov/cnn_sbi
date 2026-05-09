@@ -32,7 +32,7 @@ import re
 import time
 from functools import partial
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Callable, Dict, Iterator, Optional, Tuple
 
 import wandb
 
@@ -72,6 +72,8 @@ import tf_dataset_nbody_tomo as _tomo_builder  # noqa: F401, E402
 
 tfb = tfp.bijectors
 tfd = tfp.distributions
+
+HARMONIC_CACHE_CHANNELS = 10
 
 
 # =============================================================================
@@ -335,6 +337,72 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Apply BNT transform after shape-noise injection.",
     )
+    p.add_argument(
+        "--full-sphere-cross-cache",
+        type=str,
+        default=None,
+        help=(
+            "Path to a cache built by build_full_sphere_cross_cache.py. "
+            "When provided, CNN maps are loaded from harmonic cache files "
+            "(4 auto + 6 cross channels) instead of TFDS maps."
+        ),
+    )
+    p.add_argument(
+        "--cnn-map-route",
+        type=str,
+        default=None,
+        choices=["tfds", "harmonic"],
+        help=(
+            "Force map input route. Defaults to 'harmonic' when "
+            "--full-sphere-cross-cache is set, 'tfds' otherwise."
+        ),
+    )
+    p.add_argument(
+        "--harmonic-cache-regime",
+        type=str,
+        default=None,
+        choices=["bnt", "nobnt"],
+        help=(
+            "Regime subdir used under --full-sphere-cross-cache. Defaults to "
+            "'bnt' when --apply-bnt is set, else 'nobnt'."
+        ),
+    )
+    p.add_argument(
+        "--harmonic-obs-cosmo-id",
+        type=str,
+        default="cosmo_fiducial",
+        help="Observed cosmology id when using --full-sphere-cross-cache.",
+    )
+    p.add_argument(
+        "--harmonic-obs-perm",
+        type=int,
+        default=0,
+        help="Observed realization perm when using --full-sphere-cross-cache.",
+    )
+    p.add_argument(
+        "--harmonic-obs-patch-idx",
+        type=int,
+        default=0,
+        help="Observed patch index when using --full-sphere-cross-cache.",
+    )
+    p.add_argument(
+        "--harmonic-train-realizations-limit",
+        type=int,
+        default=None,
+        help=(
+            "Optional cap on harmonic-cache train realizations loaded. "
+            "Useful for smoke tests."
+        ),
+    )
+    p.add_argument(
+        "--harmonic-val-realizations-limit",
+        type=int,
+        default=None,
+        help=(
+            "Optional cap on harmonic-cache val realizations loaded. "
+            "Useful for smoke tests."
+        ),
+    )
 
     # Flow training hyperparameters
     p.add_argument("--total-steps", type=int, default=50_000)
@@ -446,6 +514,16 @@ def parse_args() -> argparse.Namespace:
         help="Hidden width of the domain-adversarial MLP head.",
     )
     p.add_argument(
+        "--vmim-nf-hidden",
+        type=int,
+        default=128,
+        help=(
+            "Hidden width of the VMIM companion RealNVP auxiliary network "
+            "(AffineCoupling layers=[vmim_nf_hidden]*2). Default 128. "
+            "Increase (e.g. 256, 512) to test whether the VMIM bound is saturated."
+        ),
+    )
+    p.add_argument(
         "--compressor-plot-contours",
         action="store_true",
         help="Plot compressor contour diagnostics at each compressor checkpoint",
@@ -485,6 +563,21 @@ def parse_args() -> argparse.Namespace:
                     action="store_false",
                     help="Disable per-channel map demeaning (default).")
     p.set_defaults(zero_mean_maps=False)
+    p.add_argument(
+        "--harmonic-normalize-input-channels",
+        dest="harmonic_normalize_input_channels",
+        action="store_true",
+        default=False,
+        help=(
+            "Harmonic-cache route only. Divide each input channel by its "
+            "dataset-level RMS (computed from the training split, pooled over "
+            "all spatial pixels and examples). This equalizes the gradient "
+            "signal from auto-channels (C_ii, large amplitude) and "
+            "cross-channels (C_ij i≠j, ~100× smaller amplitude) without "
+            "discarding inter-example cosmological scale variation. "
+            "The 10 per-channel RMS values are saved in the run meta JSON."
+        ),
+    )
 
     return p.parse_args()
 
@@ -592,6 +685,330 @@ def load_observed_map(
     print(f"  Observed map shape = {m_data.shape}, "
           f"noise_std/pixel = {noise_std:.6f}")
     return m_data, cosmo_params, truth
+
+
+def _read_harmonic_manifest(cache_dir: Path) -> Dict[str, object]:
+    manifest_path = cache_dir / "manifest.json"
+    if not manifest_path.exists():
+        raise FileNotFoundError(
+            f"Missing harmonic-cache manifest at {manifest_path}. "
+            "Build the cache with build_full_sphere_cross_cache.py first."
+        )
+    payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    args_sha = payload.get("args_sha256")
+    if not isinstance(args_sha, str) or not args_sha:
+        raise ValueError(f"Manifest at {manifest_path} missing 'args_sha256'.")
+    n_channels = int(payload.get("n_channels", -1))
+    if n_channels != HARMONIC_CACHE_CHANNELS:
+        raise ValueError(
+            "Harmonic cache channel mismatch: expected "
+            f"{HARMONIC_CACHE_CHANNELS}, got {n_channels}."
+        )
+    return payload
+
+
+def _list_harmonic_cache_files(cache_dir: Path, regime: str, split: str) -> list[Path]:
+    if regime not in ("bnt", "nobnt"):
+        raise ValueError(f"regime must be 'bnt' or 'nobnt', got {regime}")
+    split_dir = cache_dir / regime / split
+    if not split_dir.exists():
+        raise FileNotFoundError(
+            f"Harmonic cache split missing: {split_dir}. "
+            "Did the build script complete this regime/split?"
+        )
+    files = sorted(p for p in split_dir.iterdir() if p.suffix == ".npz")
+    if not files:
+        raise FileNotFoundError(f"No .npz files found under {split_dir}.")
+    return files
+
+
+def _harmonic_random_flip(maps: np.ndarray, rng: np.random.Generator) -> np.ndarray:
+    out = maps
+    flip_lr = rng.integers(0, 2, size=maps.shape[0]).astype(bool)
+    flip_ud = rng.integers(0, 2, size=maps.shape[0]).astype(bool)
+    if flip_lr.any():
+        idx = np.where(flip_lr)[0]
+        out = out.copy()
+        out[idx] = out[idx, :, ::-1, :]
+    if flip_ud.any():
+        idx = np.where(flip_ud)[0]
+        if out is maps:
+            out = out.copy()
+        out[idx] = out[idx, ::-1, :, :]
+    return out
+
+
+def _assert_zero_mean_patches(
+    patches: np.ndarray,
+    source: str,
+    atol: float = 1e-4,
+) -> None:
+    residual = float(np.abs(patches.mean(axis=(1, 2))).max())
+    if residual > atol:
+        raise ValueError(
+            "Harmonic cache zero-mean compatibility check failed for "
+            f"{source}: max per-channel patch mean residual {residual:.3e} > {atol:.1e}."
+        )
+
+
+def iter_harmonic_examples(
+    cache_dir: Path,
+    regime: str,
+    split: str,
+    rng: np.random.Generator | None = None,
+    flip: bool = True,
+    max_realizations: int | None = None,
+):
+    files = _list_harmonic_cache_files(cache_dir, regime, split)
+    if max_realizations is not None:
+        files = files[:max_realizations]
+    if rng is None:
+        rng = np.random.default_rng(0)
+    for f in files:
+        with np.load(f, allow_pickle=False) as d:
+            patches = np.asarray(d["patches"], dtype=np.float32)
+            theta = np.asarray(d["theta"], dtype=np.float64)
+        if patches.ndim != 4 or patches.shape[-1] != HARMONIC_CACHE_CHANNELS:
+            raise ValueError(
+                f"Unexpected patch shape in {f}: {patches.shape} "
+                f"(expected (..., {HARMONIC_CACHE_CHANNELS}))."
+            )
+        _assert_zero_mean_patches(patches, str(f))
+        if flip:
+            patches = _harmonic_random_flip(patches, rng)
+        yield patches, theta, str(f)
+
+
+def compute_harmonic_channel_rms(
+    cache_dir: Path,
+    regime: str,
+    split: str,
+    max_realizations: int | None = None,
+) -> np.ndarray:
+    """Compute per-channel RMS over the training split (pooled over all pixels and examples).
+
+    Returns shape (n_channels,) float32 array. Patches must be zero-mean
+    (enforced by cache), so RMS == std here. Using RMS rather than per-example
+    std ensures inter-example cosmological amplitude variation is preserved.
+    """
+    files = _list_harmonic_cache_files(cache_dir, regime, split)
+    if max_realizations is not None:
+        files = files[:max_realizations]
+    if not files:
+        raise ValueError(
+            f"No harmonic cache files for channel-stats computation "
+            f"(split={split}, regime={regime})."
+        )
+    sum_sq: np.ndarray | None = None
+    n_pixels = 0
+    for path in files:
+        with np.load(path, allow_pickle=False) as d:
+            patches = np.asarray(d["patches"], dtype=np.float32)  # (N, H, W, C)
+        if sum_sq is None:
+            sum_sq = np.zeros(patches.shape[-1], dtype=np.float64)
+        sum_sq += np.sum(patches.astype(np.float64) ** 2, axis=(0, 1, 2))
+        n_pixels += patches.shape[0] * patches.shape[1] * patches.shape[2]
+    assert sum_sq is not None
+    rms = np.sqrt(sum_sq / n_pixels).astype(np.float32)
+    return rms
+
+
+def _theta_batch_from_harmonic(theta: np.ndarray, n_samples: int) -> np.ndarray:
+    theta_batch = np.broadcast_to(theta, (n_samples, theta.shape[0])).copy()
+    theta_batch[:, 3] = theta_batch[:, 3] / 100.0
+    return theta_batch
+
+
+def _normalize_harmonic_split(
+    split: str,
+    arg_name: str,
+    allowed: tuple[str, ...],
+) -> str:
+    mapping = {
+        "train": "train",
+        "val": "val",
+        "validation": "val",
+        "test": "val",
+        "obs": "obs",
+    }
+    key = split.strip().lower()
+    normalized = mapping.get(key)
+    if normalized is None or normalized not in allowed:
+        allowed_str = ", ".join(allowed)
+        raise ValueError(
+            f"{arg_name}={split!r} is invalid for harmonic-cache route. "
+            f"Allowed: {allowed_str}."
+        )
+    if normalized != split:
+        print(f"  Overriding {arg_name} from '{split}' to '{normalized}' for harmonic cache.")
+    return normalized
+
+
+def load_observed_from_harmonic_cache(
+    cache_dir: Path,
+    regime: str,
+    cosmo_id: str = "cosmo_fiducial",
+    perm: int = 0,
+    patch_idx: int = 0,
+    meta_path: str | None = None,
+    channel_scale: np.ndarray | None = None,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    print("######## OBSERVED DATA (harmonic cache) ########")
+    npz_path = cache_dir / regime / "obs" / f"{cosmo_id}_perm{perm}.npz"
+    if not npz_path.exists():
+        raise FileNotFoundError(
+            f"Observed cache file missing: {npz_path}. The cache must include "
+            f"cosmo_id={cosmo_id} (split=obs) for regime={regime}."
+        )
+    with np.load(npz_path, allow_pickle=False) as d:
+        patches = np.asarray(d["patches"], dtype=np.float32)
+        theta_npz = np.asarray(d["theta"], dtype=np.float64)
+    _assert_zero_mean_patches(patches, str(npz_path))
+    if patch_idx < 0 or patch_idx >= patches.shape[0]:
+        raise IndexError(
+            f"--harmonic-obs-patch-idx={patch_idx} out of range "
+            f"[0, {patches.shape[0]})."
+        )
+    m_data = patches[patch_idx]
+    if channel_scale is not None:
+        m_data = m_data / channel_scale
+
+    if meta_path is not None and Path(meta_path).exists():
+        with h5py.File(meta_path, "r") as f:
+            ds = f["parameters"]["fiducial"]
+            cosmo_params = np.array(
+                [
+                    ds["Om"],
+                    ds["s8"],
+                    ds["w0"],
+                    np.array(ds["H0"]) / 100.0,
+                    ds["ns"],
+                    ds["Ob"],
+                ],
+                dtype=np.float64,
+            ).T
+        truth = cosmo_params[0].copy()
+    else:
+        truth = theta_npz.copy()
+        truth[3] = truth[3] / 100.0
+        cosmo_params = truth.reshape(1, -1)
+
+    print(f"  Source = {npz_path} (patch {patch_idx} of {patches.shape[0]})")
+    print(f"  Truth  = {truth}")
+    print(f"  Observed map shape = {m_data.shape}")
+    return m_data, cosmo_params, truth
+
+
+def build_harmonic_batch_iterator(
+    cache_dir: Path,
+    regime: str,
+    split: str,
+    batch_size: int,
+    seed: int,
+    flip: bool,
+    max_realizations: int | None = None,
+    channel_scale: np.ndarray | None = None,
+) -> Iterator[Dict[str, np.ndarray]]:
+    files = _list_harmonic_cache_files(cache_dir, regime, split)
+    if max_realizations is not None:
+        files = files[:max_realizations]
+    if not files:
+        raise ValueError(
+            f"No harmonic cache files available for split={split}, regime={regime}."
+        )
+    rng = np.random.default_rng(seed)
+    while True:
+        order = rng.permutation(len(files))
+        for idx in order:
+            path = files[int(idx)]
+            with np.load(path, allow_pickle=False) as d:
+                maps_np = np.asarray(d["patches"], dtype=np.float32)
+                theta_np = np.asarray(d["theta"], dtype=np.float64)
+            _assert_zero_mean_patches(maps_np, str(path))
+            if channel_scale is not None:
+                maps_np = maps_np / channel_scale
+            if flip:
+                maps_np = _harmonic_random_flip(maps_np, rng)
+            perm = rng.permutation(maps_np.shape[0])
+            maps_np = maps_np[perm]
+            theta_batch = _theta_batch_from_harmonic(theta_np, maps_np.shape[0])[perm]
+            for start in range(0, maps_np.shape[0], batch_size):
+                end = start + batch_size
+                yield {"maps": maps_np[start:end], "theta": theta_batch[start:end]}
+
+
+def compress_dataset_from_harmonic_cache(
+    cache_dir: Path,
+    regime: str,
+    split: str,
+    compressor,
+    comp_params: hk.Params,
+    comp_state: hk.State,
+    ds_batch_size: int,
+    rng: np.random.Generator | None = None,
+    flip: bool = True,
+    max_realizations: int | None = None,
+    channel_scale: np.ndarray | None = None,
+) -> Dict[str, np.ndarray]:
+    print(f"  Loading harmonic cache [{regime}/{split}] ...")
+    theta_list = []
+    x_list = []
+    n_processed = 0
+    n_realizations = 0
+    t0 = time.time()
+    first_batch_reported = False
+    for maps_np, theta_np, _path in iter_harmonic_examples(
+        cache_dir=cache_dir,
+        regime=regime,
+        split=split,
+        rng=rng,
+        flip=flip,
+        max_realizations=max_realizations,
+    ):
+        if channel_scale is not None:
+            maps_np = maps_np / channel_scale
+        theta_batch = _theta_batch_from_harmonic(theta_np, maps_np.shape[0])
+        for start in range(0, maps_np.shape[0], ds_batch_size):
+            end = start + ds_batch_size
+            maps_batch = maps_np[start:end]
+            theta_chunk = theta_batch[start:end]
+            if np.isnan(maps_batch).any():
+                print("    [!] Skipped batch with NaN maps")
+                continue
+            if not first_batch_reported:
+                per_map_means = maps_batch.mean(axis=(1, 2))
+                print(
+                    "    First-batch per-channel spatial-mean stats: "
+                    f"abs max = {np.abs(per_map_means).max():.3e}, "
+                    f"mean = {per_map_means.mean():.3e}"
+                )
+                first_batch_reported = True
+            comp_y, _ = compressor.apply(comp_params, comp_state, None, maps_batch)
+            x_list.append(np.array(comp_y))
+            theta_list.append(theta_chunk)
+            n_processed += len(theta_chunk)
+        n_realizations += 1
+        if n_realizations % 100 == 0:
+            elapsed = time.time() - t0
+            print(
+                f"    Processed {n_realizations} realizations / "
+                f"{n_processed} patches ({elapsed:.1f}s)"
+            )
+
+    if not theta_list or not x_list:
+        raise RuntimeError(
+            f"No harmonic examples were processed for split={split}, regime={regime}."
+        )
+
+    elapsed = time.time() - t0
+    print(
+        f"  Done: {n_realizations} realizations / "
+        f"{n_processed} patches in {elapsed:.1f}s"
+    )
+    return {
+        "theta": np.concatenate(theta_list, axis=0),
+        "x": np.concatenate(x_list, axis=0),
+    }
 
 
 # =============================================================================
@@ -827,6 +1244,10 @@ def build_cnn_cache_metadata(
     compressor_params_path: Optional[str],
     compressor_state_path: Optional[str],
     tomo_bin_indices: tuple[int, ...],
+    cnn_map_route: str = "tfds",
+    full_sphere_cache_manifest_sha256: str = "",
+    harmonic_regime: str = "",
+    cnn_input_channels: Optional[int] = None,
 ) -> Dict[str, object]:
     """Build metadata used to validate cached compressed datasets."""
     params_path = Path(compressor_params_path).resolve() if compressor_params_path else None
@@ -866,14 +1287,23 @@ def build_cnn_cache_metadata(
         "require_disjoint_train_examples": int(bool(args.require_disjoint_train_examples)),
         "tomo_bin_indices": ",".join(str(b) for b in tomo_bin_indices),
         "map_kind": str(args.map_kind),
+        "cnn_map_route": str(cnn_map_route),
+        "full_sphere_cache_manifest_sha256": str(full_sphere_cache_manifest_sha256),
+        "harmonic_regime": str(harmonic_regime),
         "field_size": int(args.field_size),
         "field_npix": int(args.field_npix),
         "nbins": int(args.nbins),
+        "cnn_input_channels": int(
+            args.nbins if cnn_input_channels is None else cnn_input_channels
+        ),
         "sigma_e": float(args.sigma_e),
         "galaxy_density": float(args.galaxy_density),
         "apply_bnt": bool(args.apply_bnt),
         "bnt_matrix_version": BNT_MATRIX_VERSION if args.apply_bnt else "none",
         "zero_mean_maps": int(bool(args.zero_mean_maps)),
+        "harmonic_normalize_input_channels": int(
+            bool(getattr(args, "harmonic_normalize_input_channels", False))
+        ),
         "compressor_params_path": str(params_path) if params_path else "",
         "compressor_state_path": str(state_path) if state_path else "",
         "compressor_params_sha256": (
@@ -1027,16 +1457,19 @@ def train_compressor_vmim(
     domain_adversarial: bool = False,
     domain_adv_weight: float = 0.0,
     domain_hidden: int = 64,
+    vmim_nf_hidden: int = 128,
+    dataset_iter_factory: Optional[
+        Callable[[str, int], Iterator[Dict[str, np.ndarray]]]
+    ] = None,
 ) -> Tuple[hk.Params, hk.State]:
     """Train the CNN compressor from scratch using VMIM loss.
 
     Follows the same recipe as train_compressor_tomographic.py:
-      - Companion RealNVP (4 layers, [128]*2, silu) for VMIM objective
+      - Companion RealNVP (4 layers, [vmim_nf_hidden]*2, silu) for VMIM objective
       - Piecewise constant LR schedule (init × 0.7 at every 10% milestone)
       - Adam optimizer
       - TrainModel from sbi_lens
     """
-    import tensorflow_datasets as tfds
     from tqdm import tqdm
 
     print("######## TRAINING COMPRESSOR (VMIM) ########")
@@ -1044,7 +1477,7 @@ def train_compressor_vmim(
 
     # --- Companion normalizing flow for VMIM ---
     bijector_fn = partial(
-        AffineCoupling, layers=[128] * 2, activation=jax.nn.silu,
+        AffineCoupling, layers=[vmim_nf_hidden] * 2, activation=jax.nn.silu,
     )
     NF_compressor = partial(
         ConditionalRealNVP, n_layers=4, bijector_fn=bijector_fn,
@@ -1263,13 +1696,25 @@ def train_compressor_vmim(
         )
         return total, vmim_loss, consistency_loss, domain_ce, domain_acc
 
-    def _dataset_iter(split: str, shuffle_buffer: int, aug_fn):
-        ds = tfds.load(tfds_name, split=split)
-        ds = ds.repeat().shuffle(shuffle_buffer)
-        ds = ds.map(aug_fn, num_parallel_calls=tf.data.AUTOTUNE)
-        ds = ds.batch(batch_size)
-        ds = ds.prefetch(tf.data.AUTOTUNE)
-        return iter(tfds.as_numpy(ds))
+    if dataset_iter_factory is None:
+        import tensorflow_datasets as tfds
+
+        def _dataset_iter(split: str, shuffle_buffer: int, aug_fn):
+            ds = tfds.load(tfds_name, split=split)
+            ds = ds.repeat().shuffle(shuffle_buffer)
+            ds = ds.map(aug_fn, num_parallel_calls=tf.data.AUTOTUNE)
+            ds = ds.batch(batch_size)
+            ds = ds.prefetch(tf.data.AUTOTUNE)
+            return iter(tfds.as_numpy(ds))
+    else:
+        if paired_training:
+            raise ValueError(
+                "paired BNT/no-BNT compressor training is not supported for "
+                "custom dataset_iter_factory routes."
+            )
+
+        def _dataset_iter(split: str, _shuffle_buffer: int, _aug_fn):
+            return dataset_iter_factory(split, batch_size)
 
     stage_specs: list[Dict[str, object]]
     if noise_curriculum_stages is None:
@@ -2265,6 +2710,125 @@ def main():
         args.nbins = len(tomo_bin_indices)
     if args.apply_bnt:
         validate_bnt_configuration(args.nbins, tomo_bin_indices)
+
+    if args.harmonic_train_realizations_limit is not None and args.harmonic_train_realizations_limit < 1:
+        raise ValueError("--harmonic-train-realizations-limit must be >= 1.")
+    if args.harmonic_val_realizations_limit is not None and args.harmonic_val_realizations_limit < 1:
+        raise ValueError("--harmonic-val-realizations-limit must be >= 1.")
+
+    cnn_map_route = args.cnn_map_route or (
+        "harmonic" if args.full_sphere_cross_cache else "tfds"
+    )
+    full_sphere_cache_dir: Optional[Path] = None
+    full_sphere_cache_manifest_sha = ""
+    harmonic_regime = ""
+    if args.full_sphere_cross_cache:
+        if cnn_map_route != "harmonic":
+            raise ValueError(
+                "--full-sphere-cross-cache requires --cnn-map-route=harmonic "
+                f"(got {cnn_map_route})."
+            )
+        full_sphere_cache_dir = Path(args.full_sphere_cross_cache).resolve()
+        manifest = _read_harmonic_manifest(full_sphere_cache_dir)
+        full_sphere_cache_manifest_sha = str(manifest["args_sha256"])
+        harmonic_regime = (
+            args.harmonic_cache_regime
+            if args.harmonic_cache_regime is not None
+            else ("bnt" if args.apply_bnt else "nobnt")
+        )
+        if harmonic_regime not in ("bnt", "nobnt"):
+            raise ValueError(
+                "--harmonic-cache-regime must be one of {'bnt','nobnt'} "
+                f"(got {harmonic_regime})."
+            )
+        harmonic_apply_bnt = harmonic_regime == "bnt"
+        if bool(args.apply_bnt) != harmonic_apply_bnt:
+            print(
+                "  Overriding --apply-bnt to match --harmonic-cache-regime="
+                f"{harmonic_regime}."
+            )
+            args.apply_bnt = harmonic_apply_bnt
+            if args.apply_bnt:
+                validate_bnt_configuration(args.nbins, tomo_bin_indices)
+        if not args.zero_mean_maps:
+            print(
+                "  [warn] Forcing zero_mean_maps=True for harmonic-cache route "
+                "(cache patches are already demeaned)."
+            )
+        args.zero_mean_maps = True
+        if args.require_disjoint_train_examples:
+            raise ValueError(
+                "--require-disjoint-train-examples is TFDS-only and not "
+                "supported with --full-sphere-cross-cache."
+            )
+        args.compressor_train_split = _normalize_harmonic_split(
+            args.compressor_train_split,
+            "--compressor-train-split",
+            allowed=("train", "val"),
+        )
+        args.compressor_val_split = _normalize_harmonic_split(
+            args.compressor_val_split,
+            "--compressor-val-split",
+            allowed=("train", "val"),
+        )
+        args.nde_train_split = _normalize_harmonic_split(
+            args.nde_train_split,
+            "--nde-train-split",
+            allowed=("train", "val"),
+        )
+        args.nde_val_split = _normalize_harmonic_split(
+            args.nde_val_split,
+            "--nde-val-split",
+            allowed=("train", "val"),
+        )
+        print(f"  cnn_map_route = harmonic")
+        print(f"  harmonic cache = {full_sphere_cache_dir}")
+        print(f"  harmonic regime = {harmonic_regime}")
+        print(f"  manifest sha256 = {full_sphere_cache_manifest_sha[:16]}...")
+    else:
+        if cnn_map_route != "tfds":
+            raise ValueError(
+                "--cnn-map-route=harmonic requires --full-sphere-cross-cache."
+            )
+
+    if cnn_map_route == "harmonic" and args.compressor_paired_bnt_nobnt_consistency:
+        raise ValueError(
+            "Harmonic-cache route currently supports single-regime maps only; "
+            "--compressor-paired-bnt-nobnt-consistency is unsupported."
+        )
+    if cnn_map_route == "harmonic" and args.compressor_noise_curriculum:
+        raise ValueError(
+            "--compressor-noise-curriculum is unsupported for harmonic-cache "
+            "route because shape-noise levels are baked into cache files."
+        )
+
+    cnn_input_channels = (
+        HARMONIC_CACHE_CHANNELS if cnn_map_route == "harmonic" else args.nbins
+    )
+
+    # Per-channel RMS normalization for harmonic route (computed once here so it
+    # is available for both the observed map and the compressor training iterator).
+    harmonic_channel_scale: np.ndarray | None = None
+    if cnn_map_route == "harmonic" and args.harmonic_normalize_input_channels:
+        if full_sphere_cache_dir is None:
+            raise RuntimeError("Internal error: harmonic route selected with no cache dir.")
+        print(
+            "  [harmonic-normalize-input-channels] Computing per-channel RMS "
+            f"from {args.compressor_train_split} split ..."
+        )
+        harmonic_channel_scale = compute_harmonic_channel_rms(
+            cache_dir=full_sphere_cache_dir,
+            regime=harmonic_regime,
+            split=args.compressor_train_split,
+            max_realizations=args.harmonic_train_realizations_limit,
+        )
+        print(f"  Per-channel RMS (auto first, then cross): {harmonic_channel_scale}")
+        print(
+            f"  RMS range: min={harmonic_channel_scale.min():.4e}, "
+            f"max={harmonic_channel_scale.max():.4e}, "
+            f"ratio={harmonic_channel_scale.max() / harmonic_channel_scale.min():.1f}×"
+        )
+
     setup_environment(args.cuda_visible_devices)
     rng = jax.random.PRNGKey(args.seed)
     rng, rng_obs, rng_sample = jax.random.split(rng, 3)
@@ -2273,6 +2837,8 @@ def main():
     summary_dim = args.compressor_dim
     print(f"  summary_dim    = {summary_dim}")
     save_path = Path(args.save_dir) / "cnn_vmim" / args.map_kind
+    if cnn_map_route == "harmonic":
+        save_path = save_path / f"harmonic_{harmonic_regime}"
     summary_stats_path = save_path / "cnn_summary_standardization.npz"
 
     param_names = [
@@ -2298,19 +2864,33 @@ def main():
     # ------------------------------------------------------------------
     # 1. Observed map
     # ------------------------------------------------------------------
-    m_data, cosmo_params, truth = load_observed_map(
-        args.cosmogrid_meta, args.fiducial_map,
-        args.field_size, args.field_npix, args.nside, args.nbins,
-        tomo_bin_indices,
-        args.sigma_e, args.galaxy_density, rng_obs,
-        apply_bnt=args.apply_bnt,
-        zero_mean_maps=args.zero_mean_maps,
-    )
+    if cnn_map_route == "harmonic":
+        if full_sphere_cache_dir is None:
+            raise RuntimeError("Internal error: harmonic route selected with no cache dir.")
+        m_data, cosmo_params, truth = load_observed_from_harmonic_cache(
+            cache_dir=full_sphere_cache_dir,
+            regime=harmonic_regime,
+            cosmo_id=args.harmonic_obs_cosmo_id,
+            perm=args.harmonic_obs_perm,
+            patch_idx=args.harmonic_obs_patch_idx,
+            meta_path=args.cosmogrid_meta,
+            channel_scale=harmonic_channel_scale,
+        )
+    else:
+        m_data, cosmo_params, truth = load_observed_map(
+            args.cosmogrid_meta, args.fiducial_map,
+            args.field_size, args.field_npix, args.nside, args.nbins,
+            tomo_bin_indices,
+            args.sigma_e, args.galaxy_density, rng_obs,
+            apply_bnt=args.apply_bnt,
+            zero_mean_maps=args.zero_mean_maps,
+        )
 
     # ------------------------------------------------------------------
     # 2. CNN compressor
     # ------------------------------------------------------------------
     print("######## CNN COMPRESSOR ########")
+    print(f"  Input route: {cnn_map_route} (channels={cnn_input_channels})")
     if args.compressor_arch == "plain":
         arch_desc = (
             f"plain conv={compressor_conv_channels} "
@@ -2340,7 +2920,7 @@ def main():
     )
 
     split_overlap_info = None
-    if args.require_disjoint_train_examples:
+    if args.require_disjoint_train_examples and cnn_map_route == "tfds":
         print(
             "  Auditing train-split overlap (example identity = "
             "(cosmology, patch)) ..."
@@ -2386,77 +2966,113 @@ def main():
     paired_consistency_training = bool(
         args.train_compressor and args.compressor_paired_bnt_nobnt_consistency
     )
-    augmentation = build_augmentation(
-        args.map_kind, args.sigma_e, args.galaxy_density,
-        args.field_size, args.field_npix, args.nbins, tomo_bin_indices,
-        apply_bnt=args.apply_bnt,
-        paired_bnt_nobnt_consistency=paired_consistency_training,
-        zero_mean_maps=args.zero_mean_maps,
-    )
+    augmentation = None
+    compressor_dataset_iter_factory: Optional[
+        Callable[[str, int], Iterator[Dict[str, np.ndarray]]]
+    ] = None
     curriculum_stages: Optional[list[Dict[str, object]]] = None
-    if args.train_compressor and args.compressor_noise_curriculum:
-        if curriculum_sigma_factors is None or curriculum_stage_fracs is None:
-            raise ValueError(
-                "Internal error: curriculum flag set but parsed schedule missing."
-            )
-        stage_steps = allocate_stage_steps(
-            int(args.compressor_steps),
-            curriculum_stage_fracs,
+    if cnn_map_route == "tfds":
+        augmentation = build_augmentation(
+            args.map_kind, args.sigma_e, args.galaxy_density,
+            args.field_size, args.field_npix, args.nbins, tomo_bin_indices,
+            apply_bnt=args.apply_bnt,
+            paired_bnt_nobnt_consistency=paired_consistency_training,
+            zero_mean_maps=args.zero_mean_maps,
         )
-        curriculum_stages = []
-        for idx, (sigma_factor, steps) in enumerate(
-            zip(curriculum_sigma_factors, stage_steps),
-            start=1,
-        ):
-            if int(steps) <= 0:
-                continue
-            stage_sigma_e = float(args.sigma_e) * float(sigma_factor)
-            stage_aug = build_augmentation(
-                args.map_kind,
-                args.sigma_e,
-                args.galaxy_density,
-                args.field_size,
-                args.field_npix,
-                args.nbins,
-                tomo_bin_indices,
-                apply_bnt=args.apply_bnt,
-                sigma_e_override=stage_sigma_e,
-                paired_bnt_nobnt_consistency=paired_consistency_training,
-                zero_mean_maps=args.zero_mean_maps,
+        if args.train_compressor and args.compressor_noise_curriculum:
+            if curriculum_sigma_factors is None or curriculum_stage_fracs is None:
+                raise ValueError(
+                    "Internal error: curriculum flag set but parsed schedule missing."
+                )
+            stage_steps = allocate_stage_steps(
+                int(args.compressor_steps),
+                curriculum_stage_fracs,
             )
-            curriculum_stages.append(
+            curriculum_stages = []
+            for idx, (sigma_factor, steps) in enumerate(
+                zip(curriculum_sigma_factors, stage_steps),
+                start=1,
+            ):
+                if int(steps) <= 0:
+                    continue
+                stage_sigma_e = float(args.sigma_e) * float(sigma_factor)
+                stage_aug = build_augmentation(
+                    args.map_kind,
+                    args.sigma_e,
+                    args.galaxy_density,
+                    args.field_size,
+                    args.field_npix,
+                    args.nbins,
+                    tomo_bin_indices,
+                    apply_bnt=args.apply_bnt,
+                    sigma_e_override=stage_sigma_e,
+                    paired_bnt_nobnt_consistency=paired_consistency_training,
+                    zero_mean_maps=args.zero_mean_maps,
+                )
+                curriculum_stages.append(
+                    {
+                        "name": f"curriculum_s{idx}",
+                        "stage_index": idx,
+                        "sigma_factor": float(sigma_factor),
+                        "sigma_e": float(stage_sigma_e),
+                        "steps": int(steps),
+                        "augmentation_fn": stage_aug,
+                    }
+                )
+            if not curriculum_stages:
+                raise ValueError(
+                    "Curriculum schedule produced zero non-empty stages. "
+                    "Increase --compressor-steps or adjust stage fractions."
+                )
+            allocated = int(sum(int(stage["steps"]) for stage in curriculum_stages))
+            if allocated != int(args.compressor_steps):
+                raise ValueError(
+                    "Curriculum stage allocation does not match compressor steps "
+                    f"({allocated} != {args.compressor_steps})."
+                )
+            wandb.config.update(
                 {
-                    "name": f"curriculum_s{idx}",
-                    "stage_index": idx,
-                    "sigma_factor": float(sigma_factor),
-                    "sigma_e": float(stage_sigma_e),
-                    "steps": int(steps),
-                    "augmentation_fn": stage_aug,
-                }
+                    "compressor/noise_curriculum": True,
+                    "compressor/curriculum_sigma_factors": list(curriculum_sigma_factors),
+                    "compressor/curriculum_stage_fracs": list(curriculum_stage_fracs),
+                    "compressor/curriculum_stage_steps": [
+                        int(stage["steps"]) for stage in curriculum_stages
+                    ],
+                },
+                allow_val_change=True,
             )
-        if not curriculum_stages:
-            raise ValueError(
-                "Curriculum schedule produced zero non-empty stages. "
-                "Increase --compressor-steps or adjust stage fractions."
+        else:
+            wandb.config.update(
+                {"compressor/noise_curriculum": False},
+                allow_val_change=True,
             )
-        allocated = int(sum(int(stage["steps"]) for stage in curriculum_stages))
-        if allocated != int(args.compressor_steps):
-            raise ValueError(
-                "Curriculum stage allocation does not match compressor steps "
-                f"({allocated} != {args.compressor_steps})."
-            )
-        wandb.config.update(
-            {
-                "compressor/noise_curriculum": True,
-                "compressor/curriculum_sigma_factors": list(curriculum_sigma_factors),
-                "compressor/curriculum_stage_fracs": list(curriculum_stage_fracs),
-                "compressor/curriculum_stage_steps": [
-                    int(stage["steps"]) for stage in curriculum_stages
-                ],
-            },
-            allow_val_change=True,
-        )
     else:
+        if full_sphere_cache_dir is None:
+            raise RuntimeError("Internal error: harmonic route selected with no cache dir.")
+
+        def _harmonic_dataset_iter_factory(
+            split: str,
+            batch_size: int,
+        ) -> Iterator[Dict[str, np.ndarray]]:
+            is_train_split = split == args.compressor_train_split
+            split_seed = int(args.seed) + (1001 if is_train_split else 2001)
+            split_limit = (
+                args.harmonic_train_realizations_limit
+                if is_train_split
+                else args.harmonic_val_realizations_limit
+            )
+            return build_harmonic_batch_iterator(
+                cache_dir=full_sphere_cache_dir,
+                regime=harmonic_regime,
+                split=split,
+                batch_size=batch_size,
+                seed=split_seed,
+                flip=is_train_split,
+                max_realizations=split_limit,
+                channel_scale=harmonic_channel_scale,
+            )
+
+        compressor_dataset_iter_factory = _harmonic_dataset_iter_factory
         wandb.config.update(
             {"compressor/noise_curriculum": False},
             allow_val_change=True,
@@ -2483,13 +3099,15 @@ def main():
             / f"gal_density_{int(args.galaxy_density * 4)}"
             / f"bin_{args.nbins}"
         )
+        if cnn_map_route == "harmonic":
+            comp_save_dir = comp_save_dir / f"harmonic_{harmonic_regime}_ch{cnn_input_channels}"
         comp_params, comp_state = train_compressor_vmim(
             compressor=compressor_train,
             augmentation_fn=augmentation,
             n_cosmo=args.n_cosmo,
             compressor_dim=args.compressor_dim,
             field_npix=args.field_npix,
-            nbins=args.nbins,
+            nbins=cnn_input_channels,
             total_steps=args.compressor_steps,
             lr_init=args.compressor_lr,
             batch_size=args.compressor_batch_size,
@@ -2510,6 +3128,8 @@ def main():
             ),
             domain_adv_weight=float(args.compressor_domain_adv_weight),
             domain_hidden=int(args.compressor_domain_hidden),
+            vmim_nf_hidden=int(args.vmim_nf_hidden),
+            dataset_iter_factory=compressor_dataset_iter_factory,
         )
         # Invalidate any cached compressed datasets
         cache_dir = Path(args.cache_dir) if args.cache_dir else None
@@ -2533,7 +3153,7 @@ def main():
     print("######## COMPRESS: OBSERVED MAP ########")
     obs_compressed, _ = compressor_eval.apply(
         comp_params, comp_state, None,
-        m_data.reshape([1, args.field_npix, args.field_npix, args.nbins]),
+        m_data.reshape([1, args.field_npix, args.field_npix, cnn_input_channels]),
     )
     obs_compressed = np.array(obs_compressed).squeeze()
     print(f"  Observed compressed shape = {obs_compressed.shape}")
@@ -2552,6 +3172,10 @@ def main():
         compressor_params_path=compressor_params_ref,
         compressor_state_path=compressor_state_ref,
         tomo_bin_indices=tomo_bin_indices,
+        cnn_map_route=cnn_map_route,
+        full_sphere_cache_manifest_sha256=full_sphere_cache_manifest_sha,
+        harmonic_regime=harmonic_regime,
+        cnn_input_channels=cnn_input_channels,
     )
 
     if cache_dir is not None and cache_dir.exists():
@@ -2585,21 +3209,51 @@ def main():
             )
 
     if not cache_ok:
-        paired_map_view = (
-            "bnt" if args.apply_bnt else "nobnt"
-        ) if paired_consistency_training else None
-        dataset_train = compress_dataset(
-            args.tfds_name, args.nde_train_split,
-            augmentation, compressor_eval, comp_params, comp_state,
-            args.ds_batch_size,
-            paired_map_view=paired_map_view,
-        )
-        dataset_val = compress_dataset(
-            args.tfds_name, args.nde_val_split,
-            augmentation, compressor_eval, comp_params, comp_state,
-            args.ds_batch_size,
-            paired_map_view=paired_map_view,
-        )
+        if cnn_map_route == "harmonic":
+            if full_sphere_cache_dir is None:
+                raise RuntimeError("Internal error: harmonic route selected with no cache dir.")
+            dataset_train = compress_dataset_from_harmonic_cache(
+                cache_dir=full_sphere_cache_dir,
+                regime=harmonic_regime,
+                split=args.nde_train_split,
+                compressor=compressor_eval,
+                comp_params=comp_params,
+                comp_state=comp_state,
+                ds_batch_size=args.ds_batch_size,
+                rng=np.random.default_rng(int(args.seed) + 3001),
+                flip=True,
+                max_realizations=args.harmonic_train_realizations_limit,
+                channel_scale=harmonic_channel_scale,
+            )
+            dataset_val = compress_dataset_from_harmonic_cache(
+                cache_dir=full_sphere_cache_dir,
+                regime=harmonic_regime,
+                split=args.nde_val_split,
+                compressor=compressor_eval,
+                comp_params=comp_params,
+                comp_state=comp_state,
+                ds_batch_size=args.ds_batch_size,
+                rng=np.random.default_rng(int(args.seed) + 4001),
+                flip=False,
+                max_realizations=args.harmonic_val_realizations_limit,
+                channel_scale=harmonic_channel_scale,
+            )
+        else:
+            paired_map_view = (
+                "bnt" if args.apply_bnt else "nobnt"
+            ) if paired_consistency_training else None
+            dataset_train = compress_dataset(
+                args.tfds_name, args.nde_train_split,
+                augmentation, compressor_eval, comp_params, comp_state,
+                args.ds_batch_size,
+                paired_map_view=paired_map_view,
+            )
+            dataset_val = compress_dataset(
+                args.tfds_name, args.nde_val_split,
+                augmentation, compressor_eval, comp_params, comp_state,
+                args.ds_batch_size,
+                paired_map_view=paired_map_view,
+            )
         # Save cache
         if cache_dir is not None:
             cache_dir.mkdir(parents=True, exist_ok=True)
@@ -2700,6 +3354,8 @@ def main():
         "data/train_size": len(dataset_train["theta"]),
         "data/val_size": len(dataset_val["theta"]),
         "data/summary_dim": summary_dim,
+        "data/cnn_map_route": 1 if cnn_map_route == "harmonic" else 0,
+        "data/cnn_input_channels": int(cnn_input_channels),
         "data/compressor_arch": args.compressor_arch,
         "data/compressor_noise_curriculum": int(args.compressor_noise_curriculum),
         "data/compressor_paired_bnt_nobnt_consistency": int(
@@ -2867,6 +3523,21 @@ def main():
             "apply_bnt": bool(args.apply_bnt),
             "bnt_matrix_version": BNT_MATRIX_VERSION if args.apply_bnt else "none",
             "zero_mean_maps": bool(args.zero_mean_maps),
+            "harmonic_normalize_input_channels": bool(
+                args.harmonic_normalize_input_channels
+            ),
+            "harmonic_channel_scale": (
+                harmonic_channel_scale.tolist()
+                if harmonic_channel_scale is not None
+                else None
+            ),
+            "cnn_map_route": str(cnn_map_route),
+            "cnn_input_channels": int(cnn_input_channels),
+            "full_sphere_cache_dir": (
+                str(full_sphere_cache_dir) if full_sphere_cache_dir is not None else None
+            ),
+            "full_sphere_cache_manifest_sha256": str(full_sphere_cache_manifest_sha),
+            "harmonic_regime": str(harmonic_regime) if harmonic_regime else None,
         }
         if flow_summary_path.exists():
             metadata["flow_training_summary"] = json.loads(
