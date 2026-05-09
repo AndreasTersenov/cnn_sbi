@@ -77,6 +77,15 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--conda-env", type=str, default="jaxili")
     p.add_argument("--gpus", type=str, default="0,1,2,3")
     p.add_argument("--xla-mem-fraction", type=float, default=0.6)
+    p.add_argument(
+        "--xla-mem-fraction-by-gpu",
+        type=str,
+        default="",
+        help=(
+            "Optional per-GPU override map, e.g. '0:0.75,1:0.30,2:0.30,3:0.50'. "
+            "GPUs not listed use --xla-mem-fraction."
+        ),
+    )
     p.add_argument("--map-kind", type=str, default="nbody")
     p.add_argument(
         "--tfds-name",
@@ -134,6 +143,40 @@ def parse_args() -> argparse.Namespace:
         type=str,
         default="0.10,0.15,0.20,0.25,0.30",
         help="Curriculum stage fractions passed to compressor training.",
+    )
+    p.add_argument(
+        "--compressor-paired-bnt-nobnt-consistency",
+        action="store_true",
+        help=(
+            "Enable paired BNT/no-BNT consistency training for compressors in this "
+            "campaign."
+        ),
+    )
+    p.add_argument(
+        "--compressor-consistency-weight",
+        type=float,
+        default=0.1,
+        help="Consistency weight passed to CNN compressor training.",
+    )
+    p.add_argument(
+        "--compressor-domain-adversarial",
+        action="store_true",
+        help=(
+            "Enable domain-adversarial BNT/no-BNT invariance head during compressor "
+            "training."
+        ),
+    )
+    p.add_argument(
+        "--compressor-domain-adv-weight",
+        type=float,
+        default=0.05,
+        help="Domain-adversarial weight passed to CNN compressor training.",
+    )
+    p.add_argument(
+        "--compressor-domain-hidden",
+        type=int,
+        default=64,
+        help="Hidden width of the compressor domain-adversarial head.",
     )
     p.add_argument(
         "--resnet18-slowramp-stage-fracs",
@@ -238,6 +281,34 @@ def _parse_seed_list(value: str) -> Tuple[int, ...]:
     if not seeds:
         raise ValueError("--seeds cannot be empty.")
     return tuple(seeds)
+
+
+def _parse_gpu_mem_fraction_map(
+    spec: str,
+    gpus: List[str],
+) -> Dict[str, float]:
+    if not spec.strip():
+        return {}
+    valid_gpus = set(gpus)
+    parsed: Dict[str, float] = {}
+    for token in _csv_tokens(spec):
+        if ":" not in token:
+            raise ValueError(
+                "--xla-mem-fraction-by-gpu entries must be '<gpu>:<fraction>'."
+            )
+        gpu_id, frac_str = token.split(":", 1)
+        gpu_id = gpu_id.strip()
+        if gpu_id not in valid_gpus:
+            raise ValueError(
+                f"GPU '{gpu_id}' in --xla-mem-fraction-by-gpu is not listed in --gpus."
+            )
+        frac = float(frac_str)
+        if frac <= 0.0 or frac > 1.0:
+            raise ValueError(
+                f"Invalid memory fraction {frac} for GPU '{gpu_id}'; expected in (0, 1]."
+            )
+        parsed[gpu_id] = frac
+    return parsed
 
 
 def _default_configs(
@@ -360,6 +431,7 @@ def run_jobs_parallel(
     gpus: List[str],
     cwd: Path,
     xla_mem_fraction: float,
+    xla_mem_fraction_by_gpu: Dict[str, float] | None = None,
     dry_run: bool = False,
 ) -> List[Dict[str, object]]:
     q: queue.Queue[Job] = queue.Queue()
@@ -384,7 +456,12 @@ def run_jobs_parallel(
                 job.log_path.write_text(f"[dry-run] {' '.join(cmd)}\n", encoding="utf-8")
             else:
                 env = dict(os.environ)
-                env["XLA_PYTHON_CLIENT_MEM_FRACTION"] = str(xla_mem_fraction)
+                mem_fraction = (
+                    xla_mem_fraction_by_gpu.get(gpu_id, xla_mem_fraction)
+                    if xla_mem_fraction_by_gpu is not None
+                    else xla_mem_fraction
+                )
+                env["XLA_PYTHON_CLIENT_MEM_FRACTION"] = str(mem_fraction)
                 with open(job.log_path, "w", encoding="utf-8") as logf:
                     proc = subprocess.run(
                         cmd,
@@ -403,6 +480,13 @@ def run_jobs_parallel(
                         "returncode": int(rc),
                         "seconds": float(dt),
                         "log": str(job.log_path),
+                        "xla_mem_fraction": float(
+                            (
+                                xla_mem_fraction_by_gpu.get(gpu_id, xla_mem_fraction)
+                                if xla_mem_fraction_by_gpu is not None
+                                else xla_mem_fraction
+                            )
+                        ),
                         "cmd": cmd,
                     }
                 )
@@ -770,6 +854,9 @@ def main() -> None:
         raise ValueError("--gpus cannot be empty.")
     if args.xla_mem_fraction <= 0.0 or args.xla_mem_fraction > 1.0:
         raise ValueError("--xla-mem-fraction must be in (0, 1].")
+    xla_mem_fraction_by_gpu = _parse_gpu_mem_fraction_map(
+        args.xla_mem_fraction_by_gpu, gpus
+    )
     if args.resnet18_long_compressor_steps < 1:
         raise ValueError("--resnet18-long-compressor-steps must be >= 1.")
     if args.plain_fullnoise_match_compressor_steps < 1:
@@ -778,6 +865,21 @@ def main() -> None:
         raise ValueError(
             "--resnet18-fullnoise-match-compressor-steps must be >= 1."
         )
+    if args.compressor_consistency_weight < 0.0:
+        raise ValueError("--compressor-consistency-weight must be >= 0.")
+    if args.compressor_domain_adv_weight < 0.0:
+        raise ValueError("--compressor-domain-adv-weight must be >= 0.")
+    if args.compressor_domain_hidden < 1:
+        raise ValueError("--compressor-domain-hidden must be >= 1.")
+    if (
+        args.compressor_domain_adversarial
+        and not args.compressor_paired_bnt_nobnt_consistency
+    ):
+        print(
+            "[info] Enabling --compressor-paired-bnt-nobnt-consistency because "
+            "--compressor-domain-adversarial requires paired domain views."
+        )
+        args.compressor_paired_bnt_nobnt_consistency = True
 
     seeds = _parse_seed_list(args.seeds)
     configs_by_name = _default_configs(
@@ -807,6 +909,7 @@ def main() -> None:
         "conda_env": args.conda_env,
         "gpus": gpus,
         "xla_mem_fraction": float(args.xla_mem_fraction),
+        "xla_mem_fraction_by_gpu": xla_mem_fraction_by_gpu,
         "map_kind": args.map_kind,
         "tfds_name": args.tfds_name,
         "compressor_train_split": args.compressor_train_split,
@@ -822,6 +925,13 @@ def main() -> None:
         "compressor_batch_size": int(args.compressor_batch_size),
         "compressor_lr": float(args.compressor_lr),
         "compressor_save_every": int(args.compressor_save_every),
+        "compressor_paired_bnt_nobnt_consistency": bool(
+            args.compressor_paired_bnt_nobnt_consistency
+        ),
+        "compressor_consistency_weight": float(args.compressor_consistency_weight),
+        "compressor_domain_adversarial": bool(args.compressor_domain_adversarial),
+        "compressor_domain_adv_weight": float(args.compressor_domain_adv_weight),
+        "compressor_domain_hidden": int(args.compressor_domain_hidden),
         "save_every": int(args.save_every),
         "ds_batch_size": int(args.ds_batch_size),
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
@@ -869,6 +979,18 @@ def main() -> None:
 
     all_job_results: List[Dict[str, object]] = []
     per_config_metrics: List[Dict[str, object]] = []
+    parity_flags: List[str] = [
+        "--compressor-consistency-weight",
+        str(args.compressor_consistency_weight),
+        "--compressor-domain-adv-weight",
+        str(args.compressor_domain_adv_weight),
+        "--compressor-domain-hidden",
+        str(args.compressor_domain_hidden),
+    ]
+    if args.compressor_paired_bnt_nobnt_consistency:
+        parity_flags.append("--compressor-paired-bnt-nobnt-consistency")
+    if args.compressor_domain_adversarial:
+        parity_flags.append("--compressor-domain-adversarial")
 
     for config in configs:
         cfg_root = out_root / config.name
@@ -962,6 +1084,7 @@ def main() -> None:
                         "--no-sample",
                     ]
                     + curriculum_flags
+                    + parity_flags
                     + (["--resnet-v2"] if config.resnet_v2 else [])
                     + (
                         ["--require-disjoint-train-examples"]
@@ -978,6 +1101,7 @@ def main() -> None:
                 gpus,
                 repo_root,
                 xla_mem_fraction=args.xla_mem_fraction,
+                xla_mem_fraction_by_gpu=xla_mem_fraction_by_gpu,
                 dry_run=args.dry_run,
             )
             all_job_results.extend(train_results)
@@ -1100,7 +1224,7 @@ def main() -> None:
                     str(posterior_out),
                     "--ds-batch-size",
                     str(args.ds_batch_size),
-                ] + std_flag + curriculum_flags + (
+                ] + std_flag + curriculum_flags + parity_flags + (
                     ["--resnet-v2"] if config.resnet_v2 else []
                 ) + (
                     ["--require-disjoint-train-examples"]
@@ -1133,6 +1257,7 @@ def main() -> None:
                 gpus,
                 repo_root,
                 xla_mem_fraction=args.xla_mem_fraction,
+                xla_mem_fraction_by_gpu=xla_mem_fraction_by_gpu,
                 dry_run=args.dry_run,
             )
             all_job_results.extend(eval_results)

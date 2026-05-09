@@ -1799,12 +1799,14 @@ def main() -> None:
     noise_sigma = pixel_noise_sigma(
         args.sigma_e, args.galaxy_density, args.field_size, args.field_npix
     )
-    raw_summary_dim = args.n_scales * args.l1_nbins * args.nbins
+    n_cross_pairs = (args.nbins * (args.nbins - 1)) // 2 if getattr(args, "cross_maps", False) else 0
+    n_l1_channels = args.nbins + n_cross_pairs
+    raw_summary_dim = args.n_scales * args.l1_nbins * n_l1_channels
     print(f"  pixel_arcmin   = {pixel_arcmin:.2f}")
     print(f"  noise_sigma    = {noise_sigma:.6f}")
     print(
         f"  raw_summary    = {raw_summary_dim} "
-        f"({args.n_scales} scales x {args.l1_nbins} bins x {args.nbins} tomo bins)"
+        f"({args.n_scales} scales x {args.l1_nbins} bins x {n_l1_channels} channels)"
     )
     print(f"  compressor_dim = {args.compressor_dim}")
 

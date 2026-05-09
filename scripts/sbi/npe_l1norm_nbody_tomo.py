@@ -168,6 +168,21 @@ def parse_args() -> argparse.Namespace:
         ),
     )
 
+    # Cross-maps (flat-sky FFT cross-bin synthetic maps)
+    p.add_argument("--cross-maps", dest="cross_maps", action="store_true",
+                    help="Append flat-sky FFT cross-maps between bin pairs after noise/BNT.")
+    p.add_argument("--no-cross-maps", dest="cross_maps", action="store_false")
+    p.set_defaults(cross_maps=False)
+    p.add_argument("--cross-map-apodize", type=str, default="cosine",
+                    choices=["none", "cosine"],
+                    help="Apodization applied per-bin before FFT to mitigate circular-convolution edge bleed.")
+    p.add_argument("--cross-map-min-snr", type=float, default=-5.0,
+                    help="Min SNR for L1 binning on cross-map channels. Calibrate via diagnose_cross_maps.py.")
+    p.add_argument("--cross-map-max-snr", type=float, default=5.0,
+                    help="Max SNR for L1 binning on cross-map channels. Calibrate via diagnose_cross_maps.py.")
+    p.add_argument("--cross-map-auto-calibrate-snr", action="store_true",
+                    help="Calibrate cross-map SNR range from data alongside the auto-channel range.")
+
     # Map kind
     p.add_argument("--map-kind", type=str, default="nbody",
                     choices=["nbody", "nbody_with_baryon_ia", "gaussian"])
@@ -312,6 +327,8 @@ def load_observed_map(
     galaxy_density: float,
     rng_key: jax.Array,
     apply_bnt: bool = False,
+    cross_maps: bool = False,
+    cross_map_apodize: str = "cosine",
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Load fiducial 4-bin tomographic map, project, and add shape noise."""
     print("######## OBSERVED DATA ########")
@@ -350,6 +367,9 @@ def load_observed_map(
     m_data = np.array(jnp.asarray(m_data) + noise)
     if apply_bnt:
         m_data = apply_bnt_numpy(m_data)
+    if cross_maps:
+        apod = _apod_window_np(field_npix, kind=cross_map_apodize)
+        m_data = _compute_cross_maps_np(m_data, apod)
     print(f"  Observed map shape = {m_data.shape}, noise_std/pixel = {noise_std:.6f}")
     return m_data, cosmo_params, truth
 
@@ -370,6 +390,71 @@ def build_l1_computer(
                         pixel_arcmin=pixel_arcmin, dtype=dtype)
 
 
+# =============================================================================
+# Flat-sky cross-maps (FFT-based convolution of tomographic bin pairs)
+# =============================================================================
+
+def _apod_window_np(npix: int, kind: str = "cosine", roll_frac: float = 0.08) -> np.ndarray:
+    """Separable 2D apodization window of shape (npix, npix)."""
+    if kind == "none":
+        return np.ones((npix, npix), dtype=np.float32)
+    if kind != "cosine":
+        raise ValueError(f"Unknown cross_map_apodize={kind}")
+    ramp = np.ones(npix, dtype=np.float32)
+    n_roll = max(1, int(roll_frac * npix))
+    cos_ramp = 0.5 * (1.0 - np.cos(np.pi * np.arange(n_roll) / n_roll)).astype(np.float32)
+    ramp[:n_roll] = cos_ramp
+    ramp[-n_roll:] = cos_ramp[::-1]
+    return np.outer(ramp, ramp).astype(np.float32)
+
+
+def _make_apod_window(npix: int, kind: str = "cosine", roll_frac: float = 0.08) -> tf.Tensor:
+    """TF constant version of _apod_window_np with a trailing channel axis."""
+    window_2d = _apod_window_np(npix, kind=kind, roll_frac=roll_frac)
+    return tf.constant(window_2d[:, :, np.newaxis], dtype=tf.float32)
+
+
+def _cross_pairs(nbins: int) -> list[tuple[int, int]]:
+    """Ordered cross-pair list: (0,1), (0,2), ..., (nbins-2, nbins-1)."""
+    return [(i, j) for i in range(nbins) for j in range(i + 1, nbins)]
+
+
+def _compute_cross_maps_tf(x: tf.Tensor, apod: tf.Tensor) -> tf.Tensor:
+    """Append C(nbins,2) flat-sky cross-maps to a (H, W, nbins) map stack.
+
+    For each bin pair (i, j), compute IFFT(FFT(x_i * apod) * FFT(x_j * apod)),
+    which is a cyclic convolution of the two apodized auto bins. The
+    apodization suppresses cross-wrap artifacts. Returns (H, W, nbins + n_pairs).
+    """
+    n = int(x.shape[-1])
+    xa = tf.cast(x * apod, tf.float32)
+    xa_t = tf.transpose(xa, [2, 0, 1])                       # (nbins, H, W)
+    X = tf.signal.rfft2d(xa_t)                               # (nbins, H, W//2+1), complex64
+    pairs = _cross_pairs(n)
+    cross = tf.stack([X[i] * X[j] for i, j in pairs], axis=0)  # (n_pairs, H, W//2+1)
+    fft_length = tf.shape(x)[:2]
+    xc = tf.signal.irfft2d(cross, fft_length=fft_length)     # (n_pairs, H, W)
+    xc = tf.transpose(xc, [1, 2, 0])                         # (H, W, n_pairs)
+    return tf.concat([tf.cast(x, tf.float32), xc], axis=-1)
+
+
+def _compute_cross_maps_np(x: np.ndarray, apod: np.ndarray) -> np.ndarray:
+    """NumPy equivalent of _compute_cross_maps_tf for the observed-map path.
+
+    x: (H, W, nbins) float; apod: (H, W) float.
+    """
+    n = x.shape[-1]
+    H, W = x.shape[:2]
+    xa = (x * apod[:, :, None]).astype(np.float32)
+    Fs = [np.fft.rfft2(xa[:, :, k]) for k in range(n)]
+    crosses = [
+        np.fft.irfft2(Fs[i] * Fs[j], s=(H, W)).astype(np.float32)
+        for i, j in _cross_pairs(n)
+    ]
+    cross_stack = np.stack(crosses, axis=-1)                 # (H, W, n_pairs)
+    return np.concatenate([x.astype(np.float32), cross_stack], axis=-1)
+
+
 def calibrate_snr_range(
     stats: WLStatistics,
     augmentation_fn,
@@ -381,12 +466,14 @@ def calibrate_snr_range(
     ds_batch_size: int = 64,
     subtract_coarse_mean: bool = True,
     margin: float = 0.05,
-) -> Tuple[float, float]:
+    n_cross_channels: int = 0,
+) -> Tuple[float, float, float, float]:
     """
     Determine global min/max SNR from a pilot sample of training data.
 
-    This ensures all subsequent L1-norm computations use identical bin edges,
-    which is critical for the summary vectors to be comparable.
+    Returns a 4-tuple (auto_min, auto_max, cross_min, cross_max). When
+    n_cross_channels == 0, the cross range mirrors the auto range (callers
+    can ignore it in that case).
     """
     import tensorflow_datasets as tfds
 
@@ -398,15 +485,18 @@ def calibrate_snr_range(
     ds = ds.prefetch(tf.data.AUTOTUNE)
 
     device = stats.device
-    global_min = float("inf")
-    global_max = float("-inf")
+    auto_min = float("inf")
+    auto_max = float("-inf")
+    cross_min = float("inf")
+    cross_max = float("-inf")
     n_used = 0
+    n_total_channels = nbins + n_cross_channels
 
     for example in ds.as_numpy_iterator():
-        maps_np = example["maps"]  # (B, H, W, nbins)
+        maps_np = example["maps"]  # (B, H, W, n_total_channels)
         if np.isnan(maps_np).any():
             continue
-        for b in range(nbins):
+        for b in range(n_total_channels):
             map_dtype = np.float32 if l1_implementation == "cosmoford" else np.float64
             img_batch = torch.from_numpy(
                 maps_np[:, :, :, b].astype(map_dtype)
@@ -418,22 +508,33 @@ def calibrate_snr_range(
                     img_batch, noise_sigma,
                     subtract_coarse_mean=subtract_coarse_mean,
                 )
-            # Read SNR coefficients directly
             snr = stats.snr_coeffs  # (B, n_scales, H, W)
             batch_min = snr.min().item()
             batch_max = snr.max().item()
-            global_min = min(global_min, batch_min)
-            global_max = max(global_max, batch_max)
+            if b < nbins:
+                auto_min = min(auto_min, batch_min)
+                auto_max = max(auto_max, batch_max)
+            else:
+                cross_min = min(cross_min, batch_min)
+                cross_max = max(cross_max, batch_max)
         n_used += len(maps_np)
 
     # Add margin so no real value falls exactly on the boundary
-    span = global_max - global_min
-    global_min -= margin * span
-    global_max += margin * span
-
+    auto_span = auto_max - auto_min
+    auto_min -= margin * auto_span
+    auto_max += margin * auto_span
     print(f"  Calibrated from {n_used} maps")
-    print(f"  SNR range: [{global_min:.4f}, {global_max:.4f}]")
-    return global_min, global_max
+    print(f"  Auto-channel SNR range:  [{auto_min:.4f}, {auto_max:.4f}]")
+
+    if n_cross_channels > 0:
+        cross_span = cross_max - cross_min
+        cross_min -= margin * cross_span
+        cross_max += margin * cross_span
+        print(f"  Cross-channel SNR range: [{cross_min:.4f}, {cross_max:.4f}]")
+    else:
+        cross_min, cross_max = auto_min, auto_max
+
+    return auto_min, auto_max, cross_min, cross_max
 
 
 def compute_l1_single_map(
@@ -447,18 +548,29 @@ def compute_l1_single_map(
     clamp_overflow: bool = False,
     subtract_coarse_mean: bool = True,
     l1_implementation: str = "cnn_sbi",
+    n_l1_channels: int | None = None,
+    l1_min_snr_cross: float | None = None,
+    l1_max_snr_cross: float | None = None,
 ) -> np.ndarray:
     """
-    Compute L1-norm summary vector for a single (H, W, nbins) map.
+    Compute L1-norm summary vector for a single (H, W, n_l1_channels) map.
 
-    IMPORTANT: l1_min_snr and l1_max_snr must be fixed globally
-    (e.g., from calibrate_snr_range) to ensure consistent bin edges.
+    n_l1_channels defaults to nbins (no cross maps). When n_l1_channels > nbins,
+    channels [nbins, n_l1_channels) use the cross SNR range.
 
-    Returns shape (n_scales * l1_nbins * nbins,).
+    Returns shape (n_scales * l1_nbins * n_l1_channels,).
     """
+    if n_l1_channels is None:
+        n_l1_channels = nbins
+    if l1_min_snr_cross is None:
+        l1_min_snr_cross = l1_min_snr
+    if l1_max_snr_cross is None:
+        l1_max_snr_cross = l1_max_snr
     device = stats.device
     all_l1 = []
-    for b in range(nbins):
+    for b in range(n_l1_channels):
+        ch_min_snr = l1_min_snr if b < nbins else l1_min_snr_cross
+        ch_max_snr = l1_max_snr if b < nbins else l1_max_snr_cross
         map_dtype = np.float32 if l1_implementation == "cosmoford" else np.float64
         img = torch.from_numpy(kappa[:, :, b].astype(map_dtype)).to(device)
         if l1_implementation == "cosmoford":
@@ -470,13 +582,12 @@ def compute_l1_single_map(
             )
             clamp_this = clamp_overflow
         _, l1_norms = stats.compute_wavelet_l1_norms(
-            n_bins=l1_nbins, min_snr=l1_min_snr, max_snr=l1_max_snr,
+            n_bins=l1_nbins, min_snr=ch_min_snr, max_snr=ch_max_snr,
             clamp_overflow=clamp_this,
         )
-        # l1_norms is a list of (l1_nbins,) tensors, one per scale
-        bin_vec = torch.cat(l1_norms, dim=-1)  # (n_scales * l1_nbins,)
+        bin_vec = torch.cat(l1_norms, dim=-1)
         all_l1.append(bin_vec.cpu().numpy())
-    return np.concatenate(all_l1)  # (n_scales * l1_nbins * nbins,)
+    return np.concatenate(all_l1)
 
 
 def compute_l1_batch(
@@ -490,20 +601,28 @@ def compute_l1_batch(
     clamp_overflow: bool = False,
     subtract_coarse_mean: bool = True,
     l1_implementation: str = "cnn_sbi",
+    n_l1_channels: int | None = None,
+    l1_min_snr_cross: float | None = None,
+    l1_max_snr_cross: float | None = None,
 ) -> np.ndarray:
     """
-    Compute L1-norm summary vectors for a batch of (B, H, W, nbins) maps.
+    Compute L1-norm summary vectors for a batch of (B, H, W, n_l1_channels) maps.
 
-    IMPORTANT: l1_min_snr and l1_max_snr must be fixed globally
-    (e.g., from calibrate_snr_range) to ensure consistent bin edges.
-
-    Returns shape (B, n_scales * l1_nbins * nbins).
+    When n_l1_channels > nbins, the trailing channels use the cross SNR range.
+    Returns shape (B, n_scales * l1_nbins * n_l1_channels).
     """
+    if n_l1_channels is None:
+        n_l1_channels = nbins
+    if l1_min_snr_cross is None:
+        l1_min_snr_cross = l1_min_snr
+    if l1_max_snr_cross is None:
+        l1_max_snr_cross = l1_max_snr
     device = stats.device
     B = maps_batch.shape[0]
     all_l1 = []
-    for b in range(nbins):
-        # (B, H, W) for this tomographic bin
+    for b in range(n_l1_channels):
+        ch_min_snr = l1_min_snr if b < nbins else l1_min_snr_cross
+        ch_max_snr = l1_max_snr if b < nbins else l1_max_snr_cross
         map_dtype = np.float32 if l1_implementation == "cosmoford" else np.float64
         img_batch = torch.from_numpy(
             maps_batch[:, :, :, b].astype(map_dtype)
@@ -517,13 +636,11 @@ def compute_l1_batch(
             )
             clamp_this = clamp_overflow
         _, l1_norms = stats.compute_wavelet_l1_norms(
-            n_bins=l1_nbins, min_snr=l1_min_snr, max_snr=l1_max_snr,
+            n_bins=l1_nbins, min_snr=ch_min_snr, max_snr=ch_max_snr,
             clamp_overflow=clamp_this,
         )
-        # l1_norms: list of (B, l1_nbins) per scale
-        bin_vec = torch.cat(l1_norms, dim=-1)  # (B, n_scales * l1_nbins)
+        bin_vec = torch.cat(l1_norms, dim=-1)
         all_l1.append(bin_vec.cpu().numpy())
-    # Concatenate across tomo bins: (B, n_scales * l1_nbins * nbins)
     return np.concatenate(all_l1, axis=-1)
 
 
@@ -540,6 +657,8 @@ def build_augmentation(
     nbins: int,
     tomo_bin_indices: tuple[int, ...],
     apply_bnt: bool = False,
+    cross_maps: bool = False,
+    cross_map_apodize: str = "cosine",
 ):
     """Build the TF augmentation pipeline for the tomographic dataset."""
     noise_std = sigma_e / jnp.sqrt(galaxy_density * (field_size * 60 / field_npix) ** 2)
@@ -551,11 +670,15 @@ def build_augmentation(
     }[map_kind]
     gather_indices = tf.constant([b - 1 for b in tomo_bin_indices], dtype=tf.int32)
 
+    apod = _make_apod_window(field_npix, kind=cross_map_apodize) if cross_maps else None
+
     def augmentation_noise(example):
         x = tf.gather(example[map_key], gather_indices, axis=-1)
         x += tf.random.normal(shape=(field_npix, field_npix, nbins), stddev=noise_std)
         if apply_bnt:
             x = apply_bnt_tf(x)
+        if cross_maps:
+            x = _compute_cross_maps_tf(x, apod)
         return {"maps": x, "theta": example["theta"]}
 
     def augmentation_flip(example):
@@ -593,6 +716,9 @@ def compute_l1_dataset(
     clamp_overflow: bool = False,
     subtract_coarse_mean: bool = True,
     l1_implementation: str = "cnn_sbi",
+    n_l1_channels: int | None = None,
+    l1_min_snr_cross: float | None = None,
+    l1_max_snr_cross: float | None = None,
 ) -> Dict[str, np.ndarray]:
     """
     Load TFDS dataset, apply augmentation, compute L1-norm summaries.
@@ -630,6 +756,9 @@ def compute_l1_dataset(
             clamp_overflow=clamp_overflow,
             subtract_coarse_mean=subtract_coarse_mean,
             l1_implementation=l1_implementation,
+            n_l1_channels=n_l1_channels,
+            l1_min_snr_cross=l1_min_snr_cross,
+            l1_max_snr_cross=l1_max_snr_cross,
         )
         x_list.append(l1_vec)
         theta_list.append(theta_np)
@@ -660,43 +789,65 @@ def plot_l1_diagnostics(
     param_names: list[str],
     l1_min_snr: float,
     l1_max_snr: float,
+    n_l1_channels: int | None = None,
+    l1_min_snr_cross: float | None = None,
+    l1_max_snr_cross: float | None = None,
 ):
     """Log L1-norm data vector diagnostics to wandb."""
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
+    if n_l1_channels is None:
+        n_l1_channels = nbins
+    if l1_min_snr_cross is None:
+        l1_min_snr_cross = l1_min_snr
+    if l1_max_snr_cross is None:
+        l1_max_snr_cross = l1_max_snr
+
     bins_per_scale = l1_nbins
-    features_per_bin = n_scales * l1_nbins  # per tomo bin
-    snr_edges = np.linspace(l1_min_snr, l1_max_snr, l1_nbins + 1)
-    snr_centers = 0.5 * (snr_edges[:-1] + snr_edges[1:])
+    features_per_bin = n_scales * l1_nbins  # per channel
+
+    auto_edges = np.linspace(l1_min_snr, l1_max_snr, l1_nbins + 1)
+    auto_centers = 0.5 * (auto_edges[:-1] + auto_edges[1:])
+    cross_edges = np.linspace(l1_min_snr_cross, l1_max_snr_cross, l1_nbins + 1)
+    cross_centers = 0.5 * (cross_edges[:-1] + cross_edges[1:])
+
+    # Cross-pair label lookup for channels beyond the auto bins
+    cross_pairs = _cross_pairs(nbins)
 
     train_mean = train_x.mean(axis=0)
     train_std_vec = train_x.std(axis=0)
 
-    # Per tomo-bin, per scale: observed L1(SNR) curves
-    fig, axes = plt.subplots(nbins, 1, figsize=(10, 3 * nbins), sharex=True)
-    if nbins == 1:
+    fig, axes = plt.subplots(n_l1_channels, 1, figsize=(10, 3 * n_l1_channels), sharex=False)
+    if n_l1_channels == 1:
         axes = [axes]
-    for b in range(nbins):
+    for b in range(n_l1_channels):
         ax = axes[b]
         offset = b * features_per_bin
+        is_auto = b < nbins
+        centers = auto_centers if is_auto else cross_centers
+        if is_auto:
+            title = f"Auto bin {b+1}: L1-norm vs SNR"
+        else:
+            i, j = cross_pairs[b - nbins]
+            title = f"Cross {i+1}x{j+1}: L1-norm vs SNR"
         for s in range(n_scales):
             s_start = offset + s * bins_per_scale
             s_end = s_start + bins_per_scale
             obs_curve = obs_l1[s_start:s_end]
             train_curve_mean = train_mean[s_start:s_end]
             train_curve_std = train_std_vec[s_start:s_end]
-            ax.fill_between(snr_centers, train_curve_mean - train_curve_std,
+            ax.fill_between(centers, train_curve_mean - train_curve_std,
                             train_curve_mean + train_curve_std, alpha=0.15)
-            ax.plot(snr_centers, train_curve_mean, lw=0.7, ls="--",
+            ax.plot(centers, train_curve_mean, lw=0.7, ls="--",
                     label=f"Scale {s} train" if b == 0 else "")
-            ax.plot(snr_centers, obs_curve, lw=1.0,
+            ax.plot(centers, obs_curve, lw=1.0,
                     label=f"Scale {s} obs" if b == 0 else "")
-        ax.set_ylabel(f"Bin {b+1}")
-        ax.set_title(f"Tomo bin {b+1}: L1-norm vs SNR")
-    axes[-1].set_xlabel("SNR")
-    if nbins > 0:
+        ax.set_ylabel(f"Ch {b+1}")
+        ax.set_xlabel("SNR")
+        ax.set_title(title)
+    if n_l1_channels > 0:
         axes[0].legend(ncol=n_scales, fontsize=7, loc="upper right")
     fig.tight_layout()
     wandb.log({"diagnostics/l1_per_scale_per_bin": wandb.Image(fig)})
@@ -1264,12 +1415,16 @@ def main():
     noise_sigma = pixel_noise_sigma(
         args.sigma_e, args.galaxy_density, args.field_size, args.field_npix
     )
-    raw_summary_dim = args.n_scales * args.l1_nbins * args.nbins
+    n_cross_pairs = (args.nbins * (args.nbins - 1)) // 2 if args.cross_maps else 0
+    n_l1_channels = args.nbins + n_cross_pairs
+    raw_summary_dim = args.n_scales * args.l1_nbins * n_l1_channels
     requested_summary_dim = args.pca_components if args.pca_components > 0 else raw_summary_dim
     print(f"  pixel_arcmin   = {pixel_arcmin:.2f}")
     print(f"  noise_sigma    = {noise_sigma:.6f}")
+    cross_desc = f" + {n_cross_pairs} cross" if args.cross_maps else ""
     print(f"  raw_summary    = {raw_summary_dim}  "
-          f"({args.n_scales} scales × {args.l1_nbins} bins × {args.nbins} tomo bins)")
+          f"({args.n_scales} scales × {args.l1_nbins} bins × "
+          f"{n_l1_channels} channels [{args.nbins} auto{cross_desc}])")
     print(f"  summary_dim    = {requested_summary_dim}  "
           f"({'PCA-' + str(args.pca_components) if args.pca_components > 0 else 'no PCA'})")
 
@@ -1301,6 +1456,8 @@ def main():
         tomo_bin_indices,
         args.sigma_e, args.galaxy_density, rng_obs,
         apply_bnt=args.apply_bnt,
+        cross_maps=args.cross_maps,
+        cross_map_apodize=args.cross_map_apodize,
     )
 
     # ------------------------------------------------------------------
@@ -1327,26 +1484,43 @@ def main():
         args.map_kind, args.sigma_e, args.galaxy_density,
         args.field_size, args.field_npix, args.nbins, tomo_bin_indices,
         apply_bnt=args.apply_bnt,
+        cross_maps=args.cross_maps,
+        cross_map_apodize=args.cross_map_apodize,
     )
 
     # Resolve cache directory once (used for both calibration and dataset caching)
     cache_dir = Path(args.cache_dir) if args.cache_dir else None
 
-    # Calibrate global SNR range if requested; otherwise use fixed values
-    if not args.auto_calibrate_snr:
+    # Resolve auto-channel and cross-channel SNR ranges. Auto-calibration uses
+    # one pass through the data and returns both ranges.
+    do_calibrate = args.auto_calibrate_snr or (args.cross_maps and args.cross_map_auto_calibrate_snr)
+    if not do_calibrate:
         l1_min_snr = args.l1_min_snr
         l1_max_snr = args.l1_max_snr
-        print(f"  Using fixed SNR range: [{l1_min_snr}, {l1_max_snr}]")
+        print(f"  Using fixed auto SNR range: [{l1_min_snr}, {l1_max_snr}]")
+        if args.cross_maps:
+            l1_min_snr_cross = args.cross_map_min_snr
+            l1_max_snr_cross = args.cross_map_max_snr
+            print(f"  Using fixed cross SNR range: [{l1_min_snr_cross}, {l1_max_snr_cross}]")
+        else:
+            l1_min_snr_cross = l1_min_snr
+            l1_max_snr_cross = l1_max_snr
     else:
-        # Check for cached calibration
         calib_cache = cache_dir / "snr_calibration.npz" if cache_dir else None
+        loaded_from_cache = False
         if calib_cache is not None and calib_cache.exists():
             calib = np.load(calib_cache)
-            l1_min_snr = float(calib["min_snr"])
-            l1_max_snr = float(calib["max_snr"])
-            print(f"  Loaded cached SNR range: [{l1_min_snr:.4f}, {l1_max_snr:.4f}]")
-        else:
-            l1_min_snr, l1_max_snr = calibrate_snr_range(
+            has_cross = ("min_snr_cross" in calib.files and "max_snr_cross" in calib.files)
+            if (not args.cross_maps) or has_cross:
+                l1_min_snr = float(calib["min_snr"])
+                l1_max_snr = float(calib["max_snr"])
+                l1_min_snr_cross = float(calib["min_snr_cross"]) if has_cross else l1_min_snr
+                l1_max_snr_cross = float(calib["max_snr_cross"]) if has_cross else l1_max_snr
+                print(f"  Loaded cached SNR range: auto=[{l1_min_snr:.4f}, {l1_max_snr:.4f}]"
+                      f"  cross=[{l1_min_snr_cross:.4f}, {l1_max_snr_cross:.4f}]")
+                loaded_from_cache = True
+        if not loaded_from_cache:
+            l1_min_snr, l1_max_snr, l1_min_snr_cross, l1_max_snr_cross = calibrate_snr_range(
                 stats, augmentation,
                 args.tfds_name,
                 noise_sigma, args.nbins,
@@ -1355,19 +1529,37 @@ def main():
                 ds_batch_size=args.ds_batch_size,
                 subtract_coarse_mean=effective_subtract_coarse_mean,
                 margin=args.calibration_margin,
+                n_cross_channels=n_cross_pairs,
             )
+            # If user only asked for auto-calibration but cross is on with fixed range, honor that.
+            if args.cross_maps and not args.cross_map_auto_calibrate_snr:
+                l1_min_snr_cross = args.cross_map_min_snr
+                l1_max_snr_cross = args.cross_map_max_snr
+            # If auto-calibrate was not requested but cross was, keep the user's auto fixed range.
+            if not args.auto_calibrate_snr:
+                l1_min_snr = args.l1_min_snr
+                l1_max_snr = args.l1_max_snr
             if calib_cache is not None:
                 cache_dir.mkdir(parents=True, exist_ok=True)
-                np.savez(calib_cache, min_snr=l1_min_snr, max_snr=l1_max_snr)
+                np.savez(
+                    calib_cache,
+                    min_snr=l1_min_snr, max_snr=l1_max_snr,
+                    min_snr_cross=l1_min_snr_cross, max_snr_cross=l1_max_snr_cross,
+                )
                 print(f"  Cached SNR calibration to {calib_cache}")
 
     wandb.config.update({
         "l1_min_snr_calibrated": l1_min_snr,
         "l1_max_snr_calibrated": l1_max_snr,
+        "l1_min_snr_cross_calibrated": l1_min_snr_cross,
+        "l1_max_snr_cross_calibrated": l1_max_snr_cross,
         "l1_implementation": args.l1_implementation,
         "l1_clamp_overflow": effective_l1_clamp,
         "l1_auto_calibrate_snr": args.auto_calibrate_snr,
         "l1_subtract_coarse_mean": effective_subtract_coarse_mean,
+        "cross_maps": bool(args.cross_maps),
+        "cross_map_apodize": args.cross_map_apodize,
+        "n_l1_channels": n_l1_channels,
     }, allow_val_change=True)
 
     # 2a. L1-norm for observed map
@@ -1378,6 +1570,9 @@ def main():
         clamp_overflow=effective_l1_clamp,
         subtract_coarse_mean=effective_subtract_coarse_mean,
         l1_implementation=args.l1_implementation,
+        n_l1_channels=n_l1_channels,
+        l1_min_snr_cross=l1_min_snr_cross,
+        l1_max_snr_cross=l1_max_snr_cross,
     )
     print(f"  Observed L1-norm vector shape = {obs_l1.shape}")
 
@@ -1400,6 +1595,8 @@ def main():
                 "l1_clamp_overflow", "subtract_coarse_mean", "n_scales",
                 "tfds_name", "tomo_bin_indices", "l1_implementation",
                 "apply_bnt", "bnt_matrix_version",
+                "cross_maps", "cross_map_apodize",
+                "l1_min_snr_cross", "l1_max_snr_cross",
             }
             if not required_meta.issubset(set(meta.files)):
                 print("  Cache metadata is missing newer L1 settings; recomputing ...")
@@ -1415,6 +1612,10 @@ def main():
                 cached_impl = str(meta["l1_implementation"])
                 cached_apply_bnt = bool(meta["apply_bnt"])
                 cached_bnt_version = str(meta["bnt_matrix_version"])
+                cached_cross_maps = bool(meta["cross_maps"])
+                cached_cross_apod = str(meta["cross_map_apodize"])
+                cached_min_cross = float(meta["l1_min_snr_cross"])
+                cached_max_cross = float(meta["l1_max_snr_cross"])
                 if (abs(cached_min - l1_min_snr) < 1e-6 and
                         abs(cached_max - l1_max_snr) < 1e-6 and
                         cached_nbins == args.l1_nbins and
@@ -1425,7 +1626,11 @@ def main():
                         cached_impl == args.l1_implementation and
                         cached_tomo_bins == ",".join(str(b) for b in tomo_bin_indices) and
                         cached_apply_bnt == bool(args.apply_bnt) and
-                        cached_bnt_version == (BNT_MATRIX_VERSION if args.apply_bnt else "none")):
+                        cached_bnt_version == (BNT_MATRIX_VERSION if args.apply_bnt else "none") and
+                        cached_cross_maps == bool(args.cross_maps) and
+                        cached_cross_apod == args.cross_map_apodize and
+                        abs(cached_min_cross - l1_min_snr_cross) < 1e-6 and
+                        abs(cached_max_cross - l1_max_snr_cross) < 1e-6):
                     print("  Loading cached L1-norm datasets (metadata matches) ...")
                     d_tr = np.load(train_cache)
                     dataset_train = {"theta": d_tr["theta"], "x": d_tr["x"]}
@@ -1447,6 +1652,9 @@ def main():
             clamp_overflow=effective_l1_clamp,
             subtract_coarse_mean=effective_subtract_coarse_mean,
             l1_implementation=args.l1_implementation,
+            n_l1_channels=n_l1_channels,
+            l1_min_snr_cross=l1_min_snr_cross,
+            l1_max_snr_cross=l1_max_snr_cross,
         )
         dataset_val = compute_l1_dataset(
             args.tfds_name, "test", augmentation, stats,
@@ -1455,6 +1663,9 @@ def main():
             clamp_overflow=effective_l1_clamp,
             subtract_coarse_mean=effective_subtract_coarse_mean,
             l1_implementation=args.l1_implementation,
+            n_l1_channels=n_l1_channels,
+            l1_min_snr_cross=l1_min_snr_cross,
+            l1_max_snr_cross=l1_max_snr_cross,
         )
         # Save cache with metadata
         if cache_dir is not None:
@@ -1465,6 +1676,8 @@ def main():
                      theta=dataset_val["theta"], x=dataset_val["x"])
             np.savez(cache_dir / "l1_cache_meta.npz",
                      l1_min_snr=l1_min_snr, l1_max_snr=l1_max_snr,
+                     l1_min_snr_cross=l1_min_snr_cross,
+                     l1_max_snr_cross=l1_max_snr_cross,
                      l1_nbins=args.l1_nbins,
                      l1_clamp_overflow=effective_l1_clamp,
                      subtract_coarse_mean=effective_subtract_coarse_mean,
@@ -1473,7 +1686,9 @@ def main():
                      tfds_name=args.tfds_name,
                      tomo_bin_indices=",".join(str(b) for b in tomo_bin_indices),
                      apply_bnt=bool(args.apply_bnt),
-                     bnt_matrix_version=(BNT_MATRIX_VERSION if args.apply_bnt else "none"))
+                     bnt_matrix_version=(BNT_MATRIX_VERSION if args.apply_bnt else "none"),
+                     cross_maps=bool(args.cross_maps),
+                     cross_map_apodize=args.cross_map_apodize)
             print(f"  Cached datasets to {cache_dir}")
 
     print(f"  Train x shape = {dataset_train['x'].shape}")
@@ -1487,6 +1702,9 @@ def main():
         obs_l1, dataset_train["x"], dataset_train["theta"],
         args.n_scales, args.l1_nbins, args.nbins,
         param_names, l1_min_snr, l1_max_snr,
+        n_l1_channels=n_l1_channels,
+        l1_min_snr_cross=l1_min_snr_cross,
+        l1_max_snr_cross=l1_max_snr_cross,
     )
 
     # ------------------------------------------------------------------

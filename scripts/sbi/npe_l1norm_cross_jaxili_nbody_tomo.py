@@ -1346,6 +1346,19 @@ def parse_args() -> argparse.Namespace:
         ),
     )
 
+    p.add_argument(
+        "--precomputed-l1-cache-dir",
+        type=str,
+        default=None,
+        help=(
+            "Path to a directory containing pre-computed l1_train.npz and l1_val.npz "
+            "(arrays 'theta' and 'x'). When set, the L1 train/val computation and all "
+            "cache-metadata checks are bypassed; the script loads these files directly. "
+            "Intended for B4 held-out cosmology sweeps where the L1 cache has been "
+            "pre-filtered externally. The observed-map L1 is still computed normally."
+        ),
+    )
+
     # Summary preprocessing
     p.add_argument("--pca-components", type=int, default=50, help="PCA components (0 disables PCA)")
     p.add_argument(
@@ -2078,113 +2091,129 @@ def main() -> None:
 
     # 3) Train/val L1 datasets with cache metadata checks
     print("######## L1-NORM: DATASETS ########")
-    cache_ok = False
-    if cache_dir is not None and cache_dir.exists():
-        train_cache = cache_dir / "l1_train.npz"
-        val_cache = cache_dir / "l1_val.npz"
-        meta_cache = cache_dir / "l1_cache_meta.npz"
-        if train_cache.exists() and val_cache.exists() and meta_cache.exists():
-            meta = np.load(meta_cache)
-            cache_ok, mismatches = compare_cache_metadata(meta, cache_meta_expected)
-            if cache_ok:
-                d_tr = np.load(train_cache)
-                dataset_train = {"theta": d_tr["theta"], "x": d_tr["x"]}
-                d_va = np.load(val_cache)
-                dataset_val = {"theta": d_va["theta"], "x": d_va["x"]}
-                print("  Loaded cached L1 train/val datasets (metadata matches).")
-            else:
-                first_mismatch = mismatches[0] if mismatches else "unknown mismatch"
-                print(
-                    "  Cache metadata mismatch. Recomputing L1 train/val datasets. "
-                    f"First mismatch: {first_mismatch}"
-                )
 
-    if not cache_ok:
-        if cross_maps_route == "harmonic":
-            dataset_train = compute_l1_dataset_from_harmonic_cache(
-                cache_dir=full_sphere_cache_dir,
-                regime=harmonic_regime,
-                split="train",
-                stats=stats,
-                noise_sigma=noise_sigma,
-                l1_nbins=args.l1_nbins,
-                nbins=args.nbins,
-                n_l1_channels=n_l1_channels,
-                l1_min_snr=l1_min_snr,
-                l1_max_snr=l1_max_snr,
-                l1_min_snr_cross=l1_min_snr_cross,
-                l1_max_snr_cross=l1_max_snr_cross,
-                clamp_overflow=effective_l1_clamp,
-                subtract_coarse_mean=effective_subtract_coarse_mean,
-                l1_implementation=args.l1_implementation,
-                rng=np.random.default_rng(int(args.seed) + 1001),
-                flip=True,
-            )
-            dataset_val = compute_l1_dataset_from_harmonic_cache(
-                cache_dir=full_sphere_cache_dir,
-                regime=harmonic_regime,
-                split="val",
-                stats=stats,
-                noise_sigma=noise_sigma,
-                l1_nbins=args.l1_nbins,
-                nbins=args.nbins,
-                n_l1_channels=n_l1_channels,
-                l1_min_snr=l1_min_snr,
-                l1_max_snr=l1_max_snr,
-                l1_min_snr_cross=l1_min_snr_cross,
-                l1_max_snr_cross=l1_max_snr_cross,
-                clamp_overflow=effective_l1_clamp,
-                subtract_coarse_mean=effective_subtract_coarse_mean,
-                l1_implementation=args.l1_implementation,
-                rng=np.random.default_rng(int(args.seed) + 2001),
-                flip=False,  # deterministic val
-            )
-        else:
-            dataset_train = compute_l1_dataset(
-                args.tfds_name,
-                "train",
-                augmentation,
-                stats,
-                noise_sigma,
-                args.l1_nbins,
-                args.nbins,
-                args.ds_batch_size,
-                l1_min_snr=l1_min_snr,
-                l1_max_snr=l1_max_snr,
-                clamp_overflow=effective_l1_clamp,
-                subtract_coarse_mean=effective_subtract_coarse_mean,
-                l1_implementation=args.l1_implementation,
-                n_l1_channels=n_l1_channels,
-                l1_min_snr_cross=l1_min_snr_cross,
-                l1_max_snr_cross=l1_max_snr_cross,
-            )
-            dataset_val = compute_l1_dataset(
-                args.tfds_name,
-                "test",
-                augmentation,
-                stats,
-                noise_sigma,
-                args.l1_nbins,
-                args.nbins,
-                args.ds_batch_size,
-                l1_min_snr=l1_min_snr,
-                l1_max_snr=l1_max_snr,
-                clamp_overflow=effective_l1_clamp,
-                subtract_coarse_mean=effective_subtract_coarse_mean,
-                l1_implementation=args.l1_implementation,
-                n_l1_channels=n_l1_channels,
-                l1_min_snr_cross=l1_min_snr_cross,
-                l1_max_snr_cross=l1_max_snr_cross,
-            )
-        if cache_dir is not None:
-            cache_dir.mkdir(parents=True, exist_ok=True)
-            np.savez(cache_dir / "l1_train.npz", theta=dataset_train["theta"], x=dataset_train["x"])
-            np.savez(cache_dir / "l1_val.npz", theta=dataset_val["theta"], x=dataset_val["x"])
-            np.savez(
-                cache_dir / "l1_cache_meta.npz",
-                **cache_meta_expected,
-            )
-            print(f"  Cached datasets to {cache_dir}")
+    if args.precomputed_l1_cache_dir is not None:
+        precomp_dir = Path(args.precomputed_l1_cache_dir).resolve()
+        precomp_train = precomp_dir / "l1_train.npz"
+        precomp_val = precomp_dir / "l1_val.npz"
+        if not precomp_train.exists():
+            raise FileNotFoundError(f"--precomputed-l1-cache-dir: missing {precomp_train}")
+        if not precomp_val.exists():
+            raise FileNotFoundError(f"--precomputed-l1-cache-dir: missing {precomp_val}")
+        d_tr = np.load(precomp_train)
+        dataset_train = {"theta": d_tr["theta"], "x": d_tr["x"]}
+        d_va = np.load(precomp_val)
+        dataset_val = {"theta": d_va["theta"], "x": d_va["x"]}
+        print(f"  Loaded precomputed L1 datasets from {precomp_dir} (metadata check bypassed).")
+        print(f"  train: {dataset_train['x'].shape}, val: {dataset_val['x'].shape}")
+    else:
+        cache_ok = False
+        if cache_dir is not None and cache_dir.exists():
+            train_cache = cache_dir / "l1_train.npz"
+            val_cache = cache_dir / "l1_val.npz"
+            meta_cache = cache_dir / "l1_cache_meta.npz"
+            if train_cache.exists() and val_cache.exists() and meta_cache.exists():
+                meta = np.load(meta_cache)
+                cache_ok, mismatches = compare_cache_metadata(meta, cache_meta_expected)
+                if cache_ok:
+                    d_tr = np.load(train_cache)
+                    dataset_train = {"theta": d_tr["theta"], "x": d_tr["x"]}
+                    d_va = np.load(val_cache)
+                    dataset_val = {"theta": d_va["theta"], "x": d_va["x"]}
+                    print("  Loaded cached L1 train/val datasets (metadata matches).")
+                else:
+                    first_mismatch = mismatches[0] if mismatches else "unknown mismatch"
+                    print(
+                        "  Cache metadata mismatch. Recomputing L1 train/val datasets. "
+                        f"First mismatch: {first_mismatch}"
+                    )
+
+        if not cache_ok:
+            if cross_maps_route == "harmonic":
+                dataset_train = compute_l1_dataset_from_harmonic_cache(
+                    cache_dir=full_sphere_cache_dir,
+                    regime=harmonic_regime,
+                    split="train",
+                    stats=stats,
+                    noise_sigma=noise_sigma,
+                    l1_nbins=args.l1_nbins,
+                    nbins=args.nbins,
+                    n_l1_channels=n_l1_channels,
+                    l1_min_snr=l1_min_snr,
+                    l1_max_snr=l1_max_snr,
+                    l1_min_snr_cross=l1_min_snr_cross,
+                    l1_max_snr_cross=l1_max_snr_cross,
+                    clamp_overflow=effective_l1_clamp,
+                    subtract_coarse_mean=effective_subtract_coarse_mean,
+                    l1_implementation=args.l1_implementation,
+                    rng=np.random.default_rng(int(args.seed) + 1001),
+                    flip=True,
+                )
+                dataset_val = compute_l1_dataset_from_harmonic_cache(
+                    cache_dir=full_sphere_cache_dir,
+                    regime=harmonic_regime,
+                    split="val",
+                    stats=stats,
+                    noise_sigma=noise_sigma,
+                    l1_nbins=args.l1_nbins,
+                    nbins=args.nbins,
+                    n_l1_channels=n_l1_channels,
+                    l1_min_snr=l1_min_snr,
+                    l1_max_snr=l1_max_snr,
+                    l1_min_snr_cross=l1_min_snr_cross,
+                    l1_max_snr_cross=l1_max_snr_cross,
+                    clamp_overflow=effective_l1_clamp,
+                    subtract_coarse_mean=effective_subtract_coarse_mean,
+                    l1_implementation=args.l1_implementation,
+                    rng=np.random.default_rng(int(args.seed) + 2001),
+                    flip=False,  # deterministic val
+                )
+            else:
+                dataset_train = compute_l1_dataset(
+                    args.tfds_name,
+                    "train",
+                    augmentation,
+                    stats,
+                    noise_sigma,
+                    args.l1_nbins,
+                    args.nbins,
+                    args.ds_batch_size,
+                    l1_min_snr=l1_min_snr,
+                    l1_max_snr=l1_max_snr,
+                    clamp_overflow=effective_l1_clamp,
+                    subtract_coarse_mean=effective_subtract_coarse_mean,
+                    l1_implementation=args.l1_implementation,
+                    n_l1_channels=n_l1_channels,
+                    l1_min_snr_cross=l1_min_snr_cross,
+                    l1_max_snr_cross=l1_max_snr_cross,
+                )
+                dataset_val = compute_l1_dataset(
+                    args.tfds_name,
+                    "test",
+                    augmentation,
+                    stats,
+                    noise_sigma,
+                    args.l1_nbins,
+                    args.nbins,
+                    args.ds_batch_size,
+                    l1_min_snr=l1_min_snr,
+                    l1_max_snr=l1_max_snr,
+                    clamp_overflow=effective_l1_clamp,
+                    subtract_coarse_mean=effective_subtract_coarse_mean,
+                    l1_implementation=args.l1_implementation,
+                    n_l1_channels=n_l1_channels,
+                    l1_min_snr_cross=l1_min_snr_cross,
+                    l1_max_snr_cross=l1_max_snr_cross,
+                )
+            if cache_dir is not None:
+                cache_dir.mkdir(parents=True, exist_ok=True)
+                np.savez(cache_dir / "l1_train.npz", theta=dataset_train["theta"], x=dataset_train["x"])
+                np.savez(cache_dir / "l1_val.npz", theta=dataset_val["theta"], x=dataset_val["x"])
+                np.savez(
+                    cache_dir / "l1_cache_meta.npz",
+                    **cache_meta_expected,
+                )
+                print(f"  Cached datasets to {cache_dir}")
 
     print(f"  Train x shape = {dataset_train['x'].shape}")
     print(f"  Val   x shape = {dataset_val['x'].shape}")
