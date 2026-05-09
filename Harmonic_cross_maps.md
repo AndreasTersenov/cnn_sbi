@@ -75,3 +75,49 @@ def compute_harmonic_cross_map(map_i, map_j, nside, lmax=None):
     cross_map = hp.alm2map(alms_cross, nside=nside)
     
     return cross_map
+
+```
+
+---
+
+## 3. Amplitude Imbalance Between Auto- and Cross-Channels and its Treatment
+
+### 3.1 The problem
+
+When the 4 auto-maps ($\kappa^{ii}$, one per tomographic bin) and 6 cross-maps ($\kappa^{ij}$, $i < j$) are used together as a 10-channel input to a CNN, there is a severe amplitude mismatch between the two types:
+
+- **Auto-channels** $C_{ii}(\ell)$: self-correlations of the lensing field, amplitude $\sim 10^{-2}$ (in map-pixel units after per-patch demeaning).
+- **Cross-channels** $C_{ij}(\ell)$, $i \neq j$: correlations between different redshift shells, amplitude $\sim 10^{-7}$–$10^{-5}$ — empirically **~4 orders of magnitude smaller** than auto-channels for our 20-deg / 160-px patch setup.
+
+The physical reason is that $C_{ij}(\ell)$ reflects the overlap of the lensing kernels of bins $i$ and $j$, which is smaller than the self-overlap $C_{ii}(\ell)$ for bins with non-overlapping redshift support.
+
+Without any normalization, the gradient signal reaching the CNN's first convolutional layer from the cross-channels is $\sim 10^4 \times$ weaker than from the auto-channels. In practice the network learns to ignore the cross-channels entirely, and the cross-map information is never extracted — even though it is genuinely present and cosmologically informative (see §3.3).
+
+### 3.2 The fix: dataset-level per-channel RMS normalization
+
+Before the maps enter the CNN, each channel $c$ is divided by its **dataset-level RMS**:
+
+$$\sigma_c = \sqrt{\frac{1}{N_{\text{train}} \cdot H \cdot W} \sum_{\text{train examples}} \sum_{p=1}^{H \times W} x_{c,p}^2}$$
+
+where the sum pools over all pixels of all training examples. Because the patches are already zero-mean (enforced by cache construction), RMS equals std here.
+
+The key distinction is that $\sigma_c$ is a **fixed, dataset-level constant** — not a per-example normalizer. After division, every channel has RMS $\approx 1$ across the training set, while the cosmology-dependent amplitude variation of individual examples is fully preserved.
+
+Two alternatives that were considered and rejected:
+
+- **Per-example, per-channel std normalization** ($x_{c} \to x_{c} / \text{std}(x_c)$ per example): would erase the cosmology-dependent map amplitude, which is a cosmological observable (higher $\sigma_8$ produces maps with larger variance). Rejected.
+- **Normalizing only cross-channels**: would equalize cross vs. auto but leave the 4 auto-channels slightly unequal among themselves (~40% range). Dataset-level normalization of all 10 channels is the cleaner and more principled choice.
+
+### 3.3 No cosmological information is lost: information-theoretic argument
+
+The transformation $x_c \mapsto x_c / \sigma_c$ (with $\sigma_c$ a fixed known constant) is an **invertible linear map**. By the data processing inequality, the mutual information $I(\mathbf{X}_{\text{norm}}; \theta) = I(\mathbf{X}; \theta)$ — normalization cannot reduce the Fisher information.
+
+More concretely:
+
+1. **Absolute scale is not a cosmological observable.** The value of $\sigma_c$ is set by the cache construction conventions (patch size, pixelisation, smoothing scale). Dividing by it is equivalent to choosing different units per channel. No physics is encoded in the prior-averaged amplitude of a single channel in isolation.
+
+2. **Cosmology-dependent amplitude variation is preserved.** For cosmology $\theta_i$, the auto-channel variance scales roughly as $\sigma_8^2 \Omega_m^{1.5}$. After normalization, example $i$ still has variance $\sigma_c^2(\theta_i) / \sigma_c^2$, where the numerator depends on $\theta_i$. The CNN can still learn to use per-channel amplitude as a feature.
+
+3. **Cross-channel amplitude ratios $C_{ij} / C_{ii}$ are preserved.** These ratios are cosmology-dependent (they encode the geometric overlap of lensing kernels). Normalizing channel $c_1$ by $\sigma_{c_1}$ and channel $c_2$ by $\sigma_{c_2}$ rescales the ratio by a known constant $\sigma_{c_2}/\sigma_{c_1}$, which is absorbed into the first convolutional layer's weights. No ratio information is lost.
+
+In summary: the only thing removed by dataset-level per-channel RMS normalization is the prior-averaged amplitude of each channel — a unit convention with no cosmological content. All cosmologically informative variance, covariance, and amplitude ratios between channels are unchanged.

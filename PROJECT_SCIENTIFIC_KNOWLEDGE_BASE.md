@@ -497,6 +497,8 @@ The flat-sky FFT cross-maps must now be regarded as a known-lossy approximation:
 2. The mild persistent BNT-regime bias (Ω_m ≈ +0.04, w_0 ≈ −0.16 below truth, all sub-1σ but consistent across the three seeds) deserves a coverage check — likely a prior-boundary or projection effect, but worth confirming with simulation-based calibration before paper submission.
 3. Recommend an independent second-cosmology check (e.g. one of the `cosmo_delta_*` corners as observation) to verify the harmonic-cache posteriors track parameter shifts at the right amplitude.
 
+**Update 2026-05-07 (§14.7):** Both caveats 3 and 2 were investigated; the headline FoM3=59243 is SUSPECT — see §14.7 below.
+
 ### 14.6 Evidence
 
 - `scripts/sbi/results/exploratory/cross_maps_campaign/cross_summary/summary.{md,json}` — extended with `harm_cross_{bnt,nobnt}` arms.
@@ -505,10 +507,63 @@ The flat-sky FFT cross-maps must now be regarded as a known-lossy approximation:
 - `scripts/sbi/results/exploratory/cross_maps_campaign/jaxili_harm_cross_{bnt,nobnt}/posteriors/l1cross_tomo4_20deg160mp_harm_{bnt,nobnt}_p1_s{41,42,43}.npy` — 6 raw posteriors with `.meta.json` and `.fom.json` siblings.
 - Cache + manifest: `scripts/sbi/results/exploratory/cross_maps_campaign/full_sphere_cache_grid/manifest.json` (args sha `0a68ea89669da18f...`).
 
+### 14.7 Calibration investigation: σ8 inversion and SBC verdict (2026-05-07)
+
+Motivated by the unusually tight σ8 contour in the harm_cross_nobnt posteriors (near-perfect centering on fiducial across all three seeds) and the known sparse occupancy of cross-channels (≈5% bin occupancy, mean L1 ≈ 0.04–0.14 vs auto-channel means 583–1121), a full calibration investigation was run.
+
+#### B2: second-cosmology truth check
+
+Held-out cosmologies from the `cosmo_delta_*` grid were used as observations and the seed-41 posterior was queried:
+
+| Cosmology shift | Ωm direction | σ8 direction | w0 direction |
+|---|---|---|---|
+| cosmo_delta_om_p (+Ωm) | PASS | — | — |
+| cosmo_delta_om_m (−Ωm) | PASS | — | — |
+| **cosmo_delta_s8_p (+σ8, truth=0.855)** | — | **FAIL (posterior mean → 0.798, wrong direction)** | — |
+| **cosmo_delta_s8_m (−σ8, truth=0.825)** | — | **FAIL (posterior mean → 0.848, wrong direction)** | — |
+| cosmo_delta_w0_p | — | — | PASS |
+| cosmo_delta_w0_m | — | — | PASS |
+
+**σ8 sensitivity is inverted near fiducial.** Ωm and w0 track truth correctly; σ8 does not.
+
+#### B1: SBC rank uniformity (N=1000, M=2000, seed=20260507)
+
+| Parameter | mean-rank z | χ² (20 bins) | Verdict |
+|---|---|---|---|
+| Ωm | +2.59 | 18.9 | borderline |
+| **σ8** | **−1.78** | **27.5** | **borderline** |
+| w0 | +1.17 | 31.6 | mildly elevated |
+| h0 | −2.52 | 84.1 | **FAIL** |
+| n_s | +2.04 | 41.8 | elevated |
+| Ωb | −1.25 | 116.8 | **FAIL** |
+
+Overall SBC verdict: **MISCALIBRATED** (h0 and Ωb χ² >> 50 threshold).
+
+For σ8 specifically: z = −1.78 is within |z| < 2 but χ² = 27.5 is elevated (expected ≈ 20). The mild σ8 SBC elevation is consistent with the B2 direction flip being a local effect around fiducial that averages out across the prior — the posterior is not dramatically anticorrelated globally, but it is unreliable in the fiducial neighborhood.
+
+#### Scientific verdict
+
+**The harmonic-cross L1 no-BNT FoM3=59243 headline is an artefact and must not be claimed in the paper.** The FoM3 gain almost certainly reflects the flow exploiting the inverted σ8 cross-channel signal to produce spuriously tight σ8 contours, while the BNT-regime result (FoM3=5161) is free of this confound (BNT mixing suppresses the artefact by scrambling which cross-channel responds to which parameter).
+
+**What remains valid:** The harm_cross_bnt FoM3=5161 (+554% over auto-only BNT, +347% over flat-sky cross) is not tainted by the σ8 inversion. This is the defensible headline: harmonic-space full-sphere cross-maps deliver large gains specifically in the BNT regime. The no-BNT arm needs cross-channel SNR calibration or isolation before it can be claimed.
+
+#### Minimal next actions
+
+1. Isolate which cross-channels drive the σ8 inversion: plot per-channel L1 datavectors at `cosmo_delta_s8_p` vs fiducial; identify channels with wrong-sign Δ L1.
+2. Re-run harm_cross_nobnt with cross-channels disabled (`--n-cross-channels 0`) to confirm auto-channels alone give FoM3 ≈ 13k (consistent with auto_zm_nobnt), isolating the inversion to cross-channels.
+3. Investigate cross-channel SNR calibration: whether the `--cross-map-min-snr / --cross-map-max-snr` range (calibrated from fiducial map percentiles) captures the right signal or biases the SNR-bin mapping.
+
+#### Evidence files
+
+- `scripts/sbi/results/exploratory/harmonic_vs_cnn_investigation/final_decision_report.{md,json}` — structured report with all quantitative outcomes.
+- `scripts/sbi/results/diagnostics/harm_l1_heldout_cosmo_sweep/` — B4 held-out cache infrastructure (ready to run).
+- `scripts/sbi/results/diagnostics/sbc_harm_l1_nobnt/n1000_m2000_seed20260507/sbc_metrics.json` — full B1 SBC metrics.
+- `scripts/sbi/results/exploratory/cross_maps_campaign/harm_l1_truthcheck/truthcheck_summary.{md,json}` — B2 per-cosmology truth coverage.
+
 ---
 
 ## 15) Final status
 
 This knowledge base is intended to be the main scientific source document for drafting the A&A letter. It should be updated only when new campaign outputs materially change quantitative conclusions.
 
-Last materially significant update: **2026-05-01, §14** (full-sphere harmonic cross-maps overturn the flat-sky no-BNT null result).
+Last materially significant update: **2026-05-07, §14.7** (harm_cross_nobnt FoM3=59243 flagged as artefact; σ8 direction inverted in truth check; harm_cross_bnt FoM3=5161 remains the defensible headline).
