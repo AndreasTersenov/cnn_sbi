@@ -6,7 +6,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Simulation-based inference (SBI) for weak gravitational lensing cosmology. Forked/extended from Justine Zeghal's [Learn2Map](https://github.com/Justinezgh/Learn2Map). It learns low-dimensional summaries from convergence maps (CNN-VMIM compressor or wavelet L1/L1-VMIM statistics) and feeds them to a conditional RealNVP flow (or `jaxili` NPE) to infer `theta = [Omega_m, sigma_8, w0, h0, n_s, Omega_b]`.
 
-The current scientific focus is **BNT contour inflation** in tomographic setups. Read `PROJECT_SCIENTIFIC_KNOWLEDGE_BASE.md` first — it's the authoritative synthesis of campaign outcomes and is more up-to-date than `README.md`. `CLAUDE_CODE_HANDOFF.md` is the detailed runbook for the latest (`bnt-parity-techniques`) branch.
+The current scientific focus (branch `l1-cross-maps`) is **comparing wavelet-L1 vs CNN-VMIM compressors on tomographic auto + harmonic cross maps**: a 10-channel input made of the 4 tomographic auto maps plus the 6 inter-bin cross maps. Headline open puzzle: the L1 harmonic-cross no-BNT FoM3 reproduces at ~65 k across 6 seeds (vs CNN ~17–25 k); SBC shows the L1 posterior is overconfident on Ω_b and biased on σ_8/h_0, so the next step is a TARP joint-coverage test. The full state of that investigation is in `HARMONIC_L1_VS_CNN_INVESTIGATION_BRIEF.md` and `HARMONIC_L1_VS_CNN_SESSION2_HANDOFF.md`.
+
+Read `PROJECT_SCIENTIFIC_KNOWLEDGE_BASE.md` first — it's the authoritative synthesis of campaign outcomes and is more up-to-date than `README.md`. `CLAUDE_CODE_HANDOFF.md` is the detailed runbook for the prior (`bnt-parity-techniques`) BNT-inflation phase and is still the right reference for any BNT-tomo work.
 
 ## Environment and external dependencies
 
@@ -30,8 +32,9 @@ The current scientific focus is **BNT contour inflation** in tomographic setups.
 Always reason in three layers and keep them separated — do not blame "the pipeline" without naming a layer:
 
 1. **Summary extraction**
-   - `npe_cnn_nbody_tomo.py` / `npe_cnn_jaxili_nbody_tomo.py` — CNN-VMIM compressor; arch family selectable via `--compressor-arch {plain,resnet_small,resnet18,resnet34,resnet50}`.
-   - `npe_l1norm_nbody_tomo.py` / `npe_l1norm_jaxili_nbody_tomo.py` — wavelet L1 datavector (PyTorch `WLStatistics`).
+   - `npe_cnn_nbody_tomo.py` / `npe_cnn_jaxili_nbody_tomo.py` — CNN-VMIM compressor; arch family via `--compressor-arch {plain,resnet_small,resnet18,resnet34,resnet50,resnet50_gn}`. On 10-channel harmonic-cross input, **always use `resnet50_gn`** (or `plain`) — stock BatchNorm ResNets collapse FoM3 to ~700 because BN running stats average across cosmology-mixed batches; GroupNorm restores ~22 k. Memory: `project_resnet_bn_contamination.md`.
+   - `npe_l1norm_nbody_tomo.py` / `npe_l1norm_jaxili_nbody_tomo.py` — wavelet L1 datavector on per-bin auto maps (PyTorch `WLStatistics`).
+   - `npe_l1norm_cross_jaxili_nbody_tomo.py` — wavelet L1 on the 4 auto + 6 cross map channels (the harmonic-cross arm of the current investigation). The canonical FoM3 formula `FoM3 = 1/√det(C_3)` lives here at `:1737-1759`.
    - `npe_l1vmim_nbody_tomo.py` / `npe_l1vmim_jaxili_nbody_tomo.py` — L1 feeds a VMIM MLP compressor.
 2. **Preprocessing:** log1p / z-score / clipping; PCA only when explicitly asked (L1-VMIM is preferred for compression).
 3. **Density estimator `p(theta | summary)`:** in-repo conditional RealNVP (via `sbi_lens.normflow`) or `jaxili` NPE (scripts with `_jaxili_` in the name).
@@ -48,6 +51,8 @@ Multi-seed / multi-GPU experiments are driven by `scripts/sbi/run_*.py` scripts,
 - `run_cnn_bnt_losslessness_campaign.py`, `run_cnn_noise_curriculum_campaign.py` — BNT recovery campaigns.
 - `run_cnn_l1_systematic_sweep.py`, `run_cnn_tomo4_opt_sweep.py`, `run_l1_jaxili_tomo4_opt_sweep.py`, `run_l1vmim_tomo4_opt_sweep.py` — systematic sweeps.
 - `run_bnt_tomo4_study.py`, `run_baryon_bias_tomo4_study.py`, `run_nobnt_tomo_bins_crosscorr_study.py`, `run_optimal_nobnt_crosscorr_benchmark.py` — focused studies.
+- `run_sbc_cnn_nobnt.py`, `run_sbc_harm_l1_nobnt.py` — Simulation-Based Calibration runners. They consume a trained checkpoint and produce ranks in `scripts/sbi/results/diagnostics/sbc_*/n<N>_m<M>_seed<...>/`. Note: by default these dump ranks, not full posteriors — if you need posterior samples (e.g. for TARP), add the dump flag or instrument the loop.
+- `build_full_sphere_cross_cache.py`, `diagnose_cross_maps.py`, `diagnose_full_sphere_cross_maps.py` — utilities supporting the harmonic-cross channels (cache builder + sanity checks).
 
 Orchestrators accept `--gpus 0,1,2,3` and an optional `--xla-mem-fraction-by-gpu 0:0.75,1:0.30,...` per-GPU memory cap map. Results go under `scripts/sbi/results/{final,exploratory,dryruns,diagnostics}/` — follow that taxonomy (see `skills/sbi/SKILL.md`).
 
@@ -86,7 +91,7 @@ The tree is chronically dirty (notebooks with outputs, caches, `__pycache__`, ca
 2. Do not delete or rewrite pre-existing dirty files unless the user explicitly asks.
 3. Do not run destructive cleanup (`git reset --hard`, mass deletes, `git clean`).
 4. Do not commit generated artifacts (results, caches, `.pkl` checkpoints, `*.pyc`) unless asked.
-5. Main development branch is currently `bnt-parity-techniques`; the "main" PR target is `main`.
+5. Active development branch is `l1-cross-maps`; the "main" PR target is `main`. The earlier BNT campaign sits on `bnt-parity-techniques`.
 
 ## Project protocol (from `skills/sbi/SKILL.md`)
 
@@ -96,6 +101,8 @@ Claim acceptance requires apples-to-apples comparison, reproducibility from save
 
 ## Other reference docs in the tree
 
+- `HARMONIC_L1_VS_CNN_INVESTIGATION_BRIEF.md`, `HARMONIC_L1_VS_CNN_SESSION2_HANDOFF.md` — running record of the current branch's open question (L1 wins FoM3 ~2.5× over best CNN on harmonic-cross input; SBC says L1 is partially miscalibrated; TARP is next).
+- `Harmonic_cross_maps.md`, `Flat-Sky_Tomographic_Cross_Maps.md` — definitions and conventions for the cross-map channels.
 - `SBI_L1_CNN_PIPELINE_DETAILED.md` — step-by-step audit trail of all four pipelines.
 - `L1_CONTOUR_INVESTIGATION_LOG.md`, `L1_FIXES_VALIDATION_REPORT.md`, `L1_VMIM_FINAL_CONCLUSIONS.md` — L1 diagnosis and fix history.
 - `BNT_NO_BNT_CONTOUR_INFLATION_NOTE.md` — conceptual note on BNT inflation mechanisms.
