@@ -202,12 +202,13 @@ def parse_args() -> argparse.Namespace:
         "--compressor-arch",
         type=str,
         default="plain",
-        choices=["plain", "resnet_small", "resnet18", "resnet34", "resnet50"],
+        choices=["plain", "resnet_small", "resnet18", "resnet34", "resnet50", "resnet50_gn"],
         help=(
             "Compressor architecture family: "
             "'plain' (existing 3-conv CNN), "
             "'resnet_small' (handcrafted residual CNN), "
-            "'resnet18'/'resnet34'/'resnet50' (canonical Haiku ResNets)."
+            "'resnet18'/'resnet34'/'resnet50' (canonical Haiku ResNets, BatchNorm), "
+            "'resnet50_gn' (custom ResNet50 with GroupNorm — for cosmology-batched inputs)."
         ),
     )
     p.add_argument(
@@ -1106,6 +1107,108 @@ class CompressorResNetSmall(hk.Module):
         return y.squeeze()
 
 
+def _gn_groups(channels: int, target: int = 32) -> int:
+    """Pick a GroupNorm group count that divides ``channels`` (≤ ``target``)."""
+    g = min(target, channels)
+    while g > 1 and (channels % g) != 0:
+        g -= 1
+    return max(g, 1)
+
+
+class _BottleneckGN(hk.Module):
+    """ResNet-v1 bottleneck block with hk.GroupNorm replacing BatchNorm."""
+
+    def __init__(
+        self,
+        channels: int,
+        bottleneck_channels: int,
+        stride: int,
+        name: str | None = None,
+    ):
+        super().__init__(name=name)
+        self.channels = channels
+        self.bottleneck_channels = bottleneck_channels
+        self.stride = stride
+
+    def __call__(self, x):
+        out = hk.Conv2D(
+            self.bottleneck_channels, 1, stride=1, padding="SAME", with_bias=False,
+        )(x)
+        out = hk.GroupNorm(_gn_groups(self.bottleneck_channels))(out)
+        out = jax.nn.relu(out)
+
+        out = hk.Conv2D(
+            self.bottleneck_channels, 3, stride=self.stride, padding="SAME",
+            with_bias=False,
+        )(out)
+        out = hk.GroupNorm(_gn_groups(self.bottleneck_channels))(out)
+        out = jax.nn.relu(out)
+
+        out = hk.Conv2D(
+            self.channels, 1, stride=1, padding="SAME", with_bias=False,
+        )(out)
+        out = hk.GroupNorm(_gn_groups(self.channels))(out)
+
+        if self.stride != 1 or x.shape[-1] != self.channels:
+            shortcut = hk.Conv2D(
+                self.channels, 1, stride=self.stride, padding="SAME",
+                with_bias=False,
+            )(x)
+            shortcut = hk.GroupNorm(_gn_groups(self.channels))(shortcut)
+        else:
+            shortcut = x
+        return jax.nn.relu(out + shortcut)
+
+
+class CompressorResNet50GN(hk.Module):
+    """Custom ResNet-50 (v1) compressor with GroupNorm instead of BatchNorm.
+
+    Mirrors the canonical 4-stage layout (3, 4, 6, 3 bottlenecks) at output
+    channels (256, 512, 1024, 2048) with bottleneck channels = output / 4.
+    Replacing BN with GN avoids cross-cosmology contamination of the
+    normalization statistics — the failure mode that collapsed the canonical
+    ResNet-50 compressor on harmonic auto+cross inputs (FoM3 ≈ 700).
+    """
+
+    def __init__(
+        self,
+        output_dim: int,
+        head_width: int,
+        name: str | None = None,
+    ):
+        super().__init__(name=name)
+        self.output_dim = output_dim
+        self.head_width = head_width
+
+    def __call__(self, x, is_training: bool = True):  # is_training kept for API parity
+        del is_training
+        y = hk.Conv2D(64, 7, stride=2, padding="SAME", with_bias=False)(x)
+        y = hk.GroupNorm(_gn_groups(64))(y)
+        y = jax.nn.relu(y)
+        y = hk.max_pool(y, window_shape=3, strides=2, padding="SAME")
+
+        stage_specs = [
+            (256, 3, 1),
+            (512, 4, 2),
+            (1024, 6, 2),
+            (2048, 3, 2),
+        ]
+        for channels, n_blocks, first_stride in stage_specs:
+            for block_idx in range(n_blocks):
+                stride = first_stride if block_idx == 0 else 1
+                y = _BottleneckGN(
+                    channels=channels,
+                    bottleneck_channels=channels // 4,
+                    stride=stride,
+                )(y)
+
+        y = jnp.mean(y, axis=(1, 2))
+        y = hk.Linear(self.head_width)(y)
+        y = jax.nn.relu(y)
+        y = hk.Linear(self.output_dim)(y)
+        return y.squeeze()
+
+
 class CompressorCanonicalResNet(hk.Module):
     """Canonical Haiku ResNet compressor for selected depth."""
 
@@ -1211,6 +1314,17 @@ def build_compressors(
 
         compressor_train = hk.transform_with_state(_forward_train)
         compressor_eval = hk.transform_with_state(_forward_eval)
+        return compressor_train, compressor_eval
+
+    if arch == "resnet50_gn":
+        def _forward(y):
+            return CompressorResNet50GN(
+                dim,
+                head_width=resnet_head_width,
+                name="compressor_resnet50_gn",
+            )(y)
+        compressor_train = hk.transform_with_state(_forward)
+        compressor_eval = hk.transform_with_state(_forward)
         return compressor_train, compressor_eval
 
     raise ValueError(f"Unknown --compressor-arch '{arch}'")
@@ -2909,6 +3023,11 @@ def main():
             f"{args.compressor_arch} "
             f"head={args.resnet_head_width} "
             f"resnet_v2={bool(args.resnet_v2)}"
+        )
+    elif args.compressor_arch == "resnet50_gn":
+        arch_desc = (
+            f"resnet50_gn (GroupNorm, custom) "
+            f"head={args.resnet_head_width}"
         )
     else:
         raise ValueError(f"Unsupported --compressor-arch '{args.compressor_arch}'")
