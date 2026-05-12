@@ -71,6 +71,15 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--max-attempts", type=int, default=8)
     p.add_argument("--cuda-visible-devices", type=str, default=None)
     p.add_argument("--xla-mem-fraction", type=float, default=None)
+    p.add_argument(
+        "--dump-posterior-samples",
+        action="store_true",
+        help=(
+            "If set, write posterior_samples.npz alongside sbc_ranks.npz containing "
+            "the full (N, M, 6) posterior samples and theta arrays — needed for "
+            "downstream TARP joint-coverage testing. Adds ~50MB at N=1000, M=2000."
+        ),
+    )
     return p.parse_args()
 
 
@@ -442,6 +451,12 @@ def main() -> None:
     attempts_used = np.zeros(args.n_ranks, dtype=np.int32)
     key = jax.random.PRNGKey(args.rank_seed + 2026)
 
+    samples_dump = (
+        np.empty((args.n_ranks, args.posterior_samples, len(PARAMETER_ORDER)), dtype=np.float32)
+        if args.dump_posterior_samples
+        else None
+    )
+
     for i in range(args.n_ranks):
         draws, key, attempts = draw_posterior_samples(
             posterior=posterior,
@@ -454,6 +469,8 @@ def main() -> None:
         )
         ranks[i] = np.sum(draws < selected_theta[i][None, :], axis=0).astype(np.int32)
         attempts_used[i] = int(attempts)
+        if samples_dump is not None:
+            samples_dump[i] = draws.astype(np.float32, copy=False)
         if (i + 1) % 20 == 0 or i + 1 == args.n_ranks:
             print(f"[SBC] Processed {i + 1}/{args.n_ranks}")
 
@@ -467,6 +484,19 @@ def main() -> None:
         attempts_used=attempts_used,
         parameter_order=np.array(PARAMETER_ORDER, dtype=object),
     )
+
+    samples_npz: Optional[Path] = None
+    if samples_dump is not None:
+        samples_npz = run_dir / "posterior_samples.npz"
+        np.savez_compressed(
+            samples_npz,
+            samples=samples_dump,
+            theta=selected_theta,
+            selected_indices=selected_indices.astype(np.int64),
+            posterior_samples_per_cosmology=np.int32(args.posterior_samples),
+            parameter_order=np.array(PARAMETER_ORDER, dtype=object),
+        )
+        print(f"[SBC] Dumped posterior samples to {samples_npz} (shape {samples_dump.shape})")
 
     metrics = rank_metrics(ranks=ranks, n_post=args.posterior_samples, n_bins=args.rank_bins)
     metrics["attempts_summary"] = {
@@ -520,6 +550,7 @@ def main() -> None:
             "rank_npz": str(rank_npz),
             "metrics_json": str(metrics_path),
             "rank_hist_png": str(plot_path),
+            "posterior_samples_npz": str(samples_npz) if samples_npz is not None else None,
         },
     }
     (run_dir / "repro_manifest.json").write_text(
