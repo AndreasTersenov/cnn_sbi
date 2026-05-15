@@ -328,6 +328,31 @@ def _harmonic_random_flip(maps: np.ndarray, rng: np.random.Generator) -> np.ndar
     return out
 
 
+def _load_harmonic_file(
+    path: Path,
+    channel_slice: slice | None,
+    channel_scale: np.ndarray | None,
+):
+    """Pure-numpy loader (used by both sync and async iterators).
+
+    Does load + channel_slice + channel_scale only. Flipping happens in the
+    main thread to keep RNG access serialized.
+    """
+    with np.load(path, allow_pickle=False) as d:
+        patches = np.asarray(d["patches"], dtype=np.float32)
+        theta = np.asarray(d["theta"], dtype=np.float64)
+    if channel_slice is not None:
+        patches = patches[..., channel_slice]
+    if channel_scale is not None:
+        scale = np.asarray(channel_scale, dtype=np.float32)
+        if scale.shape != (patches.shape[-1],):
+            raise ValueError(
+                f"channel_scale shape {scale.shape} != ({patches.shape[-1]},)"
+            )
+        patches = patches * scale
+    return patches, theta, str(path)
+
+
 def iter_harmonic_examples(
     cache_dir: Path,
     regime: str,
@@ -335,28 +360,65 @@ def iter_harmonic_examples(
     rng: np.random.Generator | None = None,
     flip: bool = True,
     n_take: int | None = None,
+    channel_slice: slice | None = None,
+    channel_scale: np.ndarray | None = None,
+    prefetch_workers: int = 4,
+    prefetch_depth: int = 12,
 ):
     """Yield per-realization tensors from the harmonic cache.
 
-    Each yield is `(maps, theta)` where:
-      maps  : (n_patches, H, W, 10) float32  (h_0 NOT yet rescaled in theta)
-      theta : (6,) float64 — H0 not yet divided by 100
+    Each yield is `(maps, theta, path)`. `maps` is float32 `(n_patches, H, W, C)`;
+    `theta` is float64 `(6,)` (h_0 not yet divided by 100).
 
-    `n_take` lets the caller bound the number of realizations consumed (used
-    by the SNR calibration walk). Set to None to iterate the full split.
+    `n_take` bounds the number of realizations consumed (e.g. for the SNR
+    calibration walk). `channel_slice` and `channel_scale` are applied at
+    load time.
+
+    Async prefetch (default): when `prefetch_workers > 0`, files are loaded
+    in background threads (up to `prefetch_depth` in flight). Cache reads
+    (NFS + np.load decompression) overlap with GPU work, ~3-5× throughput
+    when the wavelet pass is otherwise I/O-bound. Set `prefetch_workers=0`
+    for legacy sequential behavior.
     """
+    from concurrent.futures import ThreadPoolExecutor
+
     files = _list_harmonic_cache_files(cache_dir, regime, split)
     if n_take is not None:
         files = files[:n_take]
     if rng is None:
         rng = np.random.default_rng(0)
-    for f in files:
-        with np.load(f, allow_pickle=False) as d:
-            patches = np.asarray(d["patches"], dtype=np.float32)
-            theta = np.asarray(d["theta"], dtype=np.float64)
-        if flip:
-            patches = _harmonic_random_flip(patches, rng)
-        yield patches, theta, str(f)
+
+    if prefetch_workers <= 0:
+        # Sequential path (legacy).
+        for f in files:
+            patches, theta, path = _load_harmonic_file(f, channel_slice, channel_scale)
+            if flip:
+                patches = _harmonic_random_flip(patches, rng)
+            yield patches, theta, path
+        return
+
+    # Async prefetched path. Maintain submission order so downstream sees
+    # deterministic file ordering (same as the legacy path).
+    with ThreadPoolExecutor(max_workers=prefetch_workers) as pool:
+        in_flight = []                 # FIFO of Future objects, in file order
+        file_iter = iter(files)
+        # Prime the pipeline.
+        for _ in range(prefetch_depth):
+            try:
+                in_flight.append(pool.submit(_load_harmonic_file, next(file_iter), channel_slice, channel_scale))
+            except StopIteration:
+                break
+        # Pop oldest, yield, submit next.
+        while in_flight:
+            fut = in_flight.pop(0)
+            patches, theta, path = fut.result()
+            if flip:
+                patches = _harmonic_random_flip(patches, rng)
+            yield patches, theta, path
+            try:
+                in_flight.append(pool.submit(_load_harmonic_file, next(file_iter), channel_slice, channel_scale))
+            except StopIteration:
+                pass
 
 
 def load_observed_from_harmonic_cache(
@@ -366,6 +428,8 @@ def load_observed_from_harmonic_cache(
     perm: int = 0,
     patch_idx: int = 0,
     meta_path: str | None = None,
+    channel_slice: slice | None = None,
+    channel_scale: np.ndarray | None = None,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Load (m_data, cosmo_params, truth) for the observed map from the cache.
 
@@ -389,6 +453,15 @@ def load_observed_from_harmonic_cache(
             f"Cache has {patches.shape[0]} patches per realization."
         )
     m_data = patches[patch_idx]
+    if channel_slice is not None:
+        m_data = m_data[..., channel_slice]
+    if channel_scale is not None:
+        scale = np.asarray(channel_scale, dtype=m_data.dtype)
+        if scale.shape != (m_data.shape[-1],):
+            raise ValueError(
+                f"channel_scale shape {scale.shape} != ({m_data.shape[-1]},)"
+            )
+        m_data = m_data * scale
 
     if meta_path is not None and Path(meta_path).exists():
         with h5py.File(meta_path, "r") as f:
@@ -416,6 +489,52 @@ def load_observed_from_harmonic_cache(
     return m_data, cosmo_params, truth
 
 
+def calibrate_channel_noise_sigma_from_harmonic_cache(
+    cache_dir: Path,
+    regime: str,
+    n_calibration_realizations: int = 32,
+    channel_slice: slice | None = None,
+    rng: np.random.Generator | None = None,
+) -> np.ndarray:
+    """Compute the global per-channel std of the harmonic-cache maps.
+
+    Used as the noise scale for the channel-aware noise model: cross channels
+    have ~10⁴× smaller amplitude than auto channels, so using the auto
+    pixel-noise σ as a single SNR denominator collapses cross-channel
+    wavelet SNR to ~0 and zeros 95% of the L1 histogram bins.
+
+    Returns an array of shape (n_channels_after_slice,) with the pooled std
+    across `n_calibration_realizations` cosmologies × all their patches.
+    """
+    print("######## CALIBRATING CHANNEL NOISE σ (global empirical) ########")
+    accum_sq = None
+    accum_sum = None
+    n_total = 0
+    for maps_np, _theta, _path in iter_harmonic_examples(
+        cache_dir, regime, split="train",
+        rng=rng, flip=False, n_take=n_calibration_realizations,
+        channel_slice=channel_slice,
+    ):
+        flat = maps_np.reshape(-1, maps_np.shape[-1]).astype(np.float64)
+        if accum_sq is None:
+            accum_sq = (flat ** 2).sum(axis=0)
+            accum_sum = flat.sum(axis=0)
+        else:
+            accum_sq += (flat ** 2).sum(axis=0)
+            accum_sum += flat.sum(axis=0)
+        n_total += flat.shape[0]
+    if accum_sq is None or n_total == 0:
+        raise RuntimeError("No harmonic-cache patches found for σ calibration")
+    mean = accum_sum / n_total
+    var = accum_sq / n_total - mean ** 2
+    sigma = np.sqrt(np.maximum(var, 0.0))
+    print(f"  Calibrated σ from {n_total} pixels-per-channel "
+          f"({n_calibration_realizations} cosmologies):")
+    for c, s in enumerate(sigma):
+        print(f"    channel {c}: σ = {s:.6g}  (mean = {mean[c]:.3g})")
+    return sigma.astype(np.float32)
+
+
 def calibrate_snr_range_from_harmonic_cache(
     stats: WLStatistics,
     cache_dir: Path,
@@ -430,6 +549,8 @@ def calibrate_snr_range_from_harmonic_cache(
     cross_snr_percentile: float = 0.0,
     reservoir_per_batch: int = 8000,
     rng: np.random.Generator | None = None,
+    channel_slice: slice | None = None,
+    channel_scale: np.ndarray | None = None,
 ) -> Tuple[float, float, float, float]:
     """Mirror of `calibrate_snr_range` over a harmonic-cache walk.
 
@@ -458,6 +579,8 @@ def calibrate_snr_range_from_harmonic_cache(
     for maps_np, _theta, _path in iter_harmonic_examples(
         cache_dir, regime, split="train",
         rng=rng, flip=False, n_take=n_calibration_realizations,
+        channel_slice=channel_slice,
+        channel_scale=channel_scale,
     ):
         if np.isnan(maps_np).any():
             continue
@@ -546,25 +669,37 @@ def compute_l1_dataset_from_harmonic_cache(
     rng: np.random.Generator | None = None,
     flip: bool = True,
     log_every: int = 100,
+    channel_slice: slice | None = None,
+    channel_scale: np.ndarray | None = None,
+    realizations_per_batch: int = 10,
 ) -> Dict[str, np.ndarray]:
-    """Mirror of `compute_l1_dataset` walking the harmonic cache."""
-    print(f"  Loading harmonic cache regime={regime} split={split} ...")
+    """Walk the harmonic cache and compute L1 features per realization.
+
+    `realizations_per_batch` controls how many cache files (each ~48 patches)
+    are concatenated before one GPU `compute_l1_batch` call. Each file alone
+    only gives ~48 patches → ~1.2 GB GPU usage. Batching 10 files at once
+    bumps that to ~480 patches per call (~5 GB) for ~5-10× throughput on
+    GPUs that otherwise sit ~95%% empty.
+    """
+    print(
+        f"  Loading harmonic cache regime={regime} split={split} "
+        f"(realizations_per_batch={realizations_per_batch}) ..."
+    )
     theta_list: List[np.ndarray] = []
     x_list: List[np.ndarray] = []
     n_processed = 0
     n_realizations = 0
     t0 = time.time()
-    for maps_np, theta_np, _path in iter_harmonic_examples(
-        cache_dir, regime, split=split, rng=rng, flip=flip,
-    ):
-        if np.isnan(maps_np).any():
-            print("    [!] Skipped realization with NaN maps")
-            continue
-        # Replicate theta per patch and apply h0 rescale (matches `rescale_h`).
-        theta_batch = np.broadcast_to(theta_np, (maps_np.shape[0], theta_np.shape[0])).copy()
-        theta_batch[:, 3] = theta_batch[:, 3] / 100.0
+    pending_maps: List[np.ndarray] = []
+    pending_theta: List[np.ndarray] = []
+
+    def _flush():
+        nonlocal n_processed
+        if not pending_maps:
+            return
+        big_batch = np.concatenate(pending_maps, axis=0)
         l1_vec = compute_l1_batch(
-            maps_np,
+            big_batch,
             noise_sigma,
             stats,
             l1_nbins,
@@ -579,16 +714,39 @@ def compute_l1_dataset_from_harmonic_cache(
             l1_max_snr_cross=l1_max_snr_cross,
         )
         x_list.append(l1_vec)
-        theta_list.append(theta_batch)
-        n_processed += maps_np.shape[0]
-        n_realizations += 1
-        if log_every and n_realizations % log_every == 0:
-            elapsed = time.time() - t0
-            print(f"    Processed {n_realizations} realizations / "
-                  f"{n_processed} patches ({elapsed:.1f}s)")
+        theta_list.append(np.concatenate(pending_theta, axis=0))
+        n_processed += big_batch.shape[0]
+        pending_maps.clear()
+        pending_theta.clear()
 
+    for maps_np, theta_np, _path in iter_harmonic_examples(
+        cache_dir, regime, split=split, rng=rng, flip=flip,
+        channel_slice=channel_slice,
+        channel_scale=channel_scale,
+    ):
+        if np.isnan(maps_np).any():
+            print("    [!] Skipped realization with NaN maps")
+            continue
+        # Replicate theta per patch and apply h0 rescale (matches `rescale_h`).
+        theta_batch = np.broadcast_to(theta_np, (maps_np.shape[0], theta_np.shape[0])).copy()
+        theta_batch[:, 3] = theta_batch[:, 3] / 100.0
+        pending_maps.append(maps_np)
+        pending_theta.append(theta_batch)
+        n_realizations += 1
+        if len(pending_maps) >= realizations_per_batch:
+            _flush()
+            if log_every and n_realizations % log_every == 0:
+                elapsed = time.time() - t0
+                print(f"    Processed {n_realizations} realizations / "
+                      f"{n_processed} patches ({elapsed:.1f}s, "
+                      f"{n_processed/max(elapsed,1e-9):.0f} patches/s)")
+
+    _flush()  # flush any remainder
     elapsed = time.time() - t0
-    print(f"  Done: {n_realizations} realizations / {n_processed} patches in {elapsed:.1f}s")
+    print(
+        f"  Done: {n_realizations} realizations / {n_processed} patches in {elapsed:.1f}s "
+        f"({n_processed/max(elapsed,1e-9):.0f} patches/s)"
+    )
     return {
         "theta": np.concatenate(theta_list, axis=0),
         "x": np.concatenate(x_list, axis=0),
@@ -1278,11 +1436,60 @@ def parse_args() -> argparse.Namespace:
         type=float,
         default=1.0,
         help=(
-            "Percentile (in %) used for cross-channel SNR range when auto-"
+            "Percentile (in %%) used for cross-channel SNR range when auto-"
             "calibrating: range = [pct, 100-pct]. Default 1.0 → 1st/99th "
             "percentile (cross channels are heavy-tailed so the legacy "
             "min/max calibration leaves >90%% of bins empty). Set to 0 to "
             "fall back to min/max + margin."
+        ),
+    )
+    p.add_argument(
+        "--channel-mode",
+        type=str,
+        default="auto_cross",
+        choices=["auto_cross", "cross_only"],
+        help=(
+            "Which subset of the 10-channel harmonic cache to feed to the L1 "
+            "pipeline. 'auto_cross' (default) uses all 10 channels (4 auto + "
+            "6 cross). 'cross_only' slices to the 6 cross channels at read "
+            "time and routes them all through the cross-SNR calibration. "
+            "Only meaningful with --full-sphere-cross-cache."
+        ),
+    )
+    p.add_argument(
+        "--cross-noise-model",
+        type=str,
+        default="auto_scalar",
+        choices=["auto_scalar", "channel_empirical_global"],
+        help=(
+            "Noise model for cross channels. 'auto_scalar' (default) uses "
+            "the auto pixel-noise σ as the SNR denominator for ALL channels "
+            "— but cross-map values are ~10⁴× smaller than autos, so cross "
+            "wavelet SNR collapses to ~0 and L1 bins are ~95%% structurally "
+            "zero. 'channel_empirical_global' computes σ_c per channel from "
+            "a global empirical std of the harmonic cache and pre-scales "
+            "each channel by σ_auto / σ_c so the cross SNR distribution "
+            "fills the bins. Only affects the cross channels' effective σ "
+            "(auto channels keep scale 1 by construction)."
+        ),
+    )
+    p.add_argument(
+        "--channel-sigma-calib-realizations",
+        type=int,
+        default=32,
+        help="How many cosmology files (cache .npz) to use for σ_c calibration.",
+    )
+    p.add_argument(
+        "--l1-realizations-per-batch",
+        type=int,
+        default=10,
+        help=(
+            "How many cache realizations (~48 patches each) to concatenate "
+            "into a single GPU L1 wavelet call. 1 = legacy behaviour (each "
+            ".npz processed independently, ~60 patches/s, ~1.2 GB GPU). 10 "
+            "(default) batches ~480 patches/call (~5 GB GPU, much higher "
+            "throughput). Increase further if memory allows; decrease if "
+            "OOM. Only affects the harmonic-cache route."
         ),
     )
 
@@ -1477,8 +1684,12 @@ def build_l1_cache_metadata(
     n_l1_channels: int,
     cross_maps_route: str = "flat",
     full_sphere_cache_manifest_sha256: str = "",
+    channel_mode: str = "auto_cross",
+    cross_noise_model: str = "auto_scalar",
+    channel_scale: np.ndarray | None = None,
+    channel_sigma: np.ndarray | None = None,
 ) -> Dict[str, object]:
-    return {
+    meta = {
         "l1_min_snr": float(l1_min_snr),
         "l1_max_snr": float(l1_max_snr),
         "l1_min_snr_cross": float(l1_min_snr_cross),
@@ -1495,6 +1706,7 @@ def build_l1_cache_metadata(
         "cross_maps_route": str(cross_maps_route),
         "full_sphere_cache_manifest_sha256": str(full_sphere_cache_manifest_sha256),
         "n_l1_channels": int(n_l1_channels),
+        "channel_mode": str(channel_mode),
         "n_scales": int(args.n_scales),
         "tfds_name": str(args.tfds_name),
         "tomo_bin_indices": ",".join(str(b) for b in tomo_bin_indices),
@@ -1506,7 +1718,13 @@ def build_l1_cache_metadata(
         "sigma_e": float(args.sigma_e),
         "galaxy_density": float(args.galaxy_density),
         "ds_batch_size": int(args.ds_batch_size),
+        "cross_noise_model": str(cross_noise_model),
     }
+    if channel_scale is not None:
+        meta["channel_scale"] = np.asarray(channel_scale, dtype=np.float32)
+    if channel_sigma is not None:
+        meta["channel_sigma"] = np.asarray(channel_sigma, dtype=np.float32)
+    return meta
 
 
 def compare_cache_metadata(
@@ -1858,6 +2076,71 @@ def main() -> None:
     )
     n_cross_pairs = (args.nbins * (args.nbins - 1)) // 2 if args.cross_maps else 0
     n_l1_channels = args.nbins + n_cross_pairs
+
+    # Channel-mode dispatch: 'cross_only' slices the 10-channel harmonic cache to
+    # the 6 cross channels at read time and routes all 6 through the cross-SNR
+    # calibration (effective auto boundary = 0). Only meaningful for harmonic
+    # route, since the flat-sky path constructs cross channels at runtime.
+    if args.channel_mode == "cross_only":
+        if cross_maps_route != "harmonic":
+            raise ValueError(
+                "--channel-mode cross_only requires --full-sphere-cross-cache "
+                "(no flat-sky channel-slicing path)."
+            )
+        if n_cross_pairs == 0:
+            raise ValueError(
+                "--channel-mode cross_only requires a non-empty cross-channel "
+                "set (need args.nbins >= 2 → n_cross_pairs > 0)."
+            )
+        l1_channel_slice = slice(args.nbins, args.nbins + n_cross_pairs)
+        l1_auto_boundary = 0
+        n_l1_channels = n_cross_pairs
+        print(
+            f"  channel_mode    = cross_only (slicing harmonic cache to "
+            f"channels {l1_channel_slice.start}:{l1_channel_slice.stop}, "
+            f"all routed through cross-SNR calibration)"
+        )
+    else:
+        l1_channel_slice = None
+        l1_auto_boundary = args.nbins
+        print(f"  channel_mode    = auto_cross (full 10-channel layout)")
+
+    # --- Channel-aware noise model (optional) ---------------------------
+    # When 'channel_empirical_global', estimate σ_c per channel from the cache
+    # and pre-scale the maps so that wavelet-SNR ranges are comparable across
+    # channels. Cross maps have ~10⁴× smaller amplitude than autos; without
+    # this scaling, the auto-σ-based SNR collapses cross-channel L1 histograms
+    # to a couple of central bins (~95%% of bins structurally zero).
+    l1_channel_scale: np.ndarray | None = None
+    l1_channel_sigma: np.ndarray | None = None
+    if args.cross_noise_model == "channel_empirical_global" and cross_maps_route == "harmonic":
+        l1_channel_sigma = calibrate_channel_noise_sigma_from_harmonic_cache(
+            cache_dir=full_sphere_cache_dir,
+            regime=harmonic_regime,
+            n_calibration_realizations=int(args.channel_sigma_calib_realizations),
+            channel_slice=l1_channel_slice,
+            rng=np.random.default_rng(int(args.seed) + 7717),
+        )
+        # Scale factor: for each channel, rescale so its empirical σ matches
+        # noise_sigma (auto pixel noise). For auto channels (boundary <= c <
+        # l1_auto_boundary in the cross_only case there are no autos), we
+        # leave them unscaled (factor 1).
+        scale = (float(noise_sigma) / np.maximum(l1_channel_sigma, 1e-30)).astype(np.float32)
+        # In auto_cross mode the first l1_auto_boundary channels are AUTO and
+        # already on the right scale; force their scale to 1.0.
+        if l1_auto_boundary > 0:
+            scale[:l1_auto_boundary] = 1.0
+        l1_channel_scale = scale
+        print(f"  cross_noise_model = channel_empirical_global")
+        print(f"  channel_scale (σ_auto / σ_c, capped to 1.0 on auto channels):")
+        for c, (s, sig) in enumerate(zip(l1_channel_scale, l1_channel_sigma)):
+            print(f"    ch {c}: scale={s:.4g}  σ_c={sig:.4g}")
+    elif args.cross_noise_model == "channel_empirical_global":
+        print(
+            "  WARNING: --cross-noise-model channel_empirical_global is only "
+            "implemented for the harmonic-cache route; ignoring."
+        )
+
     raw_summary_dim = args.n_scales * args.l1_nbins * n_l1_channels
     print(f"  pixel_arcmin   = {pixel_arcmin:.2f}")
     print(f"  noise_sigma    = {noise_sigma:.6f}")
@@ -1866,7 +2149,7 @@ def main() -> None:
     print(
         f"  raw_summary    = {raw_summary_dim} "
         f"({args.n_scales} scales × {args.l1_nbins} bins × "
-        f"{n_l1_channels} channels [{args.nbins} auto{cross_desc}])"
+        f"{n_l1_channels} channels [{l1_auto_boundary} auto{cross_desc}])"
     )
 
     save_path = (Path(args.save_dir) / "l1norm_cross_jaxili" / args.map_kind).resolve()
@@ -1884,6 +2167,8 @@ def main() -> None:
             perm=args.harmonic_obs_perm,
             patch_idx=args.harmonic_obs_patch_idx,
             meta_path=args.cosmogrid_meta,
+            channel_slice=l1_channel_slice,
+            channel_scale=l1_channel_scale,
         )
     else:
         m_data, _, truth = load_observed_map(
@@ -2010,7 +2295,7 @@ def main() -> None:
                     cache_dir=full_sphere_cache_dir,
                     regime=harmonic_regime,
                     noise_sigma=noise_sigma,
-                    nbins=args.nbins,
+                    nbins=l1_auto_boundary,
                     n_l1_channels=n_l1_channels,
                     l1_implementation=args.l1_implementation,
                     n_calibration_realizations=int(args.harmonic_calibration_realizations),
@@ -2018,6 +2303,8 @@ def main() -> None:
                     margin=args.calibration_margin,
                     cross_snr_percentile=float(args.cross_snr_percentile),
                     rng=np.random.default_rng(int(args.seed)),
+                    channel_slice=l1_channel_slice,
+                    channel_scale=l1_channel_scale,
                 )
             else:
                 (
@@ -2069,6 +2356,10 @@ def main() -> None:
         n_l1_channels=n_l1_channels,
         cross_maps_route=cross_maps_route,
         full_sphere_cache_manifest_sha256=full_sphere_cache_manifest_sha,
+        channel_mode=str(args.channel_mode),
+        cross_noise_model=str(args.cross_noise_model),
+        channel_scale=l1_channel_scale,
+        channel_sigma=l1_channel_sigma,
     )
 
     print("######## L1-NORM: OBSERVED MAP ########")
@@ -2077,7 +2368,7 @@ def main() -> None:
         noise_sigma,
         stats,
         args.l1_nbins,
-        args.nbins,
+        l1_auto_boundary,
         l1_min_snr=l1_min_snr,
         l1_max_snr=l1_max_snr,
         clamp_overflow=effective_l1_clamp,
@@ -2137,7 +2428,7 @@ def main() -> None:
                     stats=stats,
                     noise_sigma=noise_sigma,
                     l1_nbins=args.l1_nbins,
-                    nbins=args.nbins,
+                    nbins=l1_auto_boundary,
                     n_l1_channels=n_l1_channels,
                     l1_min_snr=l1_min_snr,
                     l1_max_snr=l1_max_snr,
@@ -2148,6 +2439,9 @@ def main() -> None:
                     l1_implementation=args.l1_implementation,
                     rng=np.random.default_rng(int(args.seed) + 1001),
                     flip=True,
+                    channel_slice=l1_channel_slice,
+                    channel_scale=l1_channel_scale,
+                    realizations_per_batch=int(args.l1_realizations_per_batch),
                 )
                 dataset_val = compute_l1_dataset_from_harmonic_cache(
                     cache_dir=full_sphere_cache_dir,
@@ -2156,7 +2450,7 @@ def main() -> None:
                     stats=stats,
                     noise_sigma=noise_sigma,
                     l1_nbins=args.l1_nbins,
-                    nbins=args.nbins,
+                    nbins=l1_auto_boundary,
                     n_l1_channels=n_l1_channels,
                     l1_min_snr=l1_min_snr,
                     l1_max_snr=l1_max_snr,
@@ -2167,6 +2461,9 @@ def main() -> None:
                     l1_implementation=args.l1_implementation,
                     rng=np.random.default_rng(int(args.seed) + 2001),
                     flip=False,  # deterministic val
+                    channel_slice=l1_channel_slice,
+                    channel_scale=l1_channel_scale,
+                    realizations_per_batch=int(args.l1_realizations_per_batch),
                 )
             else:
                 dataset_train = compute_l1_dataset(
