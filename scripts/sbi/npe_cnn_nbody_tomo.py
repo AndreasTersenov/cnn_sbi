@@ -28,7 +28,9 @@ import hashlib
 import json
 import os
 import pickle
+import queue
 import re
+import threading
 import time
 from functools import partial
 from pathlib import Path
@@ -535,6 +537,11 @@ def parse_args() -> argparse.Namespace:
                     help="Load saved flow params instead of training")
     p.add_argument("--no-sample", action="store_true",
                     help="Skip posterior sampling")
+    p.add_argument("--exit-after-compress", action="store_true",
+                    help="Train compressor, compress train/val datasets to "
+                         "--cache-dir, then exit before NDE training. Used by "
+                         "the shared-compressor campaign mode so that 3 NDE "
+                         "seeds can reuse the same compressed datasets.")
     p.add_argument("--save-every", type=int, default=2000)
     p.add_argument("--plot", action="store_true",
                     help="Generate triangle plot")
@@ -577,6 +584,19 @@ def parse_args() -> argparse.Namespace:
             "cross-channels (C_ij i≠j, ~100× smaller amplitude) without "
             "discarding inter-example cosmological scale variation. "
             "The 10 per-channel RMS values are saved in the run meta JSON."
+        ),
+    )
+    p.add_argument(
+        "--channel-mode",
+        type=str,
+        default="auto_cross",
+        choices=["auto_cross", "cross_only"],
+        help=(
+            "Which subset of the 10-channel harmonic cache to feed to the CNN "
+            "compressor. 'auto_cross' (default) uses all 10 channels (4 auto + "
+            "6 cross). 'cross_only' slices to the 6 cross channels at read "
+            "time; Haiku Conv2D adapts to the 6-channel input automatically. "
+            "Only meaningful with --full-sphere-cross-cache."
         ),
     )
 
@@ -759,6 +779,7 @@ def iter_harmonic_examples(
     rng: np.random.Generator | None = None,
     flip: bool = True,
     max_realizations: int | None = None,
+    channel_slice: slice | None = None,
 ):
     files = _list_harmonic_cache_files(cache_dir, regime, split)
     if max_realizations is not None:
@@ -775,9 +796,28 @@ def iter_harmonic_examples(
                 f"(expected (..., {HARMONIC_CACHE_CHANNELS}))."
             )
         _assert_zero_mean_patches(patches, str(f))
+        if channel_slice is not None:
+            patches = patches[..., channel_slice]
         if flip:
             patches = _harmonic_random_flip(patches, rng)
         yield patches, theta, str(f)
+
+
+def _channel_rms_cache_path(
+    cache_dir: Path,
+    regime: str,
+    split: str,
+    channel_slice: slice | None,
+    max_realizations: int | None,
+) -> Path:
+    if channel_slice is None:
+        slice_key = "all"
+    else:
+        slice_key = f"{channel_slice.start}-{channel_slice.stop}-{channel_slice.step}"
+    limit_key = "all" if max_realizations is None else str(int(max_realizations))
+    key = f"{regime}__{split}__slice_{slice_key}__lim_{limit_key}"
+    digest = hashlib.sha256(key.encode("utf-8")).hexdigest()[:16]
+    return cache_dir / ".channel_rms_cache" / f"{key}__{digest}.json"
 
 
 def compute_harmonic_channel_rms(
@@ -785,13 +825,42 @@ def compute_harmonic_channel_rms(
     regime: str,
     split: str,
     max_realizations: int | None = None,
+    channel_slice: slice | None = None,
+    use_disk_cache: bool = True,
 ) -> np.ndarray:
     """Compute per-channel RMS over the training split (pooled over all pixels and examples).
 
     Returns shape (n_channels,) float32 array. Patches must be zero-mean
     (enforced by cache), so RMS == std here. Using RMS rather than per-example
     std ensures inter-example cosmological amplitude variation is preserved.
+
+    `channel_slice`, when provided, selects a subset of the 10 cached
+    channels before pooling (RMS is then a (len(slice),)-vector).
+
+    When `use_disk_cache=True`, the computed RMS is persisted to
+    `<cache_dir>/.channel_rms_cache/<key>.json` and reused across runs.
+    The cache key is derived from (regime, split, channel_slice,
+    max_realizations); the underlying patches are immutable, so a
+    matching key always yields the same RMS.
     """
+    cache_path = _channel_rms_cache_path(
+        cache_dir, regime, split, channel_slice, max_realizations
+    )
+    if use_disk_cache and cache_path.is_file():
+        try:
+            with cache_path.open("r") as f:
+                payload = json.load(f)
+            rms = np.asarray(payload["rms"], dtype=np.float32)
+            print(
+                f"  [channel-rms-cache] hit: loaded {rms.shape[0]} values from {cache_path.name}"
+            )
+            return rms
+        except (json.JSONDecodeError, KeyError, ValueError) as exc:
+            print(
+                f"  [channel-rms-cache] corrupt entry at {cache_path}: {exc}; recomputing.",
+                flush=True,
+            )
+
     files = _list_harmonic_cache_files(cache_dir, regime, split)
     if max_realizations is not None:
         files = files[:max_realizations]
@@ -805,12 +874,42 @@ def compute_harmonic_channel_rms(
     for path in files:
         with np.load(path, allow_pickle=False) as d:
             patches = np.asarray(d["patches"], dtype=np.float32)  # (N, H, W, C)
+        if channel_slice is not None:
+            patches = patches[..., channel_slice]
         if sum_sq is None:
             sum_sq = np.zeros(patches.shape[-1], dtype=np.float64)
         sum_sq += np.sum(patches.astype(np.float64) ** 2, axis=(0, 1, 2))
         n_pixels += patches.shape[0] * patches.shape[1] * patches.shape[2]
     assert sum_sq is not None
     rms = np.sqrt(sum_sq / n_pixels).astype(np.float32)
+
+    if use_disk_cache:
+        try:
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
+            payload = {
+                "rms": rms.tolist(),
+                "regime": regime,
+                "split": split,
+                "channel_slice": (
+                    None
+                    if channel_slice is None
+                    else [channel_slice.start, channel_slice.stop, channel_slice.step]
+                ),
+                "max_realizations": max_realizations,
+                "n_files": len(files),
+                "n_pixels": int(n_pixels),
+            }
+            tmp = cache_path.with_suffix(".json.tmp")
+            with tmp.open("w") as f:
+                json.dump(payload, f, indent=2)
+            tmp.replace(cache_path)
+            print(f"  [channel-rms-cache] wrote {cache_path.name}")
+        except OSError as exc:
+            print(
+                f"  [channel-rms-cache] could not persist to {cache_path}: {exc}",
+                flush=True,
+            )
+
     return rms
 
 
@@ -853,6 +952,7 @@ def load_observed_from_harmonic_cache(
     patch_idx: int = 0,
     meta_path: str | None = None,
     channel_scale: np.ndarray | None = None,
+    channel_slice: slice | None = None,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     print("######## OBSERVED DATA (harmonic cache) ########")
     npz_path = cache_dir / regime / "obs" / f"{cosmo_id}_perm{perm}.npz"
@@ -871,6 +971,8 @@ def load_observed_from_harmonic_cache(
             f"[0, {patches.shape[0]})."
         )
     m_data = patches[patch_idx]
+    if channel_slice is not None:
+        m_data = m_data[..., channel_slice]
     if channel_scale is not None:
         m_data = m_data / channel_scale
 
@@ -909,7 +1011,23 @@ def build_harmonic_batch_iterator(
     flip: bool,
     max_realizations: int | None = None,
     channel_scale: np.ndarray | None = None,
+    channel_slice: slice | None = None,
+    pool_size: int = 6,
+    prefetch_depth: int = 6,
+    loader_threads: int = 4,
 ) -> Iterator[Dict[str, np.ndarray]]:
+    """Yield shuffled batches from the harmonic .npz cache.
+
+    Each cache file holds 48 patches. The naive per-file iterator caps the
+    effective batch size at 48 and serialises ~260 ms NFS+zlib loads with GPU
+    compute. This implementation:
+      - prefetches `prefetch_depth` files on a daemon thread (overlaps I/O with
+        compute),
+      - keeps `pool_size` loaded files in a working-set ring buffer and draws
+        each batch of `batch_size` patches uniformly across that pool (so the
+        configured batch size is actually delivered, with cross-file shuffling),
+      - validates the zero-mean invariant once at startup instead of every file.
+    """
     files = _list_harmonic_cache_files(cache_dir, regime, split)
     if max_realizations is not None:
         files = files[:max_realizations]
@@ -917,25 +1035,91 @@ def build_harmonic_batch_iterator(
         raise ValueError(
             f"No harmonic cache files available for split={split}, regime={regime}."
         )
-    rng = np.random.default_rng(seed)
-    while True:
-        order = rng.permutation(len(files))
-        for idx in order:
-            path = files[int(idx)]
-            with np.load(path, allow_pickle=False) as d:
-                maps_np = np.asarray(d["patches"], dtype=np.float32)
-                theta_np = np.asarray(d["theta"], dtype=np.float64)
-            _assert_zero_mean_patches(maps_np, str(path))
-            if channel_scale is not None:
-                maps_np = maps_np / channel_scale
-            if flip:
-                maps_np = _harmonic_random_flip(maps_np, rng)
-            perm = rng.permutation(maps_np.shape[0])
-            maps_np = maps_np[perm]
-            theta_batch = _theta_batch_from_harmonic(theta_np, maps_np.shape[0])[perm]
-            for start in range(0, maps_np.shape[0], batch_size):
-                end = start + batch_size
-                yield {"maps": maps_np[start:end], "theta": theta_batch[start:end]}
+
+    # One-time zero-mean validation on the first file (post-slice if applicable).
+    with np.load(files[0], allow_pickle=False) as _d:
+        _sentinel = np.asarray(_d["patches"], dtype=np.float32)
+    if channel_slice is not None:
+        _sentinel = _sentinel[..., channel_slice]
+    _assert_zero_mean_patches(_sentinel, str(files[0]))
+    del _sentinel
+
+    file_queue: queue.Queue = queue.Queue(maxsize=int(prefetch_depth))
+    stop_event = threading.Event()
+
+    def _loader(worker_id: int):
+        loader_rng = np.random.default_rng(int(seed) ^ 0xCAFE ^ worker_id)
+        while not stop_event.is_set():
+            order = loader_rng.permutation(len(files))
+            for idx in order:
+                if stop_event.is_set():
+                    return
+                path = files[int(idx)]
+                try:
+                    with np.load(path, allow_pickle=False) as d:
+                        maps_np = np.asarray(d["patches"], dtype=np.float32)
+                        theta_np = np.asarray(d["theta"], dtype=np.float64)
+                except Exception as exc:
+                    print(
+                        f"[harmonic_iter] load failed for {path}: {exc}",
+                        flush=True,
+                    )
+                    continue
+                if channel_slice is not None:
+                    maps_np = maps_np[..., channel_slice]
+                if channel_scale is not None:
+                    maps_np = maps_np / channel_scale
+                while not stop_event.is_set():
+                    try:
+                        file_queue.put((maps_np, theta_np), timeout=1.0)
+                        break
+                    except queue.Full:
+                        continue
+
+    threads = [
+        threading.Thread(target=_loader, args=(i,), daemon=True)
+        for i in range(max(1, int(loader_threads)))
+    ]
+    for t in threads:
+        t.start()
+
+    rng = np.random.default_rng(int(seed))
+    pool: list[tuple[np.ndarray, np.ndarray]] = []  # list of (maps, theta_broadcast)
+
+    def _pool_patch_count() -> int:
+        return sum(int(m.shape[0]) for m, _ in pool)
+
+    def _refill_to(target_patches: int) -> None:
+        while _pool_patch_count() < target_patches:
+            maps_np, theta_np = file_queue.get()
+            theta_arr = _theta_batch_from_harmonic(theta_np, int(maps_np.shape[0]))
+            pool.append((maps_np, theta_arr))
+
+    target_patches = max(int(batch_size) * 2, int(pool_size) * 48)
+
+    try:
+        _refill_to(target_patches)
+        while True:
+            maps_pool = np.concatenate([m for m, _ in pool], axis=0)
+            theta_pool = np.concatenate([t for _, t in pool], axis=0)
+            n_pool = int(maps_pool.shape[0])
+            perm = rng.permutation(n_pool)
+            cursor = 0
+            while cursor + int(batch_size) <= n_pool:
+                idx = perm[cursor:cursor + int(batch_size)]
+                batch_maps = maps_pool[idx]
+                batch_theta = theta_pool[idx]
+                if flip:
+                    batch_maps = _harmonic_random_flip(batch_maps, rng)
+                yield {"maps": batch_maps, "theta": batch_theta}
+                cursor += int(batch_size)
+            # Evict the oldest half of the pool and refill from the prefetch
+            # queue so a fresh draw mixes new realisations with carry-over.
+            n_evict = max(1, len(pool) // 2)
+            del pool[:n_evict]
+            _refill_to(target_patches)
+    finally:
+        stop_event.set()
 
 
 def compress_dataset_from_harmonic_cache(
@@ -950,6 +1134,7 @@ def compress_dataset_from_harmonic_cache(
     flip: bool = True,
     max_realizations: int | None = None,
     channel_scale: np.ndarray | None = None,
+    channel_slice: slice | None = None,
 ) -> Dict[str, np.ndarray]:
     print(f"  Loading harmonic cache [{regime}/{split}] ...")
     theta_list = []
@@ -965,6 +1150,7 @@ def compress_dataset_from_harmonic_cache(
         rng=rng,
         flip=flip,
         max_realizations=max_realizations,
+        channel_slice=channel_slice,
     ):
         if channel_scale is not None:
             maps_np = maps_np / channel_scale
@@ -1418,6 +1604,7 @@ def build_cnn_cache_metadata(
         "harmonic_normalize_input_channels": int(
             bool(getattr(args, "harmonic_normalize_input_channels", False))
         ),
+        "channel_mode": str(getattr(args, "channel_mode", "auto_cross")),
         "compressor_params_path": str(params_path) if params_path else "",
         "compressor_state_path": str(state_path) if state_path else "",
         "compressor_params_sha256": (
@@ -2916,9 +3103,36 @@ def main():
             "route because shape-noise levels are baked into cache files."
         )
 
-    cnn_input_channels = (
-        HARMONIC_CACHE_CHANNELS if cnn_map_route == "harmonic" else args.nbins
-    )
+    # Channel-mode dispatch: 'cross_only' slices the 10-channel harmonic cache
+    # down to the 6 cross channels at read time (no new cache build needed).
+    cnn_channel_slice: slice | None = None
+    if cnn_map_route == "harmonic" and args.channel_mode == "cross_only":
+        n_auto = args.nbins
+        n_cross_pairs = HARMONIC_CACHE_CHANNELS - n_auto
+        if n_cross_pairs <= 0:
+            raise ValueError(
+                "--channel-mode=cross_only requires HARMONIC_CACHE_CHANNELS > nbins; "
+                f"got HARMONIC_CACHE_CHANNELS={HARMONIC_CACHE_CHANNELS}, nbins={n_auto}."
+            )
+        cnn_channel_slice = slice(n_auto, HARMONIC_CACHE_CHANNELS)
+        print(
+            f"  [channel-mode=cross_only] Slicing harmonic cache channels "
+            f"[{n_auto}:{HARMONIC_CACHE_CHANNELS}] → {n_cross_pairs} cross channels."
+        )
+    elif args.channel_mode == "cross_only" and cnn_map_route != "harmonic":
+        raise ValueError(
+            "--channel-mode=cross_only requires --cnn-map-route=harmonic "
+            "(must also pass --full-sphere-cross-cache)."
+        )
+
+    if cnn_map_route == "harmonic":
+        cnn_input_channels = (
+            HARMONIC_CACHE_CHANNELS
+            if cnn_channel_slice is None
+            else (cnn_channel_slice.stop - cnn_channel_slice.start)
+        )
+    else:
+        cnn_input_channels = args.nbins
 
     # Per-channel RMS normalization for harmonic route (computed once here so it
     # is available for both the observed map and the compressor training iterator).
@@ -2935,6 +3149,7 @@ def main():
             regime=harmonic_regime,
             split=args.compressor_train_split,
             max_realizations=args.harmonic_train_realizations_limit,
+            channel_slice=cnn_channel_slice,
         )
         print(f"  Per-channel RMS (auto first, then cross): {harmonic_channel_scale}")
         print(
@@ -2989,6 +3204,7 @@ def main():
             patch_idx=args.harmonic_obs_patch_idx,
             meta_path=args.cosmogrid_meta,
             channel_scale=harmonic_channel_scale,
+            channel_slice=cnn_channel_slice,
         )
     else:
         m_data, cosmo_params, truth = load_observed_map(
@@ -3189,6 +3405,7 @@ def main():
                 flip=is_train_split,
                 max_realizations=split_limit,
                 channel_scale=harmonic_channel_scale,
+                channel_slice=cnn_channel_slice,
             )
 
         compressor_dataset_iter_factory = _harmonic_dataset_iter_factory
@@ -3250,6 +3467,23 @@ def main():
             vmim_nf_hidden=int(args.vmim_nf_hidden),
             dataset_iter_factory=compressor_dataset_iter_factory,
         )
+        # Stamp the cache fingerprint as if the just-trained checkpoint were
+        # loaded "pretrained" from its final .pkl. A downstream Stage B run
+        # that does --no-train-compressor --compressor-params <that path> will
+        # compute the same fingerprint and hit the cache instead of
+        # recomputing the compressed datasets.
+        final_params = sorted(
+            comp_save_dir.rglob("params_nd_compressor_batch*.pkl"),
+            key=lambda p: int(p.stem.split("batch")[-1]),
+        )
+        if final_params:
+            params_path = final_params[-1]
+            last_step = int(params_path.stem.split("batch")[-1])
+            state_path = params_path.parent / f"opt_state_resnet_batch{last_step}.pkl"
+            if state_path.exists():
+                compressor_params_ref = str(params_path)
+                compressor_state_ref = str(state_path)
+                compressor_source = "pretrained"
         # Invalidate any cached compressed datasets
         cache_dir = Path(args.cache_dir) if args.cache_dir else None
         if cache_dir is not None:
@@ -3343,6 +3577,7 @@ def main():
                 flip=True,
                 max_realizations=args.harmonic_train_realizations_limit,
                 channel_scale=harmonic_channel_scale,
+                channel_slice=cnn_channel_slice,
             )
             dataset_val = compress_dataset_from_harmonic_cache(
                 cache_dir=full_sphere_cache_dir,
@@ -3356,6 +3591,7 @@ def main():
                 flip=False,
                 max_realizations=args.harmonic_val_realizations_limit,
                 channel_scale=harmonic_channel_scale,
+                channel_slice=cnn_channel_slice,
             )
         else:
             paired_map_view = (
@@ -3389,6 +3625,17 @@ def main():
 
     print(f"  Train x shape = {dataset_train['x'].shape}")
     print(f"  Val   x shape = {dataset_val['x'].shape}")
+
+    if args.exit_after_compress:
+        print("######## EXIT-AFTER-COMPRESS ########")
+        print(f"  Compressor params dir: {comp_save_dir}")
+        print(f"  Compressed-dataset cache dir: {cache_dir}")
+        print("  NDE training skipped (shared-compressor mode).")
+        print("  Reuse with: --no-train-compressor "
+              "--compressor-params <comp_save_dir>/params_nd_compressor_batch<N>.pkl "
+              "--compressor-state <comp_save_dir>/opt_state_resnet_batch<N>.pkl "
+              f"--cache-dir {cache_dir}")
+        return
 
     # ------------------------------------------------------------------
     # 3b. Compressor diagnostics
@@ -3648,6 +3895,12 @@ def main():
             "harmonic_channel_scale": (
                 harmonic_channel_scale.tolist()
                 if harmonic_channel_scale is not None
+                else None
+            ),
+            "channel_mode": str(args.channel_mode),
+            "channel_slice": (
+                [cnn_channel_slice.start, cnn_channel_slice.stop]
+                if cnn_channel_slice is not None
                 else None
             ),
             "cnn_map_route": str(cnn_map_route),
