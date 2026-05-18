@@ -1,5 +1,6 @@
 ---
 name: Compressor pool window 16/stride 8 over 20x20 features = mostly-global pooling (cnn-auto-push, A3)
+status: open
 tags:
     - bug-shape
     - audit-A3

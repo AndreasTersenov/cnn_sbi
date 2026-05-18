@@ -1,5 +1,6 @@
 ---
 name: VMIM aux network (--vmim-nf-hidden 128) may bias compressor toward summaries it can model, not max-info (cnn-auto-push, A3)
+status: open
 tags:
     - bug-shape
     - audit-A3

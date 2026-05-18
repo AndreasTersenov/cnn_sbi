@@ -1,5 +1,6 @@
 ---
 name: mean-of-seeds FoM3 is biased toward tight-but-drifty estimators; pooled ratio 0.63-0.79 reveals it (cnn-auto-push, A3)
+status: open
 tags:
     - bug-shape
     - audit-A3

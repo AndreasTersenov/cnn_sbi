@@ -1,5 +1,6 @@
 ---
 name: Piecewise LR schedule hurts compressor at 120k vs 60k — Q2 falsified pre-iter-16-completion (cnn-auto-push)
+status: open
 tags:
     - finding
     - cnn-auto-push-18-20-2026
