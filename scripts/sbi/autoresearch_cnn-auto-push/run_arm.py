@@ -98,7 +98,7 @@ def parse_args() -> argparse.Namespace:
                    help="NDE flow early-stop patience (in val checks).")
     p.add_argument("--batch-size", type=int, default=256,
                    help="NDE flow batch size.")
-    p.add_argument("--compressor-batch-size", type=int, default=128)
+    p.add_argument("--compressor-batch-size", type=int, default=256)
     p.add_argument("--compressor-lr", type=float, default=5e-4)
     p.add_argument("--compressor-dim", type=int, default=16)
     p.add_argument("--compressor-dense-width", type=int, default=512,
