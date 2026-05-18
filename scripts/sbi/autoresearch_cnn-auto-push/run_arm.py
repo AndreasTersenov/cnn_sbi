@@ -105,6 +105,10 @@ def parse_args() -> argparse.Namespace:
                    help="(plain arm only)")
     p.add_argument("--compressor-conv-channels", type=str, default="64,128,256",
                    help="(plain arm only)")
+    p.add_argument("--compressor-pool-window", type=int, default=16,
+                   help="(plain arm only) AvgPool window after conv trunk.")
+    p.add_argument("--compressor-pool-stride", type=int, default=8,
+                   help="(plain arm only) AvgPool stride after conv trunk.")
     p.add_argument("--npe-samples", type=int, default=100_000)
     p.add_argument("--nvp-layers", type=int, default=8)
     p.add_argument("--nvp-hidden", type=int, default=256)
@@ -130,8 +134,8 @@ def _arch_flags(arm: str, args: argparse.Namespace) -> List[str]:
             "--compressor-dim", str(args.compressor_dim),
             "--compressor-conv-channels", args.compressor_conv_channels,
             "--compressor-dense-width", str(args.compressor_dense_width),
-            "--compressor-pool-window", "16",
-            "--compressor-pool-stride", "8",
+            "--compressor-pool-window", str(args.compressor_pool_window),
+            "--compressor-pool-stride", str(args.compressor_pool_stride),
         ]
     if arm == "resnet50_gn":
         return [
