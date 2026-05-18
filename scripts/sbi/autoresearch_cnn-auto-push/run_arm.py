@@ -108,8 +108,12 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--npe-samples", type=int, default=100_000)
     p.add_argument("--nvp-layers", type=int, default=8)
     p.add_argument("--nvp-hidden", type=int, default=256)
-    p.add_argument("--xla-mem-fraction", type=float, default=0.9,
-                   help="Per-process XLA_PYTHON_CLIENT_MEM_FRACTION.")
+    p.add_argument("--xla-mem-fraction", type=float, default=0.3,
+                   help=("Per-process XLA_PYTHON_CLIENT_MEM_FRACTION (cap on "
+                         "growth, not eager preallocation; PREALLOCATE=false "
+                         "is forced). Default 0.3 (~12 GB on a 40 GB A100) is "
+                         "well above the ~3 GB the plain CNN + flow actually "
+                         "uses at cbs=128; bump for wider trunks or cbs>=256."))
     p.add_argument("--name-stem", type=str, default=None,
                    help="Posterior filename stem. Default: cnn_auto_<arm>_step<N>.")
     p.add_argument("--skip-compressor", action="store_true",
@@ -246,6 +250,7 @@ def _run_jobs_parallel(
             else:
                 env = dict(os.environ)
                 env["XLA_PYTHON_CLIENT_MEM_FRACTION"] = str(xla_mem_fraction)
+                env["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
                 with open(log_path, "w", encoding="utf-8") as logf:
                     proc = subprocess.run(
                         full_cmd, env=env,
