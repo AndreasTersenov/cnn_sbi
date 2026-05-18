@@ -1,10 +1,11 @@
 ---
 name: mean-of-seeds FoM3 is biased toward tight-but-drifty estimators; pooled ratio 0.63-0.79 reveals it (cnn-auto-push, A3)
-status: open
+status: closed
 tags:
     - bug-shape
     - audit-A3
     - cnn-auto-push-18-20-2026
 created-at: 2026-05-18T22:15:47.181282164Z
-outcome: 'Autoresearch metric is mean-of-seeds FoM3 = mean over seeds of 1/sqrt(det(C_seed)). With per-seed posterior mode drift > per-seed posterior width, the per-seed covs are small (each seed thinks it knows the answer precisely) but the cov of the pooled samples is large (modes scatter). render_overlay.py reports pooled/mos ratio: CNN at 0.63-0.79 vs L1 at 0.89. The metric rewards confidently-wrong estimators. Diagnostic: for each kept iter, log std-of-per-seed-posterior-means / mean-of-per-seed-posterior-stds in the (Ω_m,σ_8,w_0) subspace. If >>1, mode drift dominates. Implication: pooled FoM3 or a mode-aware metric (e.g. coverage-corrected) may be a better optimization target. Existing sub-fiber [[cnn-auto-pooled-vs-mos]] documents the finding; this one elevates it to a methodological challenge.'
+closed-at: 2026-05-18T22:38:35.361372157Z
+outcome: 'CONFIRMED empirically by audit A4 (Ralph iter-5, 2026-05-18 22:35 UTC). See [[cnn-auto-pooled-fom3-confirms-mode-drift]]: CNN kept/tie iters have pooled/mos FoM3 = 0.63-0.69 vs L1 reference 0.89; +30% MoS gain since iter-0 is only +10% in pooled. The bug is real; the loop has been climbing a misleading metric. Open methodology question [[cnn-auto-question-switch-to-pooled-fom3]] surfaces the keep-rule change to Andreas. Diagnostic recipe (compute_mode_drift.py) lives in audits/2026-05-18_A_mode_drift/.'
 ---
