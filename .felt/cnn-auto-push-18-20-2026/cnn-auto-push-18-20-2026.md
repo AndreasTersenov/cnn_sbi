@@ -8,11 +8,12 @@ tags:
     - weak-lensing
 created-at: 2026-05-17T21:58:04.756569363Z
 ---
+
 ## Desired State
 
   CNN-based posterior estimation on tomographic weak-lensing **auto-only** inputs
   (4 auto maps, 20deg/160px, BNT-off, fiducial cosmology) achieves
-  **mean-of-seeds FoM3 ≥ 50 000** across seeds 41/42/43 on the
+  **mean-of-seeds FoM3 ≥ 40 000** across seeds 41/42/43 on the
   (Ω_m, σ_8, w_0) subspace — closing the gap to the
   L1 auto+cross headline and meaningfully above the current
   CNN-plain baseline (22 633 ± 5126) and CNN-resnet50-BN baseline (20 480 ± 2299).
@@ -24,148 +25,259 @@ created-at: 2026-05-17T21:58:04.756569363Z
   is rerun at full step count (240 000) for confirmation before the desired
   state is declared reached.
 
-  The stretch target is mean-of-seeds FoM3 ≥ 38 000 (matching L1 auto+cross).
-  If reached, this is genuinely surprising — it would mean a CNN can extract
+  The stretch target is mean-of-seeds FoM3 ≥ 60 000 (matching L1 auto+cross).
+  If reached, this is genuinely surprising (in a good way) — it would mean a CNN can extract
   from 4 auto maps what L1 needs 10 channels for — and warrants a fresh
   deep-read rather than just shipping the number.
 
   ## Context
 
-  Project: `cnn_sbi`. Branch off `l1-cross-maps` as `autoresearch/cnn-auto-push-<date>`.
+  Project: `cnn_sbi`. Branch: `autoresearch/cnn-auto-push-18-20-2026` (off `l1-cross-maps`).
+  Notes dir: `/nas/tersenov/claude-notes/runs/cnn-auto-push-18-20-2026/`. Conda env: `jaxili`.
 
   **Code**:
-  - CNN runner: `scripts/sbi/npe_cnn_nbody_tomo.py`. Auto-only is either
-    the default-no-flag invocation or a `--channel-mode auto_only` flag —
-    the first iteration must verify which and log it.
+  - CNN runner: `scripts/sbi/npe_cnn_nbody_tomo.py`. Auto-only is the
+    default-no-flag invocation (no `--channel-mode`, no `--full-sphere-cross-cache`).
+    Confirmed in session-1.
+  - Per-arm runner: `scripts/sbi/autoresearch_cnn-auto-push/run_arm.py`.
+    Two-phase: Phase A trains compressor; Phase B trains NDE per seed in parallel.
+    Sets `XLA_PYTHON_CLIENT_PREALLOCATE=false` so jobs use ~3 GB instead of
+    pre-allocating 36 GB, which enables 4–5 parallel iterations per A100.
   - Existing CNN-plain auto-only baseline (22 633 mean):
     `scripts/sbi/results/exploratory/cnn_extended_train_zm/`
-    (dense512, 240 000 steps, seeds 41/42/43). Read its meta + any
-    CLI-args trail before proposing changes.
+    (dense512, 240 000 steps, seeds 41/42/43).
   - Existing CNN-resnet50 auto-only baseline (20 480 mean, stock BN):
     `scripts/sbi/results/exploratory/cnn_resnet50_zm_sweep/`.
-    BN was fine for auto-only per `memory/project_resnet_bn_contamination.md`
-    (the contamination only bites on multi-channel harmonic input).
-  - Prior sweeps: per Andreas, "for plain CNN a lot of things have been tried;
-    the records should be there, but I don't know where exactly." The first
-    iteration's REVIEW phase greps `scripts/sbi/results/` for `cnn_*` dirs,
-    reads their `meta.json` / README / CLI logs, and files findings as
-    sub-fibers (`felt add prior-cnn-sweeps-<arm> -s closed -o "<summary>"`).
-    Subsequent iterations consult these before proposing changes.
-  - FoM3 reference: `scripts/sbi/compare_probes_configs.py` (definition at
-    the top). The autoresearch loop uses the wrapper
-    `scripts/sbi/autoresearch_verify_fom3.py` (committed to the project)
-    to extract the scalar without rerunning the full 3×3 table.
+  - Prior sweep map: `$NOTES_DIR/runs/cnn-auto-push-18-20-2026/prior_cnn_sweeps_survey.md`
+    (built session-1, includes resnet50 BN cdim=20 → 27 668 at 120k).
+  - FoM3 wrapper: `scripts/sbi/autoresearch_verify_fom3.py` (committed).
   - Dataset: TFDS `NbodyCosmogridDatasetTomo/grid_20deg_160px_nonoverlap48`,
     4 tomographic bins, full-sphere cache. Read-only.
-  - Conda env: `jaxili`. Every command runs through `conda run -n jaxili python ...`.
 
-  **Scope (the loop may edit)**:
-  - A per-arm runner script the loop creates at
-    `scripts/sbi/autoresearch_cnn-auto-push/run_arm.py` (created in the pilot
-    iteration; thin wrapper that parallelises 3-seed training on GPUs 0–2).
-  - Hyperparameters: LR, batch size, total-steps (≤ 60 000 in screening mode),
-    warmup, schedule, EMA, augmentation, compressor head dim/dense width,
-    NDE flow depth/width, train/val arrangement.
-  - Architecture variants WITHIN the chosen arm (resnet50_gn block widths,
-    group counts; CNN plain layer widths, dropout, activations). NOT a swap
-    to a different family (ViT, etc.) without Andreas's say-so.
+  **Scope (the loop may edit) — EV-ranked priority order**:
+  See `$NOTES_DIR/runs/cnn-auto-push-18-20-2026/ITERATION_PLAYBOOK.md`. Do not
+  pick from this list arbitrarily; pick from the top of the live priority queue.
+  Knobs not in the playbook require justifying via the hypothesis discipline below.
 
   **Read-only**: `tf_dataset_nbody_tomo*.py`, the harmonic cache and base
   sims, `compare_probes_configs.py`, `autoresearch_verify_fom3.py`,
-  `learn2map/`, the L1 pipeline, the Guard command.
+  `learn2map/`, the L1 pipeline, the Guard command, the inner script's
+  data-loading / augmentation / normalization paths (modify only after
+  filing an audit finding that names the specific suspected bug).
 
   **Resources & policy**:
-  - GPUs 0, 1, 2 ONLY. GPU 3 is off-limits (Andreas's policy). Set
-    `CUDA_VISIBLE_DEVICES` accordingly.
-  - Other users (notably `alahiry`) sometimes grab GPUs unannounced. Each
-    iteration checks `nvidia-smi --query-compute-apps=pid,used_memory`
-    before launching training, and (when available) activates
-    `cluster-resources` for adapting GPU count + per-GPU memory fraction.
+  - GPUs 0, 1, 2 ONLY. GPU 3 is off-limits. Set `CUDA_VISIBLE_DEVICES` accordingly.
+  - Each iteration checks `nvidia-smi --query-compute-apps=pid,used_memory`
+    before launching, and activates `cluster-resources` skill.
   - Screening config: `--total-steps 60000` (~1/4 of the 240 000 baseline).
-    Per-iteration walltime budget: 3 hours. Autoresearch wraps Verify in
-    `timeout (Walltime + 5)s` as a hard cutoff.
-  - Confirmation: when the loop accepts a new best, it does NOT also retrain
-    at full step count automatically. Full-step confirmation is a manual
-    promotion step Andreas does at the end of the run.
+  - Per-iteration walltime budget: 3 hours wall, wrapped in
+    `timeout (Walltime + 5)s`.
+  - With `PREALLOCATE=false` and `xla=0.3`, GPU 2 fits ~4 parallel screening
+    jobs comfortably (compute-saturated at 91% util; memory at ~30% per
+    job). **Cap parallel jobs at 4** — beyond that, `--ds-batch-size=500`
+    compress-dataset step risks OOM (iter-12 in session-1).
+  - Confirmation: 240k rerun is a manual promotion step Andreas does, not
+    the loop.
+
+  ## Iteration Protocol
+
+  **Every iteration starts with PHASE 0 and ends with PHASE FILE.** These are
+  not optional. If you skip them you've left the protocol.
+
+  ### PHASE 0 — Pre-iteration (hypothesis discipline)
+
+  Before editing any file, do **all** of the following, in order:
+
+  1. **Read the last 3 felt history entries** (`felt history cnn-auto-push-18-20-2026 --last 3`) and the `STATUS.md` table. Read at least one closed sub-fiber under the parent if its slug looks relevant to what you're about to try (`felt tree cnn-auto-push-18-20-2026`).
+  2. **Read the prior 2 rows of `results.tsv`** for the current best, and the corresponding `metadata/iter-N_*.json` to see what's been tried, kept, reverted, or crashed.
+  3. **State a hypothesis in writing.** Write it as: "I think **X** is limiting performance because **Y**. Changing X should move FoM3 by **±Z%** in direction **D**, because **Z-justification**." Save this to `<iter-dir>/hypothesis.md` before any code change.
+     - If you cannot state a non-trivial hypothesis stronger than "try the next value of X", do NOT run training. **Run an audit instead** (see PHASE AUDIT below).
+     - The hypothesis must be falsifiable. "Bigger model = better" is not a hypothesis; "the compressor is information-bottlenecked at dim=16 because val loss plateaus and dim sweep shows monotonic-up to 16, so increasing dim further OR widening the dense head should help" is.
+  4. **Commit message format**: `experiment(autoresearch): <change> — hypothesis: <one sentence> — predicted Δ: <±N%>`. The commit body contains the full hypothesis paragraph from `hypothesis.md`.
+
+  ### PHASE 1–7 — Standard autoresearch loop
+
+  As in the `autoresearch` skill, with two modifications:
+
+  - **PHASE 5.5 GUARD becomes a 4-way check**:
+    a. Mean improvement clears noise floor (see Evidence/Verify).
+    b. `fom3_per_seed_min ≥ 11 000` (working floor; constitution's original 18 000 was 240k-calibrated and blocks every 60k iteration).
+    c. Compressor val loss curve looks healthy (monotonic-ish, no late-stage divergence; the iteration's Claude opens `<iter-dir>/logs/compressor.log` and eyeballs the `Step N | train | test` lines).
+    d. **Cross-method sanity** (every 3rd kept iteration, or on suspicion): overlay the new posterior on the L1 auto+cross posterior at fiducial. If the new CNN contours land outside L1's 2σ on (Ω_m, σ_8, w_0), flag it — could be a real improvement OR a bug. Recipe in `ITERATION_PLAYBOOK.md`.
+
+  - **PHASE 6 DECIDE adds confidence calibration**:
+    Record `predicted_delta` (from hypothesis) vs `actual_delta` in `metadata/iter-N_*.json` and in the felt history entry. After 5 iterations, if predictions are systematically off by >2× the actual magnitude in either direction, the implicit model of the bottleneck is wrong → trigger an audit.
+
+  ### PHASE AUDIT — Triggered, not always scheduled
+
+  Skip training. Spend the iteration on diagnostics. Triggered by **any** of:
+
+  - **Cadence**: every 5th iteration regardless (clock-based).
+  - **Plateau**: 3 consecutive iterations with no new best AND mean changes < 5% of std.
+  - **Calibration failure**: 5 of the last 5 predictions wrong by >2×.
+  - **Weird loss curve**: any iteration whose compressor val loss oscillates with amplitude > 0.5, plateaus before 30% of training, or whose NDE early-stops in the first 1k steps.
+  - **High inter-seed variance**: CoV (std/mean) > 15% on a kept iteration.
+  - **Cross-method disagreement**: the L1-overlay flag from PHASE 5.5 fires.
+
+  What the audit iteration does (pick at least one; file findings as sub-fibers):
+
+  1. **Code-read pass**: read 200–400 lines of `npe_cnn_nbody_tomo.py` that haven't been read yet. Targets in priority order: (a) data augmentation (noise injection, BNT path, zero-mean), (b) compressor architecture body (`Compressor`/`ResNet50GN` modules), (c) VMIM loss computation, (d) cache build path (compressor → compressed-dataset cache), (e) NDE flow construction. File any suspected bug as `cnn-auto-bug-<short-slug>` sub-fiber.
+  2. **Loss-curve forensics**: plot the kept iterations' compressor val loss and NDE val loss in one figure. Look for: late-stage divergence, oscillation, plateau-before-2/3-done, train/val gap collapse. Save to `<iter-dir>/loss_curves.pdf`.
+  3. **Adversarial peer review**: open a sub-process to attack the current best. The prompt is in `ITERATION_PLAYBOOK.md` (skeptical-referee mode). Capture three concrete attacks; file each as a sub-fiber.
+  4. **Cross-method overlay**: render an L1 vs CNN corner plot for the current best. Look for: parameter directions where they disagree (potential bug surface), parameter directions where CNN is *tighter* than L1 (potential overfit), shape mismatches.
+  5. **Route to `diagnose-training`** if the audit surfaces something that looks like a training pathology: NaN gradients, exploding losses, train-test split contamination, normalization mismatch.
+
+  Audit iterations **do not** produce a Verify metric. They produce sub-fibers and (sometimes) updates to `ITERATION_PLAYBOOK.md` to re-rank the EV queue.
+
+  ### PHASE FILE — Forced felt filing
+
+  Before exiting the iteration:
+
+  1. `felt history append cnn-auto-push-18-20-2026 --summary "iter-N (<change>): <hypothesis was H>. Result: <metric numbers + delta>. Implication: <H supported? Or what's the next hypothesis?>"` — this is **mandatory** and the iteration is not complete without it.
+  2. If the result is non-obvious (surprising, contradicts prior, surfaces a new direction), also `felt add cnn-auto-<learning-slug>` with `-o '<one-line learning>'` and `--status closed`, then `felt nest <slug> cnn-auto-push-18-20-2026`.
+  3. Update `metadata/iter-N_*.json` with `hypothesis`, `predicted_delta`, `actual_delta`, `calibration_error`, `cross_method_check` (if PHASE 5.5d ran).
 
   ## Skills
 
-  `autoresearch` (the iteration discipline), `coding-guidelines`
-  (verify-don't-vibe, pilot-before-scale-up, provenance), `cluster-resources`
-  (GPU/CPU availability), `figure-polish` (for any corner-plot of a new
-  best config vs. baseline). Activated at the start of every iteration.
+  Activated at the start of every iteration:
 
-  `felt` activates automatically inside Ralph; the loop files sub-fibers
-  for findings worth keeping (prior-sweep discoveries, surprising failures,
-  dead-end hypotheses).
-
-  `diagnose-training` is on standby — autoresearch routes to it after
-  3 consecutive crashes.
+  - **`autoresearch`** — iteration discipline. Note: this constitution **modifies**
+    the standard protocol; the modifications above (PHASE 0 hypothesis, PHASE AUDIT,
+    PHASE FILE) are load-bearing.
+  - **`coding-guidelines`** — pilot before scale-up (#5), verify-don't-vibe (#6),
+    provenance (#9), convention vigilance (#8), surgical changes (#3). For this
+    fiber especially: #6 "test must run, not be described" applies — never declare a
+    bug fixed without running the diagnostic that would have caught it.
+  - **`cluster-resources`** — pre-launch GPU check, mem-fraction selection.
+  - **`figure-polish`** — for cross-method overlays and the loss-curve forensics
+    plot produced by audit iterations.
+  - **`felt`** — for history filing (PHASE FILE).
+  - **`diagnose-training`** — **routing thresholds lowered** vs default:
+    - default: 3 consecutive crashes
+    - **also fires on**: plateau (3 kept iterations with no new best), confidence-calibration failure, weird loss curve flagged in audit, cross-method disagreement that doesn't resolve.
 
   ## Evidence
 
   The literal commands that count as ground truth.
 
-  **Verify** (each iteration):
-  conda run -n jaxili python scripts/sbi/autoresearch_cnn-auto-push/run_arm.py
-      --arm <plain|resnet50_gn> --total-steps 60000
-      --out-dir $NOTES_DIR/runs//iter-/
-      --gpus 0,1,2 --seeds 41,42,43
-    && conda run -n jaxili python scripts/sbi/autoresearch_verify_fom3.py
-      --posteriors-glob "$NOTES_DIR/runs//iter-/posteriors/*_s4?.npy"
+  **Verify** (each training iteration):
+
+  ```
+  conda run -n jaxili python scripts/sbi/autoresearch_cnn-auto-push/run_arm.py \
+      --arm <plain|resnet50_gn> --total-steps 60000 \
+      --out-dir $NOTES_DIR/runs/cnn-auto-push-18-20-2026/iter-<n>/ \
+      --gpus <available-from-cluster-resources> --seeds 41,42,43
+    && conda run -n jaxili python scripts/sbi/autoresearch_verify_fom3.py \
+      --posteriors-glob "$NOTES_DIR/runs/cnn-auto-push-18-20-2026/iter-<n>/posteriors/*_s4?.npy"
     | grep '^fom3_mean:' | awk '{print $2}'
+  ```
 
-  **Guard** (runs only when Verify improved): metric-valued, threshold
-  18 000 (tunable in autoresearch's `config.md` if the baseline floor
-  turns out higher or lower):
-  conda run -n jaxili python scripts/sbi/autoresearch_verify_fom3.py
-      --posteriors-glob "$NOTES_DIR/runs//iter-/posteriors/*_s4?.npy"
+  **Noise-aware keep/discard rule**: 3-seed FoM3 mean is noisy
+  (iter-1 session-1: 18 307/14 909/15 230 — std/mean ≈ 9.5%). Replace strict
+  "any improvement" with: **accept only if mean_new ≥ mean_best + 0.5 × max(std_new, std_best)**.
+  An improvement that doesn't clear half the noise floor is logged as `tie`,
+  not `keep` — it stays on the branch as a commit but the "best" pointer
+  doesn't move. After 3 ties on the same axis, that axis is considered
+  exhausted and the iteration must pick from a different scope row.
+
+  **Guard** (metric-valued; runs on every iteration, not only on improvement):
+
+  ```
+  conda run -n jaxili python scripts/sbi/autoresearch_verify_fom3.py \
+      --posteriors-glob "$NOTES_DIR/runs/cnn-auto-push-18-20-2026/iter-<n>/posteriors/*_s4?.npy"
     | grep '^fom3_per_seed_min:' | awk '{print $2}'
-  Loop accepts if value ≥ 18 000. Prevents "improved mean via wider-spread
-  seeds" — the same trap that bit resnet50_gn auto+cross.
+  ```
 
-  **Soft signal** (logged, NOT gated): SBC rank-uniformity on a 100-sim
-  hold-out using the existing SBC runner (commit `08575f6` in this branch).
-  Recorded in provenance as `metric.guard_soft.sbc_ks_p` and appended to
-  the iteration's `felt history append --summary` line. Per Andreas, SBC
-  "is not very good as a metric and can be wrong" — do not discard on it,
-  but a sharp drop warrants a human-readable flag in the summary.
+  Working floor: **per_seed_min ≥ 11 000** (≈ 0.85 × 60k baseline). The
+  constitution's original 18 000 was 240k-calibrated. Above this floor: pass.
+  Below it: discard regardless of mean. The 18 000 number is re-applicable
+  only at 240k promotion.
 
-  **Plateau status** (every iteration, situational awareness):
-  conda run -n jaxili python ~/.claude/skills/autoresearch/scripts/summarize_results.py
-      $NOTES_DIR/runs//
+  **Health check (PHASE 5.5c)**: each Verify is followed by a 30-second eyeball
+  of `<iter-dir>/logs/compressor.log` for:
 
-  **Done-conditions** (the fiber closes only when all hold): at least one
-  accepted iteration has mean-of-seeds FoM3 ≥ 30 000 with per-seed floor
-  ≥ 18 000; `summarize_results.py` reports a long plateau and the iteration
-  judges further exploration unproductive (free-text justification logged
-  to felt history); Andreas has been notified via fiber update so he can
-  promote a winning config for full-step confirmation.
+  - `nan` / `inf` strings anywhere — fail loudly.
+  - Step N | train | test lines: train should decrease monotonically-ish; test should track within ±0.3 of train. If test diverges late, flag.
+  - The "Saved @ step ..." lines: best-step should be in the last third of training (not the first checkpoint).
+  - Any "patience" line above patience-limit/2: training is early-stopping; check whether that's the intent.
 
-  If the plateau fires but the FoM3 target hasn't been met, the iteration
-  files `cnn-auto-stuck-at-<value>` as a sub-fiber summarizing what's been
-  tried and the open hypotheses, then continues — Andreas decides
-  between-runs whether to raise the screening budget, change architectures,
-  or stop.
+  **Cross-method overlay (PHASE 5.5d)**: every 3rd kept iteration, or on
+  suspicion. Recipe in `ITERATION_PLAYBOOK.md`. Logs the overlay summary
+  to `metadata/iter-N_*.json`.
 
-  ## Open Questions
+  **Plateau / calibration status** (every iteration, situational awareness):
 
-  Things the iteration must NOT silently resolve — surface as sub-fibers
-  or in `felt history append --summary`.
+  ```
+  conda run -n jaxili python ~/.claude/skills/autoresearch/scripts/summarize_results.py \
+      $NOTES_DIR/runs/cnn-auto-push-18-20-2026
+  ```
 
-  - Does `npe_cnn_nbody_tomo.py` support `--channel-mode auto_only`, or is
-    auto-only the default-no-flag invocation? First iteration verifies +
-    logs.
-  - CNN-resnet50_gn on auto-only: worth running at all? The BN-contamination
-    note says BN is fine on auto-only. If stock BN consistently beats GN on
-    auto-only, that itself is a publishable methodological observation.
-  - Screening-vs-full gap: does 60 000-step screening order configs
-    correctly relative to 240 000? After 3–4 accepted configs, manually
-    retrain one at full step count and compare ranking. If the gap is wild,
-    raise the screening budget.
-  - Is the 38 000 stretch target achievable, or is 4-auto-maps
-    information-theoretically below 10-channel L1? A hard ceiling well
-    below 38 000 is itself a scientific result.
-  - Prior-sweep discovery: first-iteration finding lives here. If
-    exhaustive prior sweeps are found, the loop's exploration directions
-    are constrained accordingly.
+  Plus: count predictions in the last 5 `metadata/iter-N_*.json` files where
+  `|predicted_delta - actual_delta| > 2 × |actual_delta|`. If ≥ 4, declare
+  calibration failure and audit.
+
+  **Done conditions** (the fiber closes only when all hold):
+
+  1. ≥ 1 accepted iteration with FoM3 mean ≥ 30 000 AND per_seed_min ≥ 18 000.
+  2. `summarize_results.py` reports plateau AND at least one audit iteration
+     since the plateau confirms no untested high-EV hypotheses remain.
+  3. Andreas notified via felt history HANDOFF entry; he promotes the winning
+     config to 240k confirmation.
+
+  If plateau fires below target, the loop files
+  `cnn-auto-stuck-at-<value>` as a sub-fiber summarizing what was tried and
+  the open hypotheses, then continues an additional 2 iterations on
+  audit-suggested directions before stopping for Andreas.
+
+  ## Open Questions / EV-ranked hypothesis queue
+
+  Live priority queue — pick from the top. Each entry: hypothesis, prior evidence, EV estimate, suggested test.
+
+  See `$NOTES_DIR/runs/cnn-auto-push-18-20-2026/ITERATION_PLAYBOOK.md` for
+  the full ranked list with prior-evidence citations and pre-formatted hypothesis statements.
+
+  **Tier-1 (high prior-evidence weight, untested or in-flight)**:
+
+  1. **resnet50_gn cdim=20 lr=1e-3 at 60k** — in flight as iter-15. Prior
+     evidence: resnet50 BN cdim=20 hit 27 668 at 120k. If GN matches BN on auto-only, this beats the plain 240k baseline at 60k screening.
+  2. **Compressor-steps > 60k** — sleeper. `cnn_lossiness_check` shows compressor val loss still decreasing at 120k (best at step ~87–90k). Our 60k val loss is -12.4 to -12.7. Test: 90k or 120k compressor on iter-5 config. May unlock +15–25% before architecture changes.
+  3. **5-seed replication of iter-5 and iter-7** — both are tied on mean within noise; per-seed-min differs by 580 (4%). Real or noise? Cheap to settle.
+
+  **Tier-2 (lower prior weight or speculative)**:
+
+  4. **Compressor LR schedule variants** — inner script uses piecewise (0.7× every 10%, first 2/3 of training); try cosine, slower piecewise (0.5×), or warmup + cosine.
+  5. **`cbs=256 + lr=1e-3` combination** — iter-11 in flight; iter-4 alone gave tighter scatter (std 303 vs 1532) at slight mean cost.
+  6. **resnet50 (stock BN) at cdim=20 lr=1e-3 at 60k** — direct comparison to the constitution's resnet50_gn variant. If BN ≥ GN on auto-only, that's a publishable methodological observation.
+
+  **Tier-3 (low prior weight, audit-driven only)**:
+
+  7. **Augmentation changes** — only after an audit reads the augmentation code path and identifies a specific suspected issue.
+  8. **Normalization changes** — same gate as augmentation.
+  9. **Architecture swap (ViT, FNO, etc.)** — requires explicit Andreas authorization.
+
+  **Things the iteration must NOT silently resolve — surface as sub-fibers**:
+
+  - Cross-method disagreement (L1 vs CNN posterior at fiducial).
+  - Any code-read finding that smells like a bug.
+  - Any audit-iteration conclusion that re-ranks the EV queue.
+  - Any iteration where actual_delta is in the *opposite* direction from predicted (model of bottleneck is wrong).
+
+  **Closed findings from session-1** (read before iterating; in `.felt/cnn-auto-push-18-20-2026/`):
+
+  - `cnn-auto-cdim16-not-20` — plain optimum is 16, not 20 (resnet sweet spot didn't transfer).
+  - `cnn-auto-3seed-noise` — iter-1 mean was outlier-driven; 1–2k differences may be one seed.
+  - `cnn-auto-cbs256-stability` — cbs=256 trades mean for 5× tighter scatter.
+  - `cnn-auto-builtin-lr-schedules` — inner script already has piecewise (compressor) + cosine (NDE); our `--compressor-lr` is the *initial* value.
+  - `cnn-auto-compressor-undertrained` — compressor NOT plateaued at 60k.
+  - `cnn-auto-prealloc-infra-fix` — PREALLOCATE=false unlocks 4–5 parallel jobs per A100.
+  - `cnn-auto-parallel-oom-compress` — `--ds-batch-size=500` × 5 concurrent OOMs at compress step.
+  - `cnn-auto-guard-recalibrated` — constitution's 18 000 floor was 240k-calibrated; working floor is 11 000.
+  - `cnn-auto-resnet50gn-untested` — never run on auto-only before iter-15.
+  - `cnn-auto-lr-landscape` — peak at 1e-3, possible "bump" at 3e-3 (could be noise).
+  - `cnn-auto-cli-overrides-tradeoff` — parallel iterations use CLI overrides, not commits.
+
+  **Andreas-in-the-loop checkpoint**: every ~5 kept iterations, the loop pauses
+  for Andreas to read the felt history, the audit findings, and the cross-method
+  overlay. Andreas re-ranks the EV queue if needed. Pure-autonomous iteration
+  has known limits on research problems where the bottleneck is structural;
+  this checkpoint is what makes the loop-plus-human pattern work.
