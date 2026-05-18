@@ -129,8 +129,24 @@ def main() -> int:
           f"ratio={cnn_pool/l1_pool:.3f}  (covariance of plotted contour)",
           flush=True)
 
+    run_dir = iter_dir.parent
+
+    # Flat figures/ dir for easy flip-through, zero-padded for natural sort.
+    figures_dir = run_dir / "figures"
+    figures_dir.mkdir(exist_ok=True)
+    iter_num_str = iter_dir.name.removeprefix("iter-")
+    try:
+        iter_num = int(iter_num_str)
+        figure_name = f"iter-{iter_num:02d}.pdf"
+    except ValueError:
+        figure_name = f"{iter_dir.name}.pdf"
+    figure_link = figures_dir / figure_name
+    if figure_link.is_symlink() or figure_link.exists():
+        figure_link.unlink()
+    figure_link.symlink_to(out_pdf.resolve())
+    print(f"[ok] figures/{figure_name} -> {out_pdf}", flush=True)
+
     if not args.no_latest:
-        run_dir = iter_dir.parent
         latest = run_dir / "latest_overlay.pdf"
         if latest.is_symlink() or latest.exists():
             latest.unlink()
@@ -138,7 +154,6 @@ def main() -> int:
         print(f"[ok] latest_overlay.pdf -> {out_pdf}", flush=True)
 
     if args.is_best:
-        run_dir = iter_dir.parent
         best = run_dir / "best_overlay.pdf"
         if best.is_symlink() or best.exists():
             best.unlink()
