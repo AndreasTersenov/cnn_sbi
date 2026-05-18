@@ -27,10 +27,19 @@ from __future__ import annotations
 
 import argparse
 import glob
+import os
 import sys
 from pathlib import Path
 
 import numpy as np
+
+
+def _make_relative_symlink(link_path: Path, target: Path) -> None:
+    """Create a relative symlink so it resolves after cloning to another host."""
+    if link_path.is_symlink() or link_path.exists():
+        link_path.unlink()
+    rel = os.path.relpath(target.resolve(), link_path.parent.resolve())
+    link_path.symlink_to(rel)
 
 # Fiducial cosmology used by the project
 FIDUCIAL = {"omega_m": 0.26, "sigma_8": 0.84, "w_0": -1.0}
@@ -141,23 +150,17 @@ def main() -> int:
     except ValueError:
         figure_name = f"{iter_dir.name}.pdf"
     figure_link = figures_dir / figure_name
-    if figure_link.is_symlink() or figure_link.exists():
-        figure_link.unlink()
-    figure_link.symlink_to(out_pdf.resolve())
+    _make_relative_symlink(figure_link, out_pdf)
     print(f"[ok] figures/{figure_name} -> {out_pdf}", flush=True)
 
     if not args.no_latest:
         latest = run_dir / "latest_overlay.pdf"
-        if latest.is_symlink() or latest.exists():
-            latest.unlink()
-        latest.symlink_to(out_pdf.resolve())
+        _make_relative_symlink(latest, out_pdf)
         print(f"[ok] latest_overlay.pdf -> {out_pdf}", flush=True)
 
     if args.is_best:
         best = run_dir / "best_overlay.pdf"
-        if best.is_symlink() or best.exists():
-            best.unlink()
-        best.symlink_to(out_pdf.resolve())
+        _make_relative_symlink(best, out_pdf)
         print(f"[ok] best_overlay.pdf -> {out_pdf}", flush=True)
 
     return 0
