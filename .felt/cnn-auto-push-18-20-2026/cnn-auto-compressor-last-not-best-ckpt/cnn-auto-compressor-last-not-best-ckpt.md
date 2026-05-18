@@ -1,10 +1,11 @@
 ---
 name: Compressor returns last-step params, not best-val — every kept iter is 0.27-0.34 nats below its own best
-status: open
+status: closed
 tags:
     - cnn-auto-push
 created-at: 2026-05-18T21:32:26.350207769Z
-outcome: Filed pending Stage-B-with-best-val test. Cheap rerun on iter-5 (params_nd_compressor_batch48000.pkl already saved) would falsify or confirm; F1 in audits/2026-05-18_A2_loss_curves/README.md
+closed-at: 2026-05-18T21:50:54.33300169Z
+outcome: 'Q2b on plain at 60k FALSIFIES F1 as a mean lever, VALIDATES it as a variance lever. iter-17 (Stage B with iter-5 batch48000 ckpt, test loss -12.722 vs final -12.440, 0.28-nat tighter): FoM3 mean -0.6% (within noise) but std 3.4x tighter and per_seed_min +8.7%. Same pattern as iter-4 cbs=256. F1 fix in train_compressor_vmim is still worth applying for 240k promotion (free Guard-floor improvement) but is NOT the dominant FoM3 lever the audit suspected.'
 ---
 
 Surfaced 2026-05-18 ~21:30 UTC by PHASE AUDIT A2 (Ralph iter-2 while iter-16 trains). The compressor's `train_compressor_vmim` (`scripts/sbi/npe_cnn_nbody_tomo.py:1736-2270`) ends with `return params_merged, state_cnn` — i.e. the **final-step** parameters — and has NO `best_step` / `best_val_loss` tracking. Compare with the NDE flow (`:2748-2841`) which DOES early-stop on best-val. The downstream cache-fingerprint helper (`:3475-3486`) picks `final_params[-1]` (last-step) to keep the cache deterministic, reinforcing the policy.
