@@ -103,7 +103,7 @@ created-at: 2026-05-17T21:58:04.756569363Z
     a. Mean improvement clears noise floor (see Evidence/Verify).
     b. `fom3_per_seed_min ≥ 11 000` (working floor; constitution's original 18 000 was 240k-calibrated and blocks every 60k iteration).
     c. Compressor val loss curve looks healthy (monotonic-ish, no late-stage divergence; the iteration's Claude opens `<iter-dir>/logs/compressor.log` and eyeballs the `Step N | train | test` lines).
-    d. **Cross-method sanity** (every 3rd kept iteration, or on suspicion): overlay the new posterior on the L1 auto+cross posterior at fiducial. If the new CNN contours land outside L1's 2σ on (Ω_m, σ_8, w_0), flag it — could be a real improvement OR a bug. Recipe in `ITERATION_PLAYBOOK.md`.
+    d. **Cross-method overlay (MANDATORY every iteration, not just on improvement)**: render `<iter-dir>/overlay_vs_l1_autocross.pdf` via `conda run -n jaxili python scripts/sbi/autoresearch_cnn-auto-push/render_overlay.py --iter-dir <iter-dir>` (add `--is-best` if this iteration becomes the new best). The script updates `<run-dir>/latest_overlay.pdf` and (with `--is-best`) `<run-dir>/best_overlay.pdf` symlinks for Andreas's live visibility. The script also reports both mean-of-seeds FoM3 (autoresearch metric) and pooled FoM3 (covariance of the plotted contour) — log both to the iteration's metadata JSON. Flag if CNN/L1 pooled-ratio < 0.6 (seeds disagree too much) OR if the CNN contours land outside L1's 2σ on (Ω_m, σ_8, w_0).
 
   - **PHASE 6 DECIDE adds confidence calibration**:
     Record `predicted_delta` (from hypothesis) vs `actual_delta` in `metadata/iter-N_*.json` and in the felt history entry. After 5 iterations, if predictions are systematically off by >2× the actual magnitude in either direction, the implicit model of the bottleneck is wrong → trigger an audit.
@@ -216,18 +216,47 @@ created-at: 2026-05-17T21:58:04.756569363Z
   `|predicted_delta - actual_delta| > 2 × |actual_delta|`. If ≥ 4, declare
   calibration failure and audit.
 
-  **Done conditions** (the fiber closes only when all hold):
+  **Done conditions — "Ceiling certification"**:
 
-  1. ≥ 1 accepted iteration with FoM3 mean ≥ 30 000 AND per_seed_min ≥ 18 000.
-  2. `summarize_results.py` reports plateau AND at least one audit iteration
-     since the plateau confirms no untested high-EV hypotheses remain.
-  3. Andreas notified via felt history HANDOFF entry; he promotes the winning
-     config to 240k confirmation.
+  The fiber closes only when there is a **defensible argument** that the
+  current best is the CNN-framework ceiling on this dataset, not just an
+  exhausted enumeration of hyperparameters. Two terminal states:
 
-  If plateau fires below target, the loop files
-  `cnn-auto-stuck-at-<value>` as a sub-fiber summarizing what was tried and
-  the open hypotheses, then continues an additional 2 iterations on
-  audit-suggested directions before stopping for Andreas.
+  **(A) Target reached** — close as `outcome: success`. Requires *all* of:
+
+  1. ≥ 1 accepted iteration at 60k screening with FoM3 mean ≥ 30 000 AND per_seed_min ≥ 18 000.
+  2. The screening winner has been **promoted to 240k confirmation**, and the
+     240k mean clears the constitution's 40 000 target (or the stretch 60 000).
+  3. The 240k confirmation includes the cross-method overlay
+     (`overlay_vs_l1_autocross.pdf`); CNN and L1 contour shapes are
+     consistent at the (Ω_m, σ_8, w_0) level (no obvious bug).
+  4. Andreas signs off via felt history append.
+
+  **(B) Ceiling reached short of target** — close as `outcome: ceiling-<value>`.
+  Also a publishable result ("4-auto-channel CNN tops out at FoM3 ≈ N").
+  Requires *all* of the following — the **Ceiling Certification Checklist**:
+
+  - [ ] Every **Tier-1** hypothesis in `ITERATION_PLAYBOOK.md` is *tested* (kept, discarded, or tied) or explicitly closed as inapplicable.
+  - [ ] Every **Tier-2** hypothesis is tested or explicitly closed with justification (e.g. "VMIM aux-width 256 didn't help at cdim=10 — `cnn_vmim_target_stability` — and the same null transfer is unlikely to surprise at cdim=16").
+  - [ ] **At least 2 audit iterations** have occurred since the plateau started.
+  - [ ] Cumulative **code-read coverage** (`code_read_coverage.md`) hits all 6 priority targets in PHASE AUDIT A1: data augmentation, compressor body, VMIM loss, cache build, NDE construction, test-split handling. No unaddressed `cnn-auto-bug-*` sub-fiber remains open.
+  - [ ] At least one **adversarial peer-review iteration** (PHASE AUDIT A3) has run; each of the 3 challenges is either resolved (with a sub-fiber outcome) or filed as a deferred-question open sub-fiber.
+  - [ ] Cross-method overlay (`overlay_vs_l1_autocross.pdf`) on the current best shows **CNN contours consistent with L1's shape** on (Ω_m, σ_8, w_0): no degeneracy-axis disagreement that suggests a bug. Pooled-FoM3 ratio CNN/L1 ≥ 0.5 (we're not asking for parity, just that the CNN is doing real inference).
+  - [ ] The current best has been **5-seed replicated** (not just 3): seeds 41–45 to match the run_b_advanced and a2 baselines. CoV is reported.
+  - [ ] The current best has been **promoted to 240k**; the 240k pooled-vs-mean-of-seeds gap is reported (if pooled is dramatically lower than mean-of-seeds, the per-seed posterior drift is real and limits the credibility of the mean).
+  - [ ] A `cnn-auto-ceiling-evidence` sub-fiber exists, status closed, with `-o "FoM3 ceiling = <value>; closed because <one-sentence why we believe it's the ceiling>"`. The body cites the checked boxes above with specific evidence.
+  - [ ] Andreas reviews the certification doc and signs off via `felt history append --summary "CEILING CONFIRMED: …"`.
+
+  **(C) Failure-to-reach-ceiling** — if the loop runs out of compute budget
+  before either (A) or (B) is met, close as `outcome: incomplete-<value>`
+  with explicit accounting of which checklist items are unmet. Treat this
+  as a partial result for the next loop.
+
+  If plateau fires below target and the certification checklist is
+  incomplete, the loop does NOT close. It files
+  `cnn-auto-stuck-at-<value>` summarizing what was tried, runs an audit
+  iteration directed at the unchecked items, then iterates 2 more times
+  on the audit's suggested directions before stopping for Andreas.
 
   ## Open Questions / EV-ranked hypothesis queue
 
