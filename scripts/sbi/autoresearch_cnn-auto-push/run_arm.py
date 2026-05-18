@@ -107,7 +107,7 @@ def parse_args() -> argparse.Namespace:
                    help="(plain arm only)")
     p.add_argument("--npe-samples", type=int, default=100_000)
     p.add_argument("--nvp-layers", type=int, default=8)
-    p.add_argument("--nvp-hidden", type=int, default=512)
+    p.add_argument("--nvp-hidden", type=int, default=256)
     p.add_argument("--xla-mem-fraction", type=float, default=0.9,
                    help="Per-process XLA_PYTHON_CLIENT_MEM_FRACTION.")
     p.add_argument("--name-stem", type=str, default=None,
