@@ -1,32 +1,40 @@
 ---
 name: CNN auto-only FoM3 ceiling on (Ω_m, σ_8, w_0)
-description: Ceiling-certification deliverable per constitution Done condition (B) — citable summary of why the 4-auto-channel plain-CNN tops out at FoM3 ≈ 14k pooled / 19k MoS
-status: open
+status: closed
 tags:
     - cnn-auto-push-18-20-2026
     - ceiling-evidence
     - finding
 created-at: 2026-05-19T03:04:33.312935797Z
 outcome: |-
-    [PENDING iter-22/iter-23 landing — will close after both land + landing_analysis.py
-    verdicts integrated]
-
-    Provisional headline (3-seed evidence across iter-5/16/19/20/21):
-    pooled FoM3 ≈ 14 000 ± 400, MoS FoM3 ≈ 18 800 ± 600, joint_R 0.19–0.22
-    (vs L1 auto+cross 0.175). Pooled CNN/L1 = 0.407 — 4 auto channels deliver
-    ~41 % of 10-channel L1 information at L1-comparable posterior shape
-    (|Δjoint_R|/joint_R_L1 ≤ 0.063 on the best amended-check passer iter-21,
-    0.228 on the highest-MoS passer iter-16). Two amended-check passers in
-    5 landed iters → the ceiling is shape-consistent, not a degeneracy-axis
-    artifact.
+    CEILING CERTIFIED (Ralph iter-17, 2026-05-19 ~06:15 UTC).
+    Representative 3-seed best is **iter-16** (Q2 = iter-5 stack at 120k):
+    pooled FoM3 = 13 868, MoS = 19 502, joint_R = 0.215, amended-check PASS.
+    BOTH ceiling falsifiers landed NULL on the pooled axis:
+    iter-22 (Q9c, Q9 stack at 120k) pooled 12 531 (-10.1% vs iter-20),
+    iter-23 (Q4, --vmim-nf-hidden 256) pooled 12 945 (-7.2%). Both also
+    FAIL the amended cross-method check (dJoint/L1 0.557 and 0.607 vs
+    threshold 0.25). Variance/drift family (cbs=256, pool=8/8, F1),
+    Q2 information lever (60k → 120k), and Q4 VMIM aux-NF width are
+    all exhausted at the plain-CNN architecture. Pooled CNN/L1 ratio
+    = 0.408 — the CNN extracts ~41 % of L1 auto+cross information from
+    4 auto-only channels. Further gain requires architecture change
+    (Tier-3 / out-of-fiber). Replication target for 5-seed + 240k
+    promotion: iter-16 PRIMARY. See
+    `$NOTES_DIR/runs/cnn-auto-push-18-20-2026/CEILING_EVIDENCE.md` for
+    the full evidence + ceiling-certification checklist.
+description: Ceiling-certification deliverable per constitution Done condition (B) — citable summary of why the 4-auto-channel plain-CNN tops out at FoM3 ≈ 14k pooled / 19k MoS
 ---
 
 # CNN auto-only FoM3 ceiling — certification evidence
 
-**Status: DRAFT. Closes after iter-22 (Q9c) and iter-23 (Q4) land and
-their `landing_analysis.py` verdicts are integrated.** The provisional
-headline assumes both null (i.e. neither breaks the variance/drift+info
-ceiling), which the 5 landed-iter trajectory makes the modal outcome.
+**Status: CLOSED Ralph iter-17 (2026-05-19 ~06:15 UTC).**
+BOTH_NULL branch fired: iter-22 (Q9c) pooled 12 531 and iter-23 (Q4)
+pooled 12 945 — both below the +5% POSITIVE threshold vs iter-20's
+13 944. Ceiling is **architectural**, not informational or
+bound-limited. Representative best within the architecture is iter-16
+(pooled 13 868, passes amended cross-method check); iter-21 is the
+backup (pooled 13 829, also passes).
 
 The full evidence document with citations to specific run-dir artifacts
 lives at
@@ -36,25 +44,30 @@ working evidence.
 
 ---
 
-## Headline (provisional)
+## Headline (post-iter-22 / iter-23 landing)
 
 The **CNN-framework ceiling on FoM3 (Ω_m, σ_8, w_0) for 4-auto-channel
 tomographic weak-lensing convergence maps** (20° × 160 px, plain-CNN
-architecture: cdim=16, dense=512, conv=64,128,256, lr=1e-3) sits at
-approximately:
+architecture: cdim=16, dense=512, conv=64,128,256, lr=1e-3) is:
 
-- **Pooled FoM3 ≈ 14 000 ± 400** (across the 5 landed iters' variance).
-- **MoS FoM3 ≈ 18 800 ± 600**.
-- **joint_R drift 0.19–0.22** (vs L1 auto+cross's 0.175).
-- **Pooled CNN/L1 ratio = 0.407** (best iter, iter-20). MoS ratio 0.466.
+- **Representative best (amended-check passer with highest MoS)**: iter-16
+  (Q2 = iter-5 stack at 120k compressor) — pooled FoM3 **13 868**,
+  MoS **19 502**, joint_R **0.215**, amended cross-method check **PASS**.
+- **Backup amended-check passer**: iter-21 (Q9b stack) — pooled 13 829,
+  MoS 17 805, joint_R 0.186, amended check PASS.
+- **Pooled CNN/L1 ratio** = 0.408 (iter-16). MoS ratio = 0.510.
+- **joint_R drift** 0.19 – 0.22 (vs L1 auto+cross's 0.175).
+- **Both ceiling falsifiers** (iter-22 Q9c at 120k + Q9 stack; iter-23
+  Q4 --vmim-nf-hidden 256) landed **NULL on pooled** (12 531 and
+  12 945) and **FAIL amended check** (dJoint/L1 0.557 / 0.607). Neither
+  the information lever (Q2 at 120k) compounded with the variance/drift
+  stack, nor the bound-loosening intervention (Q4 widening aux NF)
+  reached the bound. The ceiling is **architectural** at this CNN trunk.
 
-The 4-channel framework operates at **~41 % of L1's 10-channel pooled
+The 4-channel framework extracts **~41 % of L1's 10-channel pooled
 information** but at **L1-comparable posterior shape** (joint_R within
-6 % on iter-21, 23 % on iter-16 — both passers under the amended
-3-component check; see [[cnn-auto-pooled-ratio-amendment-rationale]]).
-
-This is "real inference at lower information capacity", not
-shape-misspecification.
+6 % on iter-21, 23 % on iter-16). This is "real inference at lower
+information capacity", not shape-misspecification.
 
 ---
 
@@ -73,7 +86,7 @@ Each box cites specific evidence; full provenance in
 | Q3 | iter-5 vs iter-7 LR diff = noise | DEFERRED via [[cnn-auto-deferred-q3-5seed-iter5-vs-iter7]] (noise-axis quibble, unlikely to move ceiling). |
 | Q9 | cbs=256 + pool=8/8 stack | TESTED iter-20 — +6.5% pooled. [[cnn-auto-cbs256-pool88-partial-stack]]. |
 | Q9b | F1 stacked on Q9 | TESTED iter-21 — drift additive, pooled flat. [[cnn-auto-pooled-fom3-ceiling-near-14k]]. |
-| Q9c | Q9 stack at 120k | IN FLIGHT iter-22 (lands ~04:50 UTC 2026-05-19). |
+| Q9c | Q9 stack at 120k | TESTED iter-22 (LANDED 2026-05-19 ~04:37 UTC, Ralph iter-17): pooled **12 531 (−10.1 % vs iter-20, NULL)**; MoS 19 304 (+3.4 %); joint_R 0.272 (drift WORSE vs iter-20's 0.220); amended check FAIL (dJoint/L1 0.557). Compressor argmin@15 % (step 18 000), gap **1.084 nats** — sharper architectural-ceiling signal than iter-16's argmin@28 %. Q2 information lever does NOT compound additively with the Q9 variance/drift stack at the pooled-FoM3 axis. **CLOSED — ceiling-confirming.** |
 
 ### ✅ Every Tier-2 hypothesis tested or deferred
 
@@ -99,7 +112,7 @@ See `code_read_coverage.md` — data augmentation, compressor body, VMIM loss, c
 ### ✅ A3 adversarial peer review — 3 challenges resolved or sub-fibered
 
 - Attack 1 (pool collapses spatial) → [[cnn-auto-bug-pool-window-collapses-spatial]] CLOSED, then [[cnn-auto-pool-window-is-drift-not-mean-lever]] confirms it's a drift lever (iter-19).
-- Attack 2 (VMIM aux biases compressor) → [[cnn-auto-bug-vmim-aux-may-bias-compressor]] OPEN; being tested iter-23.
+- Attack 2 (VMIM aux biases compressor) → [[cnn-auto-bug-vmim-aux-may-bias-compressor]] **CLOSED as REFUTED** (iter-23 Q4 NULL, Ralph iter-16): wider aux NF made bound LOOSER not tighter; default 128 is at joint-stability sweet spot.
 - Attack 3 (FoM3 rewards mode drift) → [[cnn-auto-bug-fom3-rewards-mode-drift]] CLOSED, confirmed by A4.
 
 ### ✅ Cross-method overlay shows shape consistency (amended check)
@@ -140,20 +153,24 @@ the 60k–120k screening-scale conclusion; 240k may shift the absolute
 number by ±10–15 % (per prior CNN-plain auto-only baseline scaling
 22 633 ± 5 126 at 240k vs ~18 500 at 60k baseline).
 
-### ⚠ This sub-fiber CLOSED — OPEN until iter-22/iter-23 integrated
+### ✅ This sub-fiber CLOSED — Ralph iter-17 (2026-05-19 ~06:15 UTC)
 
-Closes after:
-1. iter-22 lands → `landing_analysis.py` verdict integrated.
-2. iter-23 lands → `landing_analysis.py` verdict integrated.
-3. If either changes the best-config or moves the headline by > 5 %, the
-   headline above is updated.
-4. Status flips `open → closed` with outcome reflecting the final number.
+1. iter-22 (Q9c) landed → NULL on pooled (12 531, −10.1 % vs iter-20).
+2. iter-23 (Q4) landed → NULL on pooled (12 945, −7.2 % vs iter-20).
+3. Headline updated above. The pre-landing provisional ≈ 14 000 ± 400
+   estimate was within 1 % of the post-landing certified value
+   (representative iter-16 pooled 13 868). No 5 % move triggered;
+   no new amended-check passers among iter-22 / iter-23.
+4. Status flipped `open → closed` with outcome.
 
 ### ⚠ Andreas sign-off — OPEN
 
 Requires constitution-amendment approval (pooled-ratio threshold
 amendment per [[cnn-auto-pooled-ratio-amendment-rationale]]) + ceiling
-acceptance. Pending after the above boxes close.
+acceptance. With this sub-fiber now closed, Andreas's sign-off is the
+remaining gate to flipping the parent fiber `cnn-auto-push-18-20-2026`
+to `outcome: ceiling-13868` (or whatever value Andreas authorizes after
+optional 5-seed / 240k promotion).
 
 ---
 
