@@ -8,7 +8,7 @@ tags:
     - weak-lensing
 created-at: 2026-05-17T21:58:04.756569363Z
 closed-at: 2026-05-19T07:58:46.793477416Z
-outcome: loop stuck
+outcome: 'CEILING TRIPLY-CONFIRMED (2026-05-19 ~13:15 UTC). The plain-CNN trunk at 120k compressor steps is the architecture × data-size sweet spot for FoM3 on 4-channel auto-only tomographic convergence maps over ~70k CosmoGridV1 cosmologies. Representative best stays iter-16 (pooled FoM3 13868, MoS 19502, joint_R 0.215, amended-check PASS). Three independent ceiling falsifiers all landed NULL: Q9c iter-22 (variance/drift stack at 120k, pooled -10.1%), Q4 iter-23 (wider VMIM aux NF, bound LOOSER), Q1 (resnet50_gn @120k post-bug-fix, single-seed FoM3 11820, val-loss argmin@35% with subsequent 1.28-nat drift = overfitting on 24M params over 70k cosmos). Best-val checkpoint policy fix (commit 5c5a6d9) is now the default; iter-15 60k undertraining was real but the 120k retest reveals the deeper-arch is data-limited not capacity-limited. The actual remaining mean lever is more cosmologies in the training distribution — out-of-fiber (CosmoGridV1 expansion). Next downstream work: 5-seed replication of iter-16 PRIMARY at 120k (best_val now default) for publication-grade confidence intervals; 240k promotion of iter-16 for publication-grade convergence claim. Both are ''replication / promotion'', not ceiling-breaking work.'
 ---
 
 ## Loop Status (live — read before deciding to do anything)
