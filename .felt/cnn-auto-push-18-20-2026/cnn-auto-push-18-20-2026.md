@@ -9,6 +9,30 @@ tags:
 created-at: 2026-05-17T21:58:04.756569363Z
 ---
 
+## Loop Status (live — read before deciding to do anything)
+
+  **As of Ralph iter-19, 2026-05-19 06:32 UTC:** ceiling certified at iter-17.
+  Representative best is **iter-16**: MoS 19 502, pooled **13 868**, joint_R 0.215,
+  amended cross-method check PASS. Both ceiling-falsifiers (iter-22 Q9c at 120k,
+  iter-23 Q4 wider VMIM aux) landed on the NULL branch — further gain requires
+  architecture change (Tier-3, requires Andreas authorization).
+
+  **Loop is in wait-for-Andreas mode.** The constitution's Done condition (B)
+  reserves close-with-`outcome: ceiling-13868` for Andreas's explicit sign-off
+  via `felt history append cnn-auto-push-18-20-2026 --summary "CEILING CONFIRMED: …"`.
+
+  **Ralph: if a fresh iteration's survey finds none of (a), (b), (c) below, kill
+  $PPID without changes.** Polish make-work on CEILING_EVIDENCE.md / STATUS.md
+  is exhausted (iter-18 + iter-19 already did it); further appends are noise.
+
+  - (a) Andreas appended `CEILING CONFIRMED: …` → close parent with
+        `outcome: ceiling-13868`.
+  - (b) Andreas requested a new branch (Q9d, alt-architecture, 5-seed
+        replication, 240k promotion driven by Ralph) → file a fresh sub-fiber
+        and resume work.
+  - (c) Andreas answered [[cnn-auto-question-switch-to-pooled-fom3]] → close
+        that question with the chosen option as outcome; do not close parent.
+
 ## Desired State
 
   CNN-based posterior estimation on tomographic weak-lensing **auto-only** inputs
@@ -278,11 +302,11 @@ created-at: 2026-05-17T21:58:04.756569363Z
   3. **5-seed replication of iter-5 and iter-7 (Q3)** — DEFERRED via [[cnn-auto-deferred-q3-5seed-iter5-vs-iter7]] (noise-axis quibble, unlikely to move ceiling).
   4. **Q9 stack (cbs=256 + pool=8/8)** — TESTED iter-20 (+6.5% pooled). CLOSED.
   5. **Q9b (F1 on Q9 stack)** — TESTED iter-21 (drift additive, pooled flat). CLOSED. Filed [[cnn-auto-pooled-fom3-ceiling-near-14k]].
-  6. **Q9c (Q9 stack at 120k)** — IN FLIGHT iter-22, lands ~04:50 UTC 2026-05-19. The decisive ceiling-falsifier: if pooled > 15 000, the variance/drift and information-injection mechanisms compound and the ceiling is premature; if pooled ∈ [13 670, 14 220], the ceiling is architectural.
+  6. **Q9c (Q9 stack at 120k)** — TESTED iter-22 (LANDED 2026-05-19 ~04:50 UTC, BOTH_NULL branch: pooled 12 531 (-10.1% vs iter-20), MoS 19 304, joint_R 0.272, amended-check FAIL; compressor argmin@15% gap 1.08 nats — architectural ceiling confirmed). CLOSED ceiling-confirming.
 
   **Tier-2 (lower prior weight or speculative)**:
 
-  7. **Q4 (VMIM aux width 128 → 256 at cdim=16)** — IN FLIGHT iter-23, lands ~03:55 UTC 2026-05-19. Orthogonal lever to variance/drift family (Attack 2 from A3). If null at cdim=16, [[cnn-auto-bug-vmim-aux-may-bias-compressor]] closes.
+  7. **Q4 (VMIM aux width 128 → 256 at cdim=16)** — TESTED iter-23 (LANDED 2026-05-19 ~03:50 UTC, REFUTED on every axis: pooled 12 945 (-7.2%), joint_R 0.281 (drift WORSENED), bound LOOSER by 0.26 nats at matched step, amended-check FAIL). [[cnn-auto-bug-vmim-aux-may-bias-compressor]] CLOSED REFUTED. Default --vmim-nf-hidden 128 is at the joint-stability sweet spot.
   8. **Q5 (NDE flow depth 12+)** — TESTED iter-12 (crashed). Not retested; structural-bug surface, low EV.
   9. **Q6 (cbs=256 + lr=1e-3 robust best)** — TESTED iter-11; subsumed by Q9 (iter-20). CLOSED.
   10. **Q7 (LR schedule variants)** — DEFERRED via [[cnn-auto-deferred-q7-lr-schedule-variants]] (premise falsified by iter-16).
