@@ -1,12 +1,12 @@
 ---
 name: Amend constitution's pooled CNN/L1 ratio ≥ 0.5 threshold to scale-aware multi-component check
+status: closed
 tags:
     - finding
     - cnn-auto-push-18-20-2026
     - ceiling-evidence
     - methodology
 created-at: 2026-05-19T02:31:56.719229376Z
-status: closed
 outcome: |-
     Pooled CNN/L1 ratio 0.407 fails the constitution's 0.5 threshold by 19%, but
     joint_R CNN/L1 = 1.06 (within 6% of L1's drift shape) and MoS ratio is 0.466
