@@ -123,9 +123,21 @@ def compressor_health(iter_dir: Path) -> dict:
     The runner also prints `Saved @ step N. Val loss = X` on the FIRST
     val-improvement only (per the current inner script), so we don't rely
     on it; we re-derive the best-step from the Step-line stream.
+
+    Fallback (Ralph iter-14, 2026-05-19): when the .log file is missing
+    the printable step lines (CUDA/XLA noise can swamp them, or
+    --skip-compressor runs have no log), reconstruct from
+    `loss_compressor_test.npy` + run_manifest.json. The .npy stores one
+    test-loss value per `--compressor-save-every` step (3000 by default
+    in run_arm.py).
     """
     log = iter_dir / "logs" / "compressor.log"
     if not log.exists():
+        # Try .npy fallback before declaring missing.
+        npy_health = _compressor_health_from_npy(iter_dir)
+        if npy_health is not None:
+            npy_health["log_path"] = str(log) + " (absent; npy fallback)"
+            return npy_health
         return {"verdict": "MISSING_LOG", "log_path": str(log)}
 
     try:
@@ -205,9 +217,98 @@ def compressor_health(iter_dir: Path) -> dict:
             "F1 lever may help"
         )
 
+    # If the log was unparseable (no step lines + log file exists), try .npy.
+    if best_step is None and final_test is None:
+        npy_health = _compressor_health_from_npy(iter_dir)
+        if npy_health is not None:
+            npy_health["log_path"] = str(log) + " (unparseable; npy fallback)"
+            return npy_health
+
     return {
         "verdict": verdict,
         "log_path": str(log),
+        "last_step": last_step,
+        "total_steps": total_steps,
+        "best_val_step": best_step,
+        "best_val_test_loss": best_test,
+        "final_test_loss": final_test,
+        "argmin_to_final_gap_nats": argmin_to_final_gap,
+        "best_val_position_pct": (
+            None if best_frac is None else round(100 * best_frac, 1)
+        ),
+        "notes": notes,
+    }
+
+
+def _compressor_health_from_npy(iter_dir: Path) -> dict | None:
+    """Fallback: reconstruct compressor_health from loss_compressor_test.npy.
+
+    Used when compressor.log is missing or contains only CUDA/XLA noise.
+    The .npy stores one test-loss value per --compressor-save-every step
+    (3000 in run_arm.py); total_steps is in run_manifest.json.
+
+    Returns None if neither the npy nor manifest is reachable, so the
+    caller can fall through to MISSING_LOG.
+    """
+    import numpy as np
+
+    npys = list(iter_dir.glob(
+        "compressor/**/loss_compressor_test.npy"
+    ))
+    if not npys:
+        return None
+    npy = sorted(npys)[0]
+    try:
+        a = np.load(npy)
+    except Exception:
+        return None
+    if a.size == 0:
+        return None
+
+    # run_arm.py hard-codes --compressor-save-every 3000.
+    save_every = 3000
+    manifest = iter_dir / "run_manifest.json"
+    total_steps = None
+    if manifest.exists():
+        try:
+            with open(manifest) as f:
+                m = json.load(f)
+            total_steps = m.get("compressor_steps")
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    argmin = int(a.argmin())
+    best_step = (argmin + 1) * save_every
+    best_test = float(a.min())
+    final_test = float(a[-1])
+    last_step = len(a) * save_every
+    argmin_to_final_gap = final_test - best_test
+    best_frac = (best_step / total_steps) if total_steps else None
+    completed = (
+        total_steps is not None
+        and last_step >= int(0.99 * total_steps)
+    )
+
+    verdict = "PASS"
+    notes = ["reconstructed from loss_compressor_test.npy"]
+    if not completed:
+        verdict = "FAIL_INCOMPLETE"
+        notes.append(
+            f"training not completed: last_step={last_step}/{total_steps}"
+        )
+    if best_frac is not None and best_frac < 0.33:
+        notes.append(
+            f"best-val ckpt in first third (step {best_step} / {total_steps})"
+        )
+    if argmin_to_final_gap > 0.20:
+        notes.append(
+            f"argmin-to-final test-loss gap = {argmin_to_final_gap:.3f} nats — "
+            "F1 lever may help"
+        )
+
+    return {
+        "verdict": verdict,
+        "npy_path": str(npy),
         "last_step": last_step,
         "total_steps": total_steps,
         "best_val_step": best_step,

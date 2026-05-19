@@ -267,16 +267,26 @@ created-at: 2026-05-17T21:58:04.756569363Z
 
   **Tier-1 (high prior-evidence weight, untested or in-flight)**:
 
-  1. **resnet50_gn cdim=20 lr=1e-3 at 60k** — in flight as iter-15. Prior
-     evidence: resnet50 BN cdim=20 hit 27 668 at 120k. If GN matches BN on auto-only, this beats the plain 240k baseline at 60k screening.
-  2. **Compressor-steps > 60k** — sleeper. `cnn_lossiness_check` shows compressor val loss still decreasing at 120k (best at step ~87–90k). Our 60k val loss is -12.4 to -12.7. Test: 90k or 120k compressor on iter-5 config. May unlock +15–25% before architecture changes.
-  3. **5-seed replication of iter-5 and iter-7** — both are tied on mean within noise; per-seed-min differs by 580 (4%). Real or noise? Cheap to settle.
+  *Live status as of Ralph iter-14 (2026-05-19 ~03:00 UTC). The
+  campaign is in ceiling-certification mode; new training launches are
+  reserved for ceiling-falsifiers, not exploration. See
+  `ITERATION_PLAYBOOK.md` for the full ranked list; see
+  [[cnn-auto-ceiling-evidence]] for the certification scaffold.*
+
+  1. **resnet50_gn cdim=20 lr=1e-3 at 60k** — TESTED iter-15 (FALSIFIED, -52.8% vs iter-5; compressor undertrained). 120k retest DEFERRED via [[cnn-auto-deferred-q1-resnet50gn-120k]] (architecture-change Tier-3 scope).
+  2. **Compressor-steps > 60k (Q2)** — TESTED iter-16 (+5% MoS / +7.5% pooled). CLOSED.
+  3. **5-seed replication of iter-5 and iter-7 (Q3)** — DEFERRED via [[cnn-auto-deferred-q3-5seed-iter5-vs-iter7]] (noise-axis quibble, unlikely to move ceiling).
+  4. **Q9 stack (cbs=256 + pool=8/8)** — TESTED iter-20 (+6.5% pooled). CLOSED.
+  5. **Q9b (F1 on Q9 stack)** — TESTED iter-21 (drift additive, pooled flat). CLOSED. Filed [[cnn-auto-pooled-fom3-ceiling-near-14k]].
+  6. **Q9c (Q9 stack at 120k)** — IN FLIGHT iter-22, lands ~04:50 UTC 2026-05-19. The decisive ceiling-falsifier: if pooled > 15 000, the variance/drift and information-injection mechanisms compound and the ceiling is premature; if pooled ∈ [13 670, 14 220], the ceiling is architectural.
 
   **Tier-2 (lower prior weight or speculative)**:
 
-  4. **Compressor LR schedule variants** — inner script uses piecewise (0.7× every 10%, first 2/3 of training); try cosine, slower piecewise (0.5×), or warmup + cosine.
-  5. **`cbs=256 + lr=1e-3` combination** — iter-11 in flight; iter-4 alone gave tighter scatter (std 303 vs 1532) at slight mean cost.
-  6. **resnet50 (stock BN) at cdim=20 lr=1e-3 at 60k** — direct comparison to the constitution's resnet50_gn variant. If BN ≥ GN on auto-only, that's a publishable methodological observation.
+  7. **Q4 (VMIM aux width 128 → 256 at cdim=16)** — IN FLIGHT iter-23, lands ~03:55 UTC 2026-05-19. Orthogonal lever to variance/drift family (Attack 2 from A3). If null at cdim=16, [[cnn-auto-bug-vmim-aux-may-bias-compressor]] closes.
+  8. **Q5 (NDE flow depth 12+)** — TESTED iter-12 (crashed). Not retested; structural-bug surface, low EV.
+  9. **Q6 (cbs=256 + lr=1e-3 robust best)** — TESTED iter-11; subsumed by Q9 (iter-20). CLOSED.
+  10. **Q7 (LR schedule variants)** — DEFERRED via [[cnn-auto-deferred-q7-lr-schedule-variants]] (premise falsified by iter-16).
+  11. **Q8 (resnet50 stock BN at cdim=20)** — DEFERRED via [[cnn-auto-deferred-q8-resnet50-stockbn-cdim20]] (architecture-change Tier-3; BN-contamination prior).
 
   **Tier-3 (low prior weight, audit-driven only)**:
 

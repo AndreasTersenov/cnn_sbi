@@ -185,10 +185,10 @@ Three independent checks:
   hard).
 - [[cnn-auto-pooled-fom3-ceiling-near-14k]] — the suspected ~14k pooled
   ceiling that motivated the threshold question.
-- [[project_l1_noise_model_correction]] (memory) — the L1 pooled 34 004
-  number is post-correction. Pre-correction L1 pooled was ~65 000, which
-  would have made the CNN ratio ~0.21 — the noise-model fix tightens the
-  CNN/L1 comparison.
+- `memory/project_l1_noise_model_correction.md` (auto-memory; not a felt
+  sub-fiber) — the L1 pooled 34 004 number is post-correction. Pre-correction
+  L1 pooled was ~65 000, which would have made the CNN ratio ~0.21 — the
+  noise-model fix tightens the CNN/L1 comparison.
 - `audits/2026-05-18_A_mode_drift/mode_drift.json` — source of joint_R
   numbers for both L1 reference and iter-5.
 - `iter-21/mode_drift_inline.json` — source of joint_R numbers for the

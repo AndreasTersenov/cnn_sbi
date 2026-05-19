@@ -67,8 +67,9 @@ modes can't drift in directions the compressor doesn't see.
 
 - Does F1 stack on top (Q9b)? Predicted pooled +3–8 %, pooled/MoS → 0.77–0.79.
 - Does this stack survive 120k compressor (Q9c)? iter-16 + Q9 combo.
-- Why does std-of-MoS widen rather than tighten? File [[cnn-auto-std-of-mos-vs-pooled-decoupled]]
-  if Q9b reveals the mechanism.
+- Why does std-of-MoS widen rather than tighten? (Q9b iter-21 didn't surface a
+  clean mechanism; rolled into A4 mode-drift audit instead, see
+  [[cnn-auto-pooled-fom3-confirms-mode-drift]].)
 
 **Provenance.** Tested in iter-20 against iter-19 baseline. Metadata at
 `/nas/tersenov/claude-notes/runs/cnn-auto-push-18-20-2026/metadata/iter-20_q9_cbs256_pool8s8.json`.
