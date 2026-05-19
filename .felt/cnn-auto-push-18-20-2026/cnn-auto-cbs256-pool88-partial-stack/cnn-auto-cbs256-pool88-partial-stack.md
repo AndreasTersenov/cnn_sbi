@@ -6,8 +6,7 @@ tags:
     - cnn-auto-push-18-20-2026
     - variance-drift-family
 created-at: 2026-05-19T01:27:25.876593762Z
-outcome: |-
-  iter-20 (cbs=256 + pool=8/8 stack): pooled FoM3 +6.5% vs iter-19 (in predicted +5-15% range — first time iter lands inside a predicted pooled range), pooled/MoS 0.719 -> 0.747 (intermediate between full-additive 0.78-0.82 and saturation 0.703-0.733; ~45% of full additivity). NEW POOLED BEST (13944 vs iter-16 13868). Drift compression concentrates on w_0 (centroid scatter 0.0347 -> 0.0255 -> 0.0124 across iter-5/19/20, 2.8x). Std-of-MoS widens (904 -> 2014, s43 disperses) — levers compete on std but cooperate on pooled. Compressor argmin earlier and cleaner (gap 0.14 nats, best of campaign).
+outcome: 'iter-20 (cbs=256 + pool=8/8 stack): pooled FoM3 +6.5% vs iter-19 (in predicted +5-15% range — first time iter lands inside a predicted pooled range), pooled/MoS 0.719 -> 0.747 (intermediate between full-additive 0.78-0.82 and saturation 0.703-0.733; ~45% of full additivity). NEW POOLED BEST (13944 vs iter-16 13868). Drift compression concentrates on w_0 (centroid scatter 0.0347 -> 0.0255 -> 0.0124 across iter-5/19/20, 2.8x). Std-of-MoS widens (904 -> 2014, s43 disperses) — levers compete on std but cooperate on pooled. Compressor argmin earlier and cleaner (gap 0.14 nats, best of campaign).'
 ---
 
 # cbs=256 + pool=8/8 stack partially-additively on pooled FoM3
