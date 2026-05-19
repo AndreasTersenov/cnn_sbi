@@ -79,7 +79,7 @@ Each box cites specific evidence; full provenance in
 
 | Q | hypothesis | outcome |
 |---|------------|---------|
-| Q4 | VMIM aux width at cdim=16 | IN FLIGHT iter-23 (lands ~03:55 UTC 2026-05-19). |
+| Q4 | VMIM aux width at cdim=16 | TESTED iter-23 (LANDED 2026-05-19 03:48 UTC, Ralph iter-16): pooled 12 945 (-7.2% NULL); MoS 19 874 (+6.4% — mode-drift signature); joint_R 0.281 (drift WORSE); amended check FAIL. [[cnn-auto-bug-vmim-aux-may-bias-compressor]] closed as REFUTED — wider aux makes bound LOOSER, not tighter. CLOSED. |
 | Q5 | NDE flow depth 12+ | TESTED iter-12 (crashed). Not retested; structural-bug surface, low EV. |
 | Q6 | cbs=256 + lr=1e-3 robust best | TESTED iter-11 — closed inline; subsumed by Q9 (iter-20). |
 | Q7 | LR schedule variants | DEFERRED via [[cnn-auto-deferred-q7-lr-schedule-variants]] (premise falsified by iter-16). |

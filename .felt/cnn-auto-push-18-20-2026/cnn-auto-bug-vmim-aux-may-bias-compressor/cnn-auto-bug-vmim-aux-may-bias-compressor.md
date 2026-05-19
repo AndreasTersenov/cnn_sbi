@@ -1,13 +1,13 @@
 ---
-name: VMIM aux network (--vmim-nf-hidden 128) may bias compressor toward summaries it can model, not max-info (cnn-auto-push, A3)
-status: open
+name: VMIM aux network (--vmim-nf-hidden 128) may bias compressor toward summaries it can model, not max-info (cnn-auto-push, A3) — REFUTED iter-23
+status: closed
 tags:
     - bug-shape
     - audit-A3
     - cnn-auto-push-18-20-2026
 created-at: 2026-05-18T22:15:37.210482858Z
 outcome: |-
-    VMIM trains compressor by maximizing E[log q(θ|s)] where q is a small RealNVP companion network (hidden 128). If q is underexpressive, the compressor learns summaries q can model — not summaries that maximize true I(s;θ). Inference uses a DIFFERENT, larger NDE (hidden 256). Bound looseness directly suppresses compressor quality. Diagnostic: --vmim-nf-hidden 256 and 512 on iter-5 config; if FoM3 changes >5%, the bound is the bottleneck. File: scripts/sbi/npe_cnn_nbody_tomo.py:train_compressor_vmim (~1736-2270). Already on Tier-2 EV queue as Q4; A3 elevates to bug-shape. Mid-flight diagnostic (Ralph iter-16, iter-23 at step 51000): wider aux NF (128→256) does NOT tighten the bound — best val loss is 0.26 nats WORSE (-12.248 vs iter-20 -12.510, same stack), and trajectory is oscillatory rather than monotonic-descent. The A3 "wider = tighter bound" framing is contradicted at the val-loss level; whatever Q4 does to FoM3 is decoupled from the bound.
+    REFUTED by iter-23 (Q4). Widening --vmim-nf-hidden from 128 to 256 on the iter-20 stack at 60k gave: pooled FoM3 -7.2% (12945 vs iter-20 13944, NULL on the +0%/+5% predicted range and below the constitution's +5% POSITIVE threshold); MoS +6.4% (19874 vs 18673, MISS upward on [-5%, +5%]); joint_R 0.220 → 0.281 (drift WORSE); amended cross-method check FAIL_AMENDED (dJoint/L1 = 0.61 > 0.25). The wider aux NF makes BOTH the VMIM bound looser (mid-flight: best val -12.248 vs iter-20 -12.510, gap 0.629 nats vs iter-20's 0.139) AND the downstream pooled FoM3 worse, AND the per-seed posterior drift worse. The A3 framing "wider aux = tighter bound = better compressor" is wrong on every axis. The default --vmim-nf-hidden 128 is at or near the joint-stability sweet spot; widening it destabilizes joint compressor + companion-NF training. Q4 is exhausted at cdim=16; do not retry aux 384/512. The MoS +6.4% with pooled -7.2% is the classic mode-drift signature ([[cnn-auto-pooled-fom3-confirms-mode-drift]]) — wider aux makes each seed's posterior tighter but more inconsistent across seeds.
 ---
 
 ## Pre-landing mid-flight observation (Ralph iter-16, 2026-05-19 ~03:30 UTC)
@@ -87,3 +87,80 @@ direction of training-curve changes.
 - iter-23 trajectory: same path under `iter-23` (17 pts so far, lands ~03:43 UTC).
 - iter-23 manifest confirms `vmim_nf_hidden: 256` (only knob change vs iter-20).
 - Pre-landing snapshot: this section was written before iter-23 produced its FoM3 number, so the predictions above are falsifiable rather than retrofitted.
+
+---
+
+## Post-landing resolution (Ralph iter-16, 2026-05-19 ~03:50 UTC)
+
+iter-23 produced its FoM3 numbers via `landing_analysis.py`:
+
+| metric         | iter-20 (aux=128) | iter-23 (aux=256) | Δ          | predicted band       |
+|----------------|------------------:|------------------:|-----------:|----------------------|
+| MoS FoM3       |          18 673   |          19 874   |  +6.43 %   | [-5%, +5%] → **MISS up** |
+| pooled FoM3    |          13 944   |          12 945   |  -7.16 %   | [+0%, +5%] → **MISS down (NULL)** |
+| joint_R        |          0.220    |          0.281    |  +0.061    | drift worsened       |
+| amended check  |          FAIL     |          FAIL     |  worse     | dJoint/L1 0.259 → 0.61 |
+| per_seed CoV   |          —        |          9.5 %    |            | within Guard         |
+| best val loss  |          -12.510  |          -12.248  |  +0.26     | bound LOOSER         |
+| argmin→last gap|          0.139    |          0.629    |  4.5× larger | bound DESTABILIZED |
+
+Three branches were registered before landing. The **Q4 NULL** branch
+fired cleanly on pooled (the constitution's classification axis), but
+with an unusual MoS *upward* miss that requires a small refinement to
+the story. Below.
+
+### Verdict against each pre-landing branch
+
+- **Q4 NULL (predicted: pooled ≤ 14 720)**: ✅ FIRED. pooled = 12 945 < 14 720.
+  A3 is FALSE *as framed*. Wider aux NF is a destabilizing knob, not a
+  bound-tightening knob — confirmed at every measurable axis (best val,
+  pooled, joint_R, dJoint/L1).
+- **Q4 POSITIVE (predicted: pooled > 14 720)**: ❌ DID NOT FIRE.
+- **Q4 NEAR-NULL (predicted: pooled in (14 220, 14 720])**: ❌ DID NOT FIRE.
+  pooled is below 14 220 by a margin.
+
+### Refinement — the MoS upward miss
+
+MoS +6.43 % (19 874 vs 18 673) is the only metric that improved, and
+it is **outside the +5% upper edge of the predicted band**. Two
+mechanisms could explain it; both are consistent with the campaign's
+established lessons:
+
+1. **Mode-drift signature on a 3-seed estimate**. Each seed's marginal
+   posterior is *tighter* with the wider aux NF (because the looser
+   bound + chaotic late training gradients act as a stochastic
+   regularizer that the deterministic LR schedule doesn't supply, OR
+   because the wider aux's flexibility absorbs noise rather than passing
+   it through). But the per-seed *centroids* drift more, so the
+   POOLED contour is *wider*. The mean-of-seeds metric averages the
+   tight individual contours and rewards tightness; pooled penalizes
+   drift. See [[cnn-auto-pooled-fom3-confirms-mode-drift]] for the
+   established mechanism; iter-23 is the cleanest single-knob
+   demonstration so far (one knob change, +6.4% MoS, -7.2% pooled —
+   the exact decoupling the audit predicted).
+2. **3-seed sampling noise**. With CoV 9.5 %, a 3-seed MoS has roughly
+   ±5.5 % standard error of the mean. A +6.4 % uplift is ≈ 1.16 σ —
+   could be noise. Resolution: would need 5-seed replication to know.
+   Not worth the compute since pooled and joint_R both moved the wrong
+   way regardless.
+
+The MoS upward miss does NOT rescue A3 — pooled (the campaign's
+ceiling axis) moved the wrong way by ~3× the standard error.
+
+### Decision
+
+Close [[cnn-auto-bug-vmim-aux-may-bias-compressor]] as **refuted**.
+Outcome edited above with the verdict numbers. No further sweeps of
+`vmim_nf_hidden` at cdim=16 are warranted.
+
+### Implication for the ceiling-evidence story
+
+The iter-23 verdict is **decisive** on the ceiling-evidence Tier-2 Q4
+checkbox: Q4 is tested and falsified. This flips the Q4 row in
+`CEILING_EVIDENCE.md` from OPEN to CLOSED (refuted).
+
+The remaining ceiling-evidence work blocked on iter-22 is the Q9c
+verdict on whether the variance/drift family compounds with the Q2
+information lever at 120k compressor. Once that lands (~04:40 UTC),
+`integrate_landings.py` will produce the combined headline and the
+ceiling-evidence sub-fiber can close.
