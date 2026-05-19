@@ -1,6 +1,5 @@
 ---
 name: Piecewise LR schedule diverges late at 120k+ — VMIM-bound regression that FoM3 partly absorbs
-description: Confirmed iter-16 + iter-22 — at 120k, compressor val loss hits argmin at 15-28% of training then climbs by ≥1 nat; last-step is worse than 60k baseline. FoM3 absorbs the regression via NDE flexibility but a 1.3-nat F1 lever is now visible on these long runs.
 status: closed
 tags:
     - finding
@@ -39,4 +38,5 @@ outcome: |-
     *falsified* at the VMIM-bound level. The Tier-2 Q7 (cosine LR
     schedule) promotion is still defensible but lower-EV than the F1
     + Q4 paths.
+description: Confirmed iter-16 + iter-22 — at 120k, compressor val loss hits argmin at 15-28% of training then climbs by ≥1 nat; last-step is worse than 60k baseline. FoM3 absorbs the regression via NDE flexibility but a 1.3-nat F1 lever is now visible on these long runs.
 ---

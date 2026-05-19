@@ -451,6 +451,16 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--compressor-save-every", type=int, default=2000,
                     help="Save compressor checkpoint every N steps")
     p.add_argument(
+        "--compressor-checkpoint-policy",
+        choices=("best_val", "last_step"),
+        default="best_val",
+        help=(
+            "Which compressor checkpoint to hand off downstream: "
+            "'best_val' (argmin of single-batch val loss across save points) "
+            "or 'last_step' (legacy behavior; reproduces pre-fix campaign numbers)."
+        ),
+    )
+    p.add_argument(
         "--compressor-noise-curriculum",
         action="store_true",
         help=(
@@ -1762,7 +1772,8 @@ def train_compressor_vmim(
     dataset_iter_factory: Optional[
         Callable[[str, int], Iterator[Dict[str, np.ndarray]]]
     ] = None,
-) -> Tuple[hk.Params, hk.State]:
+    checkpoint_policy: str = "best_val",
+) -> Tuple[hk.Params, hk.State, Path, Path]:
     """Train the CNN compressor from scratch using VMIM loss.
 
     Follows the same recipe as train_compressor_tomographic.py:
@@ -1770,6 +1781,11 @@ def train_compressor_vmim(
       - Piecewise constant LR schedule (init × 0.7 at every 10% milestone)
       - Adam optimizer
       - TrainModel from sbi_lens
+
+    Returns (params, state, params_path, state_path). `params_path`/`state_path`
+    point to the on-disk pickle that matches the returned in-memory params
+    under the chosen `checkpoint_policy` ("best_val" or "last_step"), so the
+    caller can stamp the cache fingerprint without re-discovering the file.
     """
     from tqdm import tqdm
 
@@ -2069,6 +2085,10 @@ def train_compressor_vmim(
     global_step = 0
     last_step = 0
     last_saved_step = 0
+    best_val_loss = float("inf")
+    best_val_step = 0
+    best_val_params: Optional[hk.Params] = None
+    best_val_state: Optional[hk.State] = None
     for stage in stage_specs:
         stage_idx = int(stage.get("stage_index", len(stage_specs)))
         stage_name = str(stage.get("name", f"stage_{stage_idx}"))
@@ -2225,12 +2245,21 @@ def train_compressor_vmim(
                 loss_train_hist.append(float(b_loss))
                 loss_test_hist.append(float(b_loss_test))
 
+                val_loss_now = float(b_loss_test)
+                if np.isfinite(val_loss_now) and val_loss_now < best_val_loss:
+                    best_val_loss = val_loss_now
+                    best_val_step = step
+                    best_val_params = params_merged
+                    best_val_state = state_cnn
+
                 wandb.log({
                     "compressor/test_loss": float(b_loss_test),
                     "compressor/test_vmim_loss": float(vmim_test_loss),
                     "compressor/test_consistency_loss": float(consistency_test_loss),
                     "compressor/test_domain_ce": float(domain_ce_test),
                     "compressor/test_domain_acc": float(domain_acc_test),
+                    "compressor/best_val_loss": float(best_val_loss),
+                    "compressor/best_val_step": int(best_val_step),
                     "compressor/step": step,
                     "compressor/curriculum_stage_index": stage_idx,
                     "compressor/curriculum_stage_sigma_factor": stage_sigma_factor,
@@ -2265,9 +2294,50 @@ def train_compressor_vmim(
             pickle.dump(state_cnn, f)
         print(f"  Saved final checkpoint @ step {last_step}.")
 
+    last_step_params_path = save_dir / f"params_nd_compressor_batch{last_step}.pkl"
+    last_step_state_path = save_dir / f"opt_state_resnet_batch{last_step}.pkl"
+    best_val_params_path = save_dir / "params_nd_compressor_best_val.pkl"
+    best_val_state_path = save_dir / "opt_state_resnet_best_val.pkl"
+
+    if best_val_params is not None:
+        with open(best_val_params_path, "wb") as f:
+            pickle.dump(best_val_params, f)
+        with open(best_val_state_path, "wb") as f:
+            pickle.dump(best_val_state, f)
+        print(
+            f"  Saved best-val checkpoint @ step {best_val_step} "
+            f"(val_loss={best_val_loss:.4f})."
+        )
+
+    if checkpoint_policy == "best_val" and best_val_params is not None:
+        chosen_params = best_val_params
+        chosen_state = best_val_state
+        chosen_params_path = best_val_params_path
+        chosen_state_path = best_val_state_path
+        print(
+            f"  Compressor returning policy=best_val step={best_val_step} "
+            f"val_loss={best_val_loss:.4f}."
+        )
+    else:
+        if checkpoint_policy == "best_val":
+            print(
+                "  [warn] policy=best_val requested but no val eval recorded; "
+                "falling back to last_step."
+            )
+        chosen_params = params_merged
+        chosen_state = state_cnn
+        chosen_params_path = last_step_params_path
+        chosen_state_path = last_step_state_path
+        print(f"  Compressor returning policy=last_step step={last_step}.")
+
+    wandb.run.summary["compressor/checkpoint_policy"] = checkpoint_policy
+    wandb.run.summary["compressor/best_val_step"] = int(best_val_step)
+    wandb.run.summary["compressor/best_val_loss"] = float(best_val_loss)
+    wandb.run.summary["compressor/last_step"] = int(last_step)
+
     print(f"  Compressor training done ({len(store_loss)} steps).")
     wandb.run.summary["compressor/total_steps"] = len(store_loss)
-    return params_merged, state_cnn
+    return chosen_params, chosen_state, chosen_params_path, chosen_state_path
 
 
 def _plot_compressor_contours(
@@ -3437,7 +3507,12 @@ def main():
         )
         if cnn_map_route == "harmonic":
             comp_save_dir = comp_save_dir / f"harmonic_{harmonic_regime}_ch{cnn_input_channels}"
-        comp_params, comp_state = train_compressor_vmim(
+        (
+            comp_params,
+            comp_state,
+            chosen_params_path,
+            chosen_state_path,
+        ) = train_compressor_vmim(
             compressor=compressor_train,
             augmentation_fn=augmentation,
             n_cosmo=args.n_cosmo,
@@ -3466,24 +3541,16 @@ def main():
             domain_hidden=int(args.compressor_domain_hidden),
             vmim_nf_hidden=int(args.vmim_nf_hidden),
             dataset_iter_factory=compressor_dataset_iter_factory,
+            checkpoint_policy=args.compressor_checkpoint_policy,
         )
-        # Stamp the cache fingerprint as if the just-trained checkpoint were
-        # loaded "pretrained" from its final .pkl. A downstream Stage B run
-        # that does --no-train-compressor --compressor-params <that path> will
-        # compute the same fingerprint and hit the cache instead of
-        # recomputing the compressed datasets.
-        final_params = sorted(
-            comp_save_dir.rglob("params_nd_compressor_batch*.pkl"),
-            key=lambda p: int(p.stem.split("batch")[-1]),
-        )
-        if final_params:
-            params_path = final_params[-1]
-            last_step = int(params_path.stem.split("batch")[-1])
-            state_path = params_path.parent / f"opt_state_resnet_batch{last_step}.pkl"
-            if state_path.exists():
-                compressor_params_ref = str(params_path)
-                compressor_state_ref = str(state_path)
-                compressor_source = "pretrained"
+        # Stamp the cache fingerprint with the canonical on-disk checkpoint
+        # for the chosen policy, so a downstream Stage B run invoked with
+        # --no-train-compressor --compressor-params <that path> computes the
+        # same fingerprint and hits the cache instead of recomputing.
+        if chosen_state_path.exists():
+            compressor_params_ref = str(chosen_params_path)
+            compressor_state_ref = str(chosen_state_path)
+            compressor_source = "pretrained"
         # Invalidate any cached compressed datasets
         cache_dir = Path(args.cache_dir) if args.cache_dir else None
         if cache_dir is not None:

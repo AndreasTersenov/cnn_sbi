@@ -1,12 +1,14 @@
 ---
 name: Push CNN auto-only FoM3 toward L1 auto+cross
-status: open
+status: closed
 tags:
     - autoresearch
     - sbi
     - cnn
     - weak-lensing
 created-at: 2026-05-17T21:58:04.756569363Z
+closed-at: 2026-05-19T07:58:46.793477416Z
+outcome: loop stuck
 ---
 
 ## Loop Status (live — read before deciding to do anything)
