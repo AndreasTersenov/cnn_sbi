@@ -109,6 +109,11 @@ def parse_args() -> argparse.Namespace:
                    help="(plain arm only) AvgPool window after conv trunk.")
     p.add_argument("--compressor-pool-stride", type=int, default=8,
                    help="(plain arm only) AvgPool stride after conv trunk.")
+    p.add_argument("--vmim-nf-hidden", type=int, default=128,
+                   help=("VMIM companion RealNVP hidden width "
+                         "(AffineCoupling layers=[H]*2). Default 128 mirrors "
+                         "the inner script. Increase (e.g. 256, 512) to test "
+                         "Q4 / [[cnn-auto-bug-vmim-aux-may-bias-compressor]]."))
     p.add_argument("--npe-samples", type=int, default=100_000)
     p.add_argument("--nvp-layers", type=int, default=8)
     p.add_argument("--nvp-hidden", type=int, default=256)
@@ -182,6 +187,7 @@ def _build_compressor_cmd(args: argparse.Namespace, out_dir: Path) -> List[str]:
         "--summary-clip-value", "5.0",
         "--ds-batch-size", "500",
         "--no-standardize-summary",
+        "--vmim-nf-hidden", str(args.vmim_nf_hidden),
         *DATASET_FLAGS,
         *SPLIT_FLAGS,
         *_arch_flags(args.arm, args),
@@ -327,6 +333,7 @@ def main() -> int:
         "nvp_layers": int(args.nvp_layers),
         "nvp_hidden": int(args.nvp_hidden),
         "npe_samples": int(args.npe_samples),
+        "vmim_nf_hidden": int(args.vmim_nf_hidden),
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
     }
     (out_dir / "run_manifest.json").write_text(
