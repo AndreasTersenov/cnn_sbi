@@ -123,6 +123,23 @@ def parse_args() -> argparse.Namespace:
                          "is forced). Default 0.3 (~12 GB on a 40 GB A100) is "
                          "well above the ~3 GB the plain CNN + flow actually "
                          "uses at cbs=128; bump for wider trunks or cbs>=256."))
+    p.add_argument("--standardize-summary", dest="standardize",
+                   action="store_true", default=False,
+                   help=("Pass --standardize-summary to the inner script. "
+                         "Default OFF preserves the cnn-auto-push baseline "
+                         "(iter-16); ON matches iter-108-Q6ON-60k and the "
+                         "cross-push campaign convention."))
+    p.add_argument("--no-standardize-summary", dest="standardize",
+                   action="store_false",
+                   help="Explicit OFF (the default).")
+    p.add_argument("--compressor-checkpoint-policy",
+                   choices=("best_val", "last_step"),
+                   default="best_val",
+                   help=("Which compressor checkpoint Phase B uses. "
+                         "'best_val' (default) selects argmin of single-batch "
+                         "val loss across save points (the post-2026-05-19 "
+                         "fix); 'last_step' reproduces pre-fix campaign "
+                         "numbers (e.g. for replicating historical iter-16)."))
     p.add_argument("--name-stem", type=str, default=None,
                    help="Posterior filename stem. Default: cnn_auto_<arm>_step<N>.")
     p.add_argument("--skip-compressor", action="store_true",
@@ -150,7 +167,9 @@ def _arch_flags(arm: str, args: argparse.Namespace) -> List[str]:
     raise ValueError(f"unknown arm '{arm}'")
 
 
-def _compressor_paths(out_dir: Path, total_steps: int) -> Dict[str, Path]:
+def _compressor_paths(
+    out_dir: Path, total_steps: int, policy: str = "best_val",
+) -> Dict[str, Path]:
     base = (
         out_dir
         / "compressor"
@@ -161,6 +180,11 @@ def _compressor_paths(out_dir: Path, total_steps: int) -> Dict[str, Path]:
         / "gal_density_30"
         / "bin_4"
     )
+    if policy == "best_val":
+        return {
+            "params": base / "params_nd_compressor_best_val.pkl",
+            "state": base / "opt_state_resnet_best_val.pkl",
+        }
     return {
         "params": base / f"params_nd_compressor_batch{total_steps}.pkl",
         "state": base / f"opt_state_resnet_batch{total_steps}.pkl",
@@ -186,7 +210,8 @@ def _build_compressor_cmd(args: argparse.Namespace, out_dir: Path) -> List[str]:
         "--no-sample",
         "--summary-clip-value", "5.0",
         "--ds-batch-size", "500",
-        "--no-standardize-summary",
+        "--standardize-summary" if args.standardize else "--no-standardize-summary",
+        "--compressor-checkpoint-policy", args.compressor_checkpoint_policy,
         "--vmim-nf-hidden", str(args.vmim_nf_hidden),
         *DATASET_FLAGS,
         *SPLIT_FLAGS,
@@ -219,7 +244,7 @@ def _build_nde_cmd(
         "--npe-samples", str(args.npe_samples),
         "--posterior-out", str(posterior_out),
         "--ds-batch-size", "500",
-        "--no-standardize-summary",
+        "--standardize-summary" if args.standardize else "--no-standardize-summary",
         *DATASET_FLAGS,
         *SPLIT_FLAGS,
         *_arch_flags(args.arm, args),
@@ -302,8 +327,13 @@ def main() -> int:
     gpus = _csv_str(args.gpus)
     if not gpus:
         raise ValueError("--gpus cannot be empty")
-    if any(g not in {"0", "1", "2"} for g in gpus):
-        raise ValueError("GPU policy lock: only GPUs 0,1,2 are allowed.")
+    if any(g != "1" for g in gpus):
+        raise ValueError(
+            "GPU policy lock: only GPU 1 is allowed for new jobs in this "
+            "project (project CLAUDE.md, 'GPU allocation' section). "
+            "Pass --gpus 1 (or e.g. 1,1,1 to run Phase B NDEs in parallel "
+            "on the same GPU)."
+        )
     seeds = _csv_int(args.seeds)
     if not seeds:
         raise ValueError("--seeds cannot be empty")
@@ -311,7 +341,9 @@ def main() -> int:
         raise ValueError("--xla-mem-fraction must be in (0, 1].")
 
     stem = args.name_stem or f"cnn_auto_{args.arm}_step{args.total_steps}"
-    comp_paths = _compressor_paths(out_dir, args.total_steps)
+    comp_paths = _compressor_paths(
+        out_dir, args.total_steps, policy=args.compressor_checkpoint_policy,
+    )
 
     manifest = {
         "arm": args.arm,
@@ -334,6 +366,8 @@ def main() -> int:
         "nvp_hidden": int(args.nvp_hidden),
         "npe_samples": int(args.npe_samples),
         "vmim_nf_hidden": int(args.vmim_nf_hidden),
+        "standardize_summary": bool(args.standardize),
+        "compressor_checkpoint_policy": args.compressor_checkpoint_policy,
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
     }
     (out_dir / "run_manifest.json").write_text(

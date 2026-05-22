@@ -113,6 +113,24 @@ When running SBI experiments, follow the workflow in `skills/sbi/SKILL.md`: lock
 
 Claim acceptance requires apples-to-apples comparison, reproducibility from saved artifacts, stability across seeds, and having ruled out cache/preprocess/compressor mismatches. Keep per-run artifacts minimal: posterior `.npy`, `.meta.json`, metrics CSV/JSON (including FoM), corner plot PDF, and a manifest. W&B logging is expected on non-dry runs.
 
+## Felt / Ralph operating conventions
+
+Adopted 2026-05-22 after the cnn-auto-push-18-20-2026 retrospective. Every long-running campaign fiber (constitution) must follow these or explicitly justify deviation in the constitution body:
+
+1. **Declare ONE primary metric in the constitution.** Pick `pooled_fom3` OR `mean_of_seeds_fom3` OR `per_seed_min_fom3` — not "headline 25k" with a different number used by the keep-rule. Every iteration's keep/discard decision uses this metric. STATUS.md headline numbers must match it. Mixing metrics is the failure mode that made the auto-only-vs-cross-push overlay land on the wrong cross-arm baseline.
+
+2. **Declare a budget AND a plateau-stop in the constitution's "Done condition" stanza.** Format: "auto-close when N consecutive iters land within ±X% of current best on the primary metric, OR when iteration count reaches M, whichever is first." Ralph survey reads this at the start of each iteration and exits without launching work when the trigger fires. Default for hyperparameter sweeps: N=3, X=5%, M=30.
+
+3. **`ship-blocker` tag is reserved for fibers that pause hyperparameter iteration.** When a fiber tagged `ship-blocker` is open, Ralph must either ship its fix in the current iteration or explicitly demote-with-rationale before launching new training. The `[[cnn-auto-compressor-last-not-best-ckpt]]` bug sat unfixed across the entire cnn-auto-push campaign because it lacked this tag.
+
+4. **Constitution must include a "Loop Status (live)" stanza near the top** when in a wait-for-Andreas or wait-for-compute state. List the 2–3 concrete things that unblock work (e.g. "(a) Andreas appends CEILING CONFIRMED; (b) Andreas requests a new branch; (c) Andreas answers methodology fiber"). Cold-read Ralph iterations that find none of the conditions exit with `kill $PPID` and no commits. This is what stops the polish-make-work pattern that ate iters 17–20 of the auto-only campaign.
+
+5. **Self-review every 5 iterations.** A loop-self-review iteration produces a `loop_review.md` append: marginal-info-gained / current-best-delta / wall-time-used / "should this loop continue?" verdict. If the verdict is "no" two reviews in a row, auto-close. Goes in `<run-dir>/loop_review.md`, not STATUS.md (STATUS.md is for substantive findings).
+
+6. **Compress STATUS.md proactively.** Use `scripts/sbi/results/exploratory/tools/compact_status.py` (see "Other tooling" below) to collapse the calibration-ledger / lesson-tracking sections into a digest when STATUS.md exceeds ~30 KB. Keep the last 10 substantive events + current best + open ship-blockers + next 3 planned moves at the top; archive the rest.
+
+7. **Constitutions must declare which autoresearch driver they use and pin its checkpoint policy.** The drivers (`autoresearch_cnn-auto-push/run_arm.py`, `autoresearch_cnn-auto-cross-push/run_arm.py`) accept `--compressor-checkpoint-policy {best_val,last_step}`. New campaigns default to `best_val`; campaigns continuing a historical baseline pin to `last_step` and say so explicitly.
+
 ## Other reference docs in the tree
 
 - **`HANDOFF.md`** (root) — most recent session handoff. Always read this first when picking up the cross-only L1 vs CNN comparison.
