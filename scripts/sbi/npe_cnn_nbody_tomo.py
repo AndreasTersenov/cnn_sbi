@@ -204,10 +204,11 @@ def parse_args() -> argparse.Namespace:
         "--compressor-arch",
         type=str,
         default="plain",
-        choices=["plain", "resnet_small", "resnet18", "resnet34", "resnet50", "resnet50_gn"],
+        choices=["plain", "plain_attn", "resnet_small", "resnet18", "resnet34", "resnet50", "resnet50_gn"],
         help=(
             "Compressor architecture family: "
             "'plain' (existing 3-conv CNN), "
+            "'plain_attn' (plain trunk + tail multi-head attention block — H1 inductive-bias arm), "
             "'resnet_small' (handcrafted residual CNN), "
             "'resnet18'/'resnet34'/'resnet50' (canonical Haiku ResNets, BatchNorm), "
             "'resnet50_gn' (custom ResNet50 with GroupNorm — for cosmology-batched inputs)."
@@ -262,6 +263,24 @@ def parse_args() -> argparse.Namespace:
             "Use ResNet-v2 variant for canonical ResNets "
             "(--compressor-arch=resnet18/resnet34/resnet50)"
         ),
+    )
+    p.add_argument(
+        "--attn-layers",
+        type=int,
+        default=1,
+        help="Number of transformer blocks in --compressor-arch=plain_attn (default 1).",
+    )
+    p.add_argument(
+        "--attn-heads",
+        type=int,
+        default=4,
+        help="Number of attention heads in --compressor-arch=plain_attn (default 4).",
+    )
+    p.add_argument(
+        "--attn-mlp-mult",
+        type=int,
+        default=4,
+        help="MLP hidden-width multiplier in --compressor-arch=plain_attn transformer block (default 4).",
     )
     p.add_argument("--compressor-params", type=str,
                     default="/home/tersenov/software/cnn_sbi/tomo/save_params/"
@@ -1244,6 +1263,88 @@ class CompressorCNN2D(hk.Module):
         return net_x.squeeze()
 
 
+class CompressorPlainAttn(hk.Module):
+    """Plain CNN trunk + tail-attention block: (B, H, W, nbins) -> (B, output_dim).
+
+    Conv trunk matches CompressorCNN2D (3x3 stride-2 convs, leaky_relu). The
+    AvgPool/Flatten of CompressorCNN2D is replaced with a learned positional
+    embedding plus L pre-LN transformer blocks (multi-head self-attention +
+    MLP, with GeLU). Tokens are then mean-pooled and fed to the same dense
+    head (Linear-leaky_relu-Linear) as CompressorCNN2D.
+
+    Diagnostic role: tests H1 from CNN_CROSS_MAPS_INFORMATION_NOTE — whether
+    explicit global spatial mixing closes the plain-CNN's auto-only / auto+cross
+    FoM3 gap.
+    """
+
+    def __init__(
+        self,
+        output_dim: int,
+        conv_channels: tuple[int, ...],
+        dense_width: int,
+        attn_layers: int,
+        attn_heads: int,
+        attn_mlp_mult: int,
+        name: str | None = None,
+    ):
+        super().__init__(name=name)
+        self.output_dim = output_dim
+        self.conv_channels = conv_channels
+        self.dense_width = dense_width
+        self.attn_layers = attn_layers
+        self.attn_heads = attn_heads
+        self.attn_mlp_mult = attn_mlp_mult
+
+    def __call__(self, x):
+        net_x = x
+        for channels in self.conv_channels:
+            net_x = hk.Conv2D(channels, 3, 2)(net_x)
+            net_x = jax.nn.leaky_relu(net_x)
+        # net_x is now (B, H', W', C).
+        b, h, w, c = net_x.shape
+        n_tokens = h * w
+        tokens = net_x.reshape((b, n_tokens, c))
+        pos_emb = hk.get_parameter(
+            "pos_embed",
+            shape=(n_tokens, c),
+            init=hk.initializers.RandomNormal(stddev=0.02),
+        )
+        tokens = tokens + pos_emb
+        if c % self.attn_heads != 0:
+            raise ValueError(
+                f"CompressorPlainAttn: trunk output channels ({c}) must be "
+                f"divisible by attn_heads ({self.attn_heads})."
+            )
+        key_size = c // self.attn_heads
+        w_init = hk.initializers.VarianceScaling(2.0)
+        for li in range(self.attn_layers):
+            y = hk.LayerNorm(
+                axis=-1, create_scale=True, create_offset=True,
+                name=f"ln_attn_{li}",
+            )(tokens)
+            mha = hk.MultiHeadAttention(
+                num_heads=self.attn_heads,
+                key_size=key_size,
+                w_init=w_init,
+                name=f"mha_{li}",
+            )
+            y = mha(y, y, y)
+            tokens = tokens + y
+            y = hk.LayerNorm(
+                axis=-1, create_scale=True, create_offset=True,
+                name=f"ln_mlp_{li}",
+            )(tokens)
+            y = hk.Linear(self.attn_mlp_mult * c, name=f"mlp_in_{li}")(y)
+            y = jax.nn.gelu(y)
+            y = hk.Linear(c, name=f"mlp_out_{li}")(y)
+            tokens = tokens + y
+        pooled = tokens.mean(axis=1)
+        h_out = hk.Linear(self.dense_width)(pooled)
+        h_out = jax.nn.leaky_relu(h_out)
+        h_out = hk.Linear(self.output_dim)(h_out)
+        return h_out.squeeze()
+
+
 class ResidualBlock2D(hk.Module):
     """Simple residual block used by handcrafted resnet_small compressor."""
 
@@ -1460,6 +1561,9 @@ def build_compressors(
     resnet_small_blocks: tuple[int, ...],
     resnet_head_width: int,
     resnet_v2: bool,
+    attn_layers: int = 1,
+    attn_heads: int = 4,
+    attn_mlp_mult: int = 4,
 ):
     """Build train/eval Haiku compressor transforms for selected architecture."""
     if arch == "plain":
@@ -1471,6 +1575,21 @@ def build_compressors(
                 pool_window=pool_window,
                 pool_stride=pool_stride,
                 name="compressor_plain",
+            )(y)
+        compressor_train = hk.transform_with_state(_forward)
+        compressor_eval = hk.transform_with_state(_forward)
+        return compressor_train, compressor_eval
+
+    if arch == "plain_attn":
+        def _forward(y):
+            return CompressorPlainAttn(
+                dim,
+                conv_channels=conv_channels,
+                dense_width=dense_width,
+                attn_layers=attn_layers,
+                attn_heads=attn_heads,
+                attn_mlp_mult=attn_mlp_mult,
+                name="compressor_plain_attn",
             )(y)
         compressor_train = hk.transform_with_state(_forward)
         compressor_eval = hk.transform_with_state(_forward)
@@ -3315,6 +3434,12 @@ def main():
             f"resnet50_gn (GroupNorm, custom) "
             f"head={args.resnet_head_width}"
         )
+    elif args.compressor_arch == "plain_attn":
+        arch_desc = (
+            f"plain_attn conv={compressor_conv_channels} "
+            f"dense={args.compressor_dense_width} "
+            f"attn(L={args.attn_layers},H={args.attn_heads},mlp_mult={args.attn_mlp_mult})"
+        )
     else:
         raise ValueError(f"Unsupported --compressor-arch '{args.compressor_arch}'")
     print(f"  Compressor architecture: {arch_desc}")
@@ -3363,6 +3488,9 @@ def main():
         resnet_small_blocks=resnet_small_blocks,
         resnet_head_width=args.resnet_head_width,
         resnet_v2=bool(args.resnet_v2),
+        attn_layers=args.attn_layers,
+        attn_heads=args.attn_heads,
+        attn_mlp_mult=args.attn_mlp_mult,
     )
     compressor_source = "train_compressor" if args.train_compressor else "pretrained"
     compressor_params_ref: Optional[str] = None
