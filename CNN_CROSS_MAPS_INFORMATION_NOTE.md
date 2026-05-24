@@ -346,6 +346,187 @@ Full writeup of the attention arm:
 `scripts/sbi/results/exploratory/h1_inductive_bias/H1_ATTENTION_VERDICT.md`.
 Felt campaign: `.felt/cnn-h1-inductive-bias-2026-05/`.
 
+## 8c. Honest revision after Andreas's pushback (2026-05-23)
+
+This section revises §2, §3, and the §8b interpretation after deeper
+stress-testing of the two stories we'd been telling. **Both stories were
+overstated as I'd framed them.** The corrected picture is fuzzier but more
+honest.
+
+### 8c.1. The "multiplicative cross-channel inductive bias" story is weaker than §3.H1 claims
+
+The §3 claim was that a local CNN cannot extract cross-bin information
+because the architecture lacks multiplicative cross-channel interactions in
+its inductive bias. That overstates the case. Specifically:
+
+- A ReLU/LeakyReLU network *can* approximate the product $xy$. Using the
+  polarization identity $xy = \tfrac{1}{4}[(x+y)^2 - (x-y)^2]$ together
+  with the fact that ReLU stacks can approximate $x^2$ to arbitrary
+  precision, Yarotsky (2017) showed that approximating $xy$ to accuracy
+  $\epsilon$ requires $O((\log 1/\epsilon)^2)$ depth. Our 3-conv-layer
+  plain trunk is shallow but not zero.
+- More accurately, products of input channels are *not in the CNN's
+  first-order inductive bias*, so they're harder to learn — but they're
+  not architecturally inaccessible. The question is whether the
+  optimizer finds these representations under realistic training.
+- The H1 attention falsification is consistent with both (i) "the problem
+  is expressiveness, but we tested attention in the wrong place" and
+  (ii) "the problem is gradient signal / data limit, and attention
+  doesn't fix optimization difficulty". The two are not cleanly
+  separable from one experiment.
+
+So the corrected H1 story is: **the inductive bias makes cross-bin
+features harder to learn than they'd be for an architecture with native
+multiplicative interactions, but they're not impossible to learn**. The
+gap between "harder to learn" and "actually unlearned in practice" is
+filled by the data + optimization regime, which is §3.H2's domain.
+
+This means **H1 and H2 are not cleanly distinct in our setting.** They
+overlap heavily. The honest re-ranking: H2 (data + optimization limit
+modulated by the H1-style inductive-bias difficulty) is dominant; pure
+H1 (architecture is the load-bearing limit) is unlikely.
+
+### 8c.2. The patch-boundary story is stronger than §8b claims (the spherical case is structurally not local)
+
+I'd estimated the patch-boundary effect at "10–20% at the patch edges,
+not dominant" assuming the cross-maps behave like a flat-sky convolution
+that's effectively local at the cross-correlation scale (~1–2 deg). That
+estimate is the **flat-sky** answer. The actual procedure in this project
+is the **spherical** one (§2 in `Harmonic_cross_maps.md`), and it is
+structurally different.
+
+#### What the flat-sky procedure does (Flat-Sky_Tomographic_Cross_Maps.md)
+
+By the convolution theorem on a flat 2D grid, pointwise multiplication of
+FFT coefficients is exactly equivalent to a real-space convolution:
+
+$$\kappa^{ij}(\mathbf{x}) = \mathcal{F}^{-1}\{\tilde{\kappa}^i \cdot \tilde{\kappa}^j\} = (\kappa^i \ast \kappa^j)(\mathbf{x})$$
+
+This convolution kernel is $\kappa^j$ itself, which falls off with $\kappa^j$'s spatial
+correlation length (a few degrees for tomographic shear). So the
+flat-sky cross-map at a patch interior pixel is mostly determined by
+$\kappa^i$ and $\kappa^j$ values within a few degrees of that pixel — *inside* the
+patch, except for an edge zone of ~2 deg width.
+
+#### What the spherical procedure actually does (Harmonic_cross_maps.md)
+
+The construction is: take spherical-harmonic transforms of both maps,
+multiply the coefficients $a_{\ell m}^i$ and $a_{\ell m}^j$ **element-wise**, then
+inverse-transform back. The resulting cross-map value at a pixel $\mathbf{x}$ is
+
+$$\kappa^{ij}(\mathbf{x}) = \sum_{\ell m} a^i_{\ell m}\, a^j_{\ell m}\, Y_{\ell m}(\mathbf{x})$$
+
+Substituting $a_{\ell m}^i = \int Y_{\ell m}^*(\mathbf{y})\,\kappa^i(\mathbf{y})\,d\mathbf{y}$
+and similarly for $a_{\ell m}^j$:
+
+$$\kappa^{ij}(\mathbf{x}) = \int\!\!\!\int K(\mathbf{x}, \mathbf{y}, \mathbf{z})\, \kappa^i(\mathbf{y})\, \kappa^j(\mathbf{z})\, d\mathbf{y}\,d\mathbf{z}$$
+
+where the **three-point kernel** is
+$K(\mathbf{x}, \mathbf{y}, \mathbf{z}) = \sum_{\ell m} Y_{\ell m}(\mathbf{x})\, Y_{\ell m}^*(\mathbf{y})\, Y_{\ell m}^*(\mathbf{z})$.
+
+This is *not* a spherical convolution by a fixed kernel — the spherical
+convolution theorem applies only to convolutions with **rotationally-
+invariant** kernels. The cross-map operation is a more general bilinear
+operator on $(\kappa^i, \kappa^j)$, and its kernel $K(\mathbf{x}, \mathbf{y}, \mathbf{z})$ is the
+Gaunt-type 3-point function on the sphere. It has support on the
+**whole sphere × whole sphere**, weighted by the angular geometry of the
+triangle $(\mathbf{x}, \mathbf{y}, \mathbf{z})$.
+
+#### What this means for the CNN
+
+For *every* patch pixel $\mathbf{x}$ — interior or edge — the cross-map value
+$\kappa^{ij}(\mathbf{x})$ is a quadratic functional of $\kappa^i$ and $\kappa^j$
+**evaluated across the whole sphere**, not just locally. The CNN seeing
+only auto-patches has the values of $\kappa^i$ inside the patch only, and
+therefore *cannot in principle reconstruct* $\kappa^{ij}(\mathbf{x})$ — even at
+interior pixels far from any patch boundary. The information about
+$\kappa^i$ and $\kappa^j$ *outside* the patch is genuinely missing.
+
+The size of this effect depends on how concentrated the Gaunt kernel
+$K(\mathbf{x}, \mathbf{y}, \mathbf{z})$ is around small triangles (i.e., $\mathbf{y}, \mathbf{z}$ near $\mathbf{x}$).
+For low-$\ell$ modes the kernel tends to favor compact triangles, so the
+dominant contribution to $\kappa^{ij}(\mathbf{x})$ does come from "nearby" $\kappa^i, \kappa^j$
+values. But the long tails of the kernel mean there is *always* a
+non-trivial contribution from far-away points — and these are exactly
+the ones the CNN cannot see.
+
+**This is bigger than I claimed in §8b.** I'd estimated 10–20% of the
+gap. Honestly, without an empirical test, I don't know the magnitude.
+It could be 20%; it could be 50% or more. The structural argument
+("every patch pixel encodes some global information that the auto patches
+can't") is robust; the quantitative estimate is not.
+
+### 8c.3. The cleanest empirical test for §8c.2
+
+Run the same CNN with cross-maps constructed by the **flat-sky procedure**
+(`Flat-Sky_Tomographic_Cross_Maps.md`) instead of the spherical procedure.
+The flat-sky procedure produces cross-maps that are *true real-space
+convolutions* of the auto-patches with each other, so they encode only
+information from within the patch (plus small apodization-window edge
+effects).
+
+If flat-sky cross-maps lift CNN auto-only FoM3 by roughly the same factor
+as the spherical cross-maps, the global-information contribution to the
+gap is small — the dominant effect is the optimization/data story (H2)
+and the cross-maps just help by pre-extracting locally-derivable
+information.
+
+If flat-sky cross-maps lift FoM3 *significantly less* than the spherical
+ones, the global-information contribution is substantial — the
+spherical cross-maps are genuinely adding Fisher information that the
+auto-patches do not contain.
+
+This is almost free: no architecture changes, no new training of an
+unfamiliar model — just a different cross-cache construction. The
+cross-cache builder already supports flat-sky variants via
+`compute_flat_cross_map` (see `Flat-Sky_Tomographic_Cross_Maps.md`).
+If we ever want to actually disambiguate the "is the spherical procedure
+adding genuinely new info" question, this is the experiment.
+
+### 8c.4. Revised hypothesis ranking (supersedes §3 and §8b)
+
+| hypothesis | status after 8c | dominance |
+|:---|:---|:---|
+| H1 (inductive bias, strict)              | weakened — products are learnable, just harder; H1 attention falsification is consistent with both architecture-limit and data-limit readings | **likely not dominant** |
+| H2 (data + optimization limit)           | likely dominant under the corrected reading; H1's "harder to learn" plus VMIM gradient-signal weakness for cross-bin features explains the gap | **likely dominant** |
+| H3 (compressor bottleneck)               | **falsified 2026-05-24** at the standard NDE config: cdim=10 → cdim=100 cratered pooled FoM3 by ~49% (24.0k → 12.2k), with well-calibrated but flatter posteriors. NDE underprovisioned for 100-d conditioning. See `scripts/sbi/results/exploratory/h3_cdim_sweep/H3_CDIM100_VERDICT.md`. | **not dominant** |
+| **Global-info via spherical procedure** *(new, was §8b's "small effect")* | strengthened — every patch pixel encodes global info the CNN cannot reconstruct; magnitude unclear without flat-sky-vs-spherical comparison | **plausibly load-bearing** |
+
+So the corrected leading hypotheses are H2 and the global-info-via-
+spherical-procedure effect, possibly in combination. The "the cross-
+maps are mostly re-packaging existing information into a more
+accessible form" (Interpretation B from §4) is still on the table, but
+Interpretation A ("the cross-maps add genuinely new information") is
+substantially more credible than it was in §8b's reading.
+
+**Update 2026-05-24 (H3 falsification)**: pushing summary dimensionality
+from 10 to 100 at the standard NDE config cratered pooled FoM3 by ~49%
+(24.0k → 12.2k). The compressor's VMIM val-loss *was* tighter at
+cdim=100, but the RealNVP NDE was underprovisioned for the higher-dim
+conditioning and produced flatter (well-calibrated but uninformative)
+posteriors. This decisively closes the "we just needed more summary
+dimensions" line — at the pipeline's current configuration, cdim=10
+is essentially near-optimal. Strict claim: a separately co-tuned
+higher-capacity NDE at cdim=100 might recover the cdim=10 performance,
+but the spirit of the question is answered. Removes H3 from the
+running entirely.
+
+### 8c.5. Confidence ledger
+
+- **High confidence**: my original "global Fourier ops are out of CNN's
+  reach" framing (§3.H1 first paragraph) was wrong as stated.
+- **High confidence**: the spherical cross-map procedure is structurally
+  non-local — every patch pixel depends on $\kappa^i, \kappa^j$ values across the
+  whole sphere via a Gaunt-type kernel.
+- **Medium confidence**: H2 (data + optimization, modulated by inductive-
+  bias difficulty) is the dominant explanation for the gap.
+- **Low-to-medium confidence**: the global-info-via-spherical-procedure
+  effect is large in magnitude — possibly 20–50%, possibly more,
+  possibly less. Needs the flat-sky-vs-spherical empirical comparison
+  to bound.
+- **Low confidence**: any single-line summary of "the reason the gap
+  exists" without acknowledging it's a combination of effects.
+
 ## 9. Pointers
 
 - L1 noise-model correction: `memory/project_l1_noise_model_correction.md`.
