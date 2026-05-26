@@ -32,6 +32,40 @@ nobnt regime, plain CNN compressor 64/128/256/dense=256/cdim=10 with
 60k compressor steps + 50k NDE steps. Same as `[[canonical-anchors-refresh-2026-05]]`
 parent fiber.
 
+## Done condition
+
+This is an audit, not an iteration. Done when ONE of:
+
+- (success) A specific hypothesis (H-A..H-E) is confirmed to explain the
+  ~50% drop with high enough confidence to write up. "High enough" means
+  the explanation predicts the observed drop within a factor of ~1.2× and
+  no competing hypothesis is left standing.
+- (escalation) After running H-A and the first three cheap checks (zero
+  compute), if no clear culprit has emerged AND the drop is not
+  reproducible by reverting flags one at a time → file a meta-fiber to
+  invoke deeper code-archaeology (git bisect of the L1+CNN scripts).
+- (budget hit) After **4 distinct GPU launches** of audit-related runs
+  (e.g. one iter-108 reproduction + up to three follow-ups), if no
+  resolution → halt and re-scope with Andreas. Compute is expensive; we
+  shouldn't burn more than ~12-16h GPU on this without a working theory.
+
+NOT done conditions: "we got a different number once" (need reproducibility);
+"it could be split discipline" (need to actually test by toggling the flag).
+
+## Loop Status (live)
+
+**Currently waiting on**:
+- (a) Andreas authorizes which audit step to run first in the new session.
+- (b) Zero-compute checks complete: re-compute FoM3 from saved iter-108
+  posteriors + inventory the saved compressor checkpoints under
+  `/nas/tersenov/claude-notes/runs/cnn-auto-cross-push-18-20-2026/iter-108-Q6ON-60k/`.
+- (c) Decision on whether H-A (full iter-108 reproduction, ~3-4h compute)
+  is the right next step or whether the cheap checks resolve it first.
+
+No GPU compute should fire until (a)+(b)+(c) clear. Cold-read agents
+that find this fiber open should NOT auto-launch any run; they should
+report current state to Andreas and wait.
+
 ## Hypotheses (ranked priority)
 
 ### H-A — Reproduce iter-108-Q6ON-60k EXACTLY (highest priority)
@@ -123,10 +157,39 @@ disputed and L1 cross reproduces v2_chsigma exactly), but the
 cross-arm-derived ratios (cross/auto for CNN, CNN/L1 at auto+cross) all
 depend on resolving this anomaly.
 
+## Diagnostic outputs (per audit step)
+
+Every audit step that produces a number must record, in order:
+
+1. **3-seed pooled FoM3** (the primary metric).
+2. **Per-seed FoM3** to expose seed-to-seed mode drift.
+3. **Pool/MoS haircut** — was 0.978 for iter-108-Q6ON-60k, 0.716 for the
+   canonical CNN cross. The drop in haircut alone (0.978→0.716) accounts
+   for a noticeable fraction of the FoM3 drop; tracking haircut separately
+   from MoS isolates whether the issue is per-seed quality or seed
+   concordance.
+4. **Per-parameter bias-vs-truth in σ-units** on (Ωₘ, σ₈, w₀).
+5. **Compressor + NDE val-loss curves** (already automated by the plotter
+   at `scripts/sbi/results/exploratory/canonical_anchors_refresh/tools/plot_canonical_diagnostics.py`).
+6. **Run-config diff against iter-108-Q6ON-60k** via the pre-flight tool
+   `tools/flag_diff.py`. Any non-default-non-match must be justified.
+
 ## Sub-fibers
 
 (To be filed as the audit proceeds. Each H-* gets its own sub-fiber if
 significant compute or analysis is involved.)
+
+## Exit interview placeholder (to fill when fiber closes)
+
+- **What was the root cause** (which H-* hypothesis won)?
+- **What was the magnitude attributable to that cause** (in % FoM3
+  shift relative to iter-108)?
+- **What residual unexplained variance remains** (and is it within
+  seed-scatter)?
+- **What CLAUDE.md or memory rule should be added** so this doesn't
+  happen silently again? Possible candidates: tracking pool/MoS haircut
+  alongside FoM3 as a primary diagnostic; mandating per-arm
+  reproducibility checks before claiming new anchors.
 
 ## Connections
 
