@@ -1,12 +1,34 @@
 # HANDOFF — canonical-anchors-refresh campaign
 
-**UPDATE 2026-05-26 ~06:30 UTC: campaign COMPUTE COMPLETE. All 12 canonical posteriors landed cleanly. See §"Final canonical anchors" below.** Remaining work is write-up only (METHODOLOGY.md, refresh of CNN_CROSS_MAPS_INFORMATION_NOTE.md, close fibers with exit interviews). No more compute needed.
+**UPDATE 2026-05-26 ~14:00 UTC: COMPUTE COMPLETE BUT RESULTS NOT TRUSTED. CNN auto+cross dropped 47% from the stale iter-108-Q6ON-60k anchor — Andreas does not believe this is just methodology contamination. See `[[cnn-cross-drop-audit-2026-05-26]]` sub-fiber. NO write-up, no `METHODOLOGY.md`, no `CNN_CROSS_MAPS_INFORMATION_NOTE.md` refresh until the audit clears.**
 
-**Read this first. Do not launch anything before completing the §"Before doing anything" checklist below.**
+**Read this first. Do not launch any compute before completing the §"Before doing anything" checklist below.**
 
-This document hands off the `canonical-anchors-refresh-2026-05` felt campaign to a fresh Claude session. The previous session got into a "launch → bug → relaunch" loop that consumed a lot of GPU. The new session should be more deliberate.
+This document hands off the `canonical-anchors-refresh-2026-05` felt campaign to a fresh Claude session. The previous session got into a "launch → bug → relaunch" loop that consumed a lot of GPU, and the resulting canonical CNN cross number is suspect. The new session's first job is to audit the anomaly, not to write up.
 
-## Final canonical anchors (all four arms × 3 seeds, fully clean)
+## ⚠️ The anomaly
+
+L1 auto+cross under canonical methodology reproduces the v2_chsigma anchor to **+0.5%** (stale 33,820 → canonical 34,004). This validates the data and the L1 pipeline.
+
+CNN auto+cross under the same canonical methodology drops **−47%** from the iter-108-Q6ON-60k anchor (stale 23,986 → canonical 12,615). The cnn-auto-cross-push Ralph campaign spent significant effort to push that number to ~25k; losing it to a methodology change is suspicious. Train/train compressor-NDE contamination typically inflates FoM3 10-30%, not 2×.
+
+**Conclusion: the canonical CNN auto+cross 12,615 is not trustworthy until the audit completes.** All other arms (CNN auto, L1 auto, L1 cross) may be usable but all the cross-arm-derived ratios depend on resolving this.
+
+## Audit plan — first thing the new session should do
+
+Read the sub-fiber `[[cnn-cross-drop-audit-2026-05-26]]`. Then start with the cheapest checks before any GPU work:
+
+1. **Reproduce 23,986 from the SAVED iter-108-Q6ON-60k posteriors** (zero compute). Confirms the analysis tool and FoM3 formula still match the original.
+
+2. **NDE-only re-run with iter-108's saved compressor + canonical 70/30 NDE split**: if FoM3 lifts back toward ~24k, the canonical 12.6k is because of *our* compressor (the iter-108 compressor was somehow better). If still ~12.6k, the issue is the NDE-side split.
+
+3. **Full reproduction of iter-108-Q6ON-60k config** (train/train, no audit flag): does it give 24k today, or has the code regressed?
+
+4. **Only if all of the above are clean**, accept the canonical 12.6k and write up.
+
+The fiber has H-A through H-E hypotheses with decision rules. The cheap checks (1)(2) come first — they may resolve the audit without launching anything.
+
+## Final canonical anchors (all four arms × 3 seeds, fully clean) — TENTATIVE pending audit
 
 | arm | per-seed FoM3 | MoS | **Pool** | haircut | \|bias\| med |
 |:---|:---|---:|---:|---:|---:|

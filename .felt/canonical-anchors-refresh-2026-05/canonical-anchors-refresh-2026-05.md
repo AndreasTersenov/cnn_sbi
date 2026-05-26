@@ -138,13 +138,16 @@ sub-Nyquist scales but the maps are NOT byte-identical between the two
 data sources. We need a sanity-check arm to bound whether this matters
 for the cross/auto FoM3 comparison.
 
-**COMPUTE COMPLETE 2026-05-26 ~06:30 UTC.** All 12 canonical posteriors landed cleanly. L1 cross verifies the v2_chsigma anchor to 0.5%. See **`HANDOFF_CANONICAL_REFRESH.md`** at repo root for the final numbers + ratios. Remaining work: write-up only.
+**AUDIT NEEDED 2026-05-26 ~14:00 UTC** — compute complete but Andreas does not trust the CNN auto+cross canonical number (12,615 vs stale 23,986, -47%). L1 cross reproduces v2_chsigma exactly (+0.5%) under the same canonical methodology, so the data + L1 pipeline are validated. The CNN cross drop must have a different explanation. Filed sub-fiber `[[cnn-cross-drop-audit-2026-05-26]]` with H-A..H-E hypotheses + cheap-first investigation sequence. **NO writeup, no METHODOLOGY.md, no CNN_CROSS_MAPS_INFORMATION_NOTE.md refresh until the audit clears.**
 
-Final pool FoM3: CNN auto=12,873; CNN cross=12,615; L1 auto=12,004; **L1 cross=34,004** (matches v2_chsigma anchor to 0.5%).
+Final pool FoM3 (TENTATIVE, pending audit): CNN auto=12,873; CNN cross=12,615; L1 auto=12,004; L1 cross=34,004.
+- L1 cross matches v2_chsigma anchor 33,820 to +0.5% ✓ (validates L1 pipeline).
+- CNN cross drops 47% from iter-108-Q6ON-60k anchor 23,986 ✗ (the disputed number).
 
-Canonical headline ratios: CNN cross/auto=0.98×; L1 cross/auto=2.83×; CNN/L1 at auto=1.07×; **CNN/L1 at auto+cross=0.37× (L1 dominates by 2.7×)**.
-
-TWO new hard rules saved to project memory: `feedback_never_pca_l1.md` and `feedback_l1_cross_must_use_harmonic_route.md`. Pre-flight `flag_diff.py` now has gotcha tripwires for both.
+Hard rules SAVED that survive the audit (these are independently validated):
+- `feedback_never_pca_l1.md` — always `--pca-components 0` on L1.
+- `feedback_l1_cross_must_use_harmonic_route.md` — L1 cross MUST use `--full-sphere-cross-cache`.
+- `flag_diff.py` gotcha tripwires for both.
 
 **Iteration 2 status (2026-05-24 ~15:00 UTC, in flight)**:
 - ✅ (a) Pre-flight flag-diff tool at `tools/flag_diff.py` — caught the 5
