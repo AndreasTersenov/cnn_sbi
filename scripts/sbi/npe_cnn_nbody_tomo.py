@@ -619,12 +619,14 @@ def parse_args() -> argparse.Namespace:
         "--channel-mode",
         type=str,
         default="auto_cross",
-        choices=["auto_cross", "cross_only"],
+        choices=["auto_cross", "cross_only", "auto_only"],
         help=(
             "Which subset of the 10-channel harmonic cache to feed to the CNN "
             "compressor. 'auto_cross' (default) uses all 10 channels (4 auto + "
             "6 cross). 'cross_only' slices to the 6 cross channels at read "
-            "time; Haiku Conv2D adapts to the 6-channel input automatically. "
+            "time. 'auto_only' slices to the 4 auto channels — useful for the "
+            "TFDS-auto vs cache-auto sanity check (do the SHT/iSHT-roundtrip "
+            "auto channels match the TFDS-direct auto maps?). "
             "Only meaningful with --full-sphere-cross-cache."
         ),
     )
@@ -757,10 +759,52 @@ def _read_harmonic_manifest(cache_dir: Path) -> Dict[str, object]:
     return payload
 
 
+_HARMONIC_SPLIT_SLICE_RE = re.compile(
+    r"^([a-zA-Z_][a-zA-Z_0-9]*)(?:\[(?:(\d+(?:\.\d+)?)%)?:(?:(\d+(?:\.\d+)?)%)?\])?$"
+)
+
+
+def _parse_harmonic_split_slice(split: str) -> tuple[str, float, float]:
+    """Parse 'name' or 'name[:N%]' or 'name[N%:]' or 'name[A%:B%]'.
+
+    Returns (basename, slice_low_frac, slice_high_frac) with fractions in [0, 1].
+
+    Examples:
+        'train'          -> ('train', 0.0, 1.0)
+        'train[:70%]'    -> ('train', 0.0, 0.70)
+        'train[70%:]'    -> ('train', 0.70, 1.0)
+        'train[30%:70%]' -> ('train', 0.30, 0.70)
+    """
+    m = _HARMONIC_SPLIT_SLICE_RE.match(split.strip())
+    if not m:
+        raise ValueError(
+            f"Cannot parse harmonic split spec {split!r}. "
+            f"Expected 'name' or 'name[A%:B%]'."
+        )
+    name = m.group(1)
+    low_pct = m.group(2)
+    high_pct = m.group(3)
+    low = float(low_pct) / 100.0 if low_pct else 0.0
+    high = float(high_pct) / 100.0 if high_pct else 1.0
+    if not (0.0 <= low <= high <= 1.0):
+        raise ValueError(
+            f"Invalid slice bounds in {split!r}: low={low}, high={high}."
+        )
+    return name, low, high
+
+
 def _list_harmonic_cache_files(cache_dir: Path, regime: str, split: str) -> list[Path]:
+    """Return the sorted list of .npz cache files for a (regime, split).
+
+    `split` may include TFDS-style percent slicing (e.g. 'train[:70%]') for
+    deterministic compressor/NDE-disjoint subsetting. The slice is applied
+    to the sorted file list after listing all files under the basename's
+    directory.
+    """
     if regime not in ("bnt", "nobnt"):
         raise ValueError(f"regime must be 'bnt' or 'nobnt', got {regime}")
-    split_dir = cache_dir / regime / split
+    basename, slice_low, slice_high = _parse_harmonic_split_slice(split)
+    split_dir = cache_dir / regime / basename
     if not split_dir.exists():
         raise FileNotFoundError(
             f"Harmonic cache split missing: {split_dir}. "
@@ -769,7 +813,53 @@ def _list_harmonic_cache_files(cache_dir: Path, regime: str, split: str) -> list
     files = sorted(p for p in split_dir.iterdir() if p.suffix == ".npz")
     if not files:
         raise FileNotFoundError(f"No .npz files found under {split_dir}.")
-    return files
+    n = len(files)
+    lo = int(round(slice_low * n))
+    hi = int(round(slice_high * n))
+    sliced = files[lo:hi]
+    if not sliced:
+        raise FileNotFoundError(
+            f"Slice [{slice_low:.3f}:{slice_high:.3f}] of {basename} "
+            f"({n} files) is empty."
+        )
+    if (slice_low, slice_high) != (0.0, 1.0):
+        print(
+            f"  Harmonic split {split!r}: {len(sliced)}/{n} files "
+            f"(indices [{lo}:{hi}])."
+        )
+    return sliced
+
+
+def audit_harmonic_split_overlap(
+    cache_dir: Path,
+    regime: str,
+    compressor_split: str,
+    nde_split: str,
+) -> Dict[str, object]:
+    """Audit FILE-SET disjointness between compressor and NDE splits on harmonic cache.
+
+    Files in the cache are per-(cosmo, perm) blocks; sliced file lists are
+    deterministic given the sorted directory ordering. Zero file-overlap
+    implies zero example-overlap (each file's examples live in only that file).
+    """
+    comp_files = _list_harmonic_cache_files(cache_dir, regime, compressor_split)
+    nde_files = _list_harmonic_cache_files(cache_dir, regime, nde_split)
+    comp_set = {p.name for p in comp_files}
+    nde_set = {p.name for p in nde_files}
+    overlap = comp_set & nde_set
+    return {
+        "route": "harmonic",
+        "regime": regime,
+        "compressor_train_split": compressor_split,
+        "nde_train_split": nde_split,
+        "compressor_train_files": len(comp_files),
+        "nde_train_files": len(nde_files),
+        "overlap_count": len(overlap),
+        "overlap_fraction_vs_nde": (
+            len(overlap) / len(nde_set) if nde_set else 0.0
+        ),
+        "overlap_examples_first5": sorted(overlap)[:5],
+    }
 
 
 def _harmonic_random_flip(maps: np.ndarray, rng: np.random.Generator) -> np.ndarray:
@@ -953,6 +1043,8 @@ def _normalize_harmonic_split(
     arg_name: str,
     allowed: tuple[str, ...],
 ) -> str:
+    """Accept TFDS-style 'name[A%:B%]' slicing on top of basename mapping."""
+    basename, slice_low, slice_high = _parse_harmonic_split_slice(split.strip())
     mapping = {
         "train": "train",
         "val": "val",
@@ -960,14 +1052,23 @@ def _normalize_harmonic_split(
         "test": "val",
         "obs": "obs",
     }
-    key = split.strip().lower()
-    normalized = mapping.get(key)
-    if normalized is None or normalized not in allowed:
+    key = basename.lower()
+    normalized_base = mapping.get(key)
+    if normalized_base is None or normalized_base not in allowed:
         allowed_str = ", ".join(allowed)
         raise ValueError(
             f"{arg_name}={split!r} is invalid for harmonic-cache route. "
-            f"Allowed: {allowed_str}."
+            f"Allowed basenames: {allowed_str} (optional slice notation "
+            f"'name[A%:B%]')."
         )
+    if (slice_low, slice_high) == (0.0, 1.0):
+        normalized = normalized_base
+    else:
+        low_pct = f"{slice_low * 100:g}%"
+        high_pct = f"{slice_high * 100:g}%"
+        # match TFDS-style format
+        slice_spec = f"[{low_pct if slice_low > 0 else ''}:{high_pct if slice_high < 1.0 else ''}]"
+        normalized = f"{normalized_base}{slice_spec}"
     if normalized != split:
         print(f"  Overriding {arg_name} from '{split}' to '{normalized}' for harmonic cache.")
     return normalized
@@ -3246,11 +3347,10 @@ def main():
                 "(cache patches are already demeaned)."
             )
         args.zero_mean_maps = True
-        if args.require_disjoint_train_examples:
-            raise ValueError(
-                "--require-disjoint-train-examples is TFDS-only and not "
-                "supported with --full-sphere-cross-cache."
-            )
+        # NOTE: --require-disjoint-train-examples on harmonic cache is now
+        # supported via audit_harmonic_split_overlap (file-set disjointness).
+        # The actual audit call lives later in main() after the splits are
+        # normalized; see the audit_train_split_overlap section below.
         args.compressor_train_split = _normalize_harmonic_split(
             args.compressor_train_split,
             "--compressor-train-split",
@@ -3292,8 +3392,10 @@ def main():
             "route because shape-noise levels are baked into cache files."
         )
 
-    # Channel-mode dispatch: 'cross_only' slices the 10-channel harmonic cache
-    # down to the 6 cross channels at read time (no new cache build needed).
+    # Channel-mode dispatch: slice the 10-channel harmonic cache down at read
+    # time (no new cache build needed). 'cross_only' keeps the 6 cross channels;
+    # 'auto_only' keeps the 4 auto channels (used for the TFDS-auto vs
+    # cache-auto bandlimiting sanity check).
     cnn_channel_slice: slice | None = None
     if cnn_map_route == "harmonic" and args.channel_mode == "cross_only":
         n_auto = args.nbins
@@ -3308,9 +3410,21 @@ def main():
             f"  [channel-mode=cross_only] Slicing harmonic cache channels "
             f"[{n_auto}:{HARMONIC_CACHE_CHANNELS}] → {n_cross_pairs} cross channels."
         )
-    elif args.channel_mode == "cross_only" and cnn_map_route != "harmonic":
+    elif cnn_map_route == "harmonic" and args.channel_mode == "auto_only":
+        n_auto = args.nbins
+        if n_auto <= 0 or n_auto > HARMONIC_CACHE_CHANNELS:
+            raise ValueError(
+                f"--channel-mode=auto_only requires 0 < nbins ({n_auto}) "
+                f"<= HARMONIC_CACHE_CHANNELS ({HARMONIC_CACHE_CHANNELS})."
+            )
+        cnn_channel_slice = slice(0, n_auto)
+        print(
+            f"  [channel-mode=auto_only] Slicing harmonic cache channels "
+            f"[0:{n_auto}] → {n_auto} auto channels."
+        )
+    elif args.channel_mode in ("cross_only", "auto_only") and cnn_map_route != "harmonic":
         raise ValueError(
-            "--channel-mode=cross_only requires --cnn-map-route=harmonic "
+            f"--channel-mode={args.channel_mode} requires --cnn-map-route=harmonic "
             "(must also pass --full-sphere-cross-cache)."
         )
 
@@ -3474,6 +3588,33 @@ def main():
             )
         wandb.config.update(
             {"data/train_split_overlap": split_overlap_info},
+            allow_val_change=True,
+        )
+    elif args.require_disjoint_train_examples and cnn_map_route == "harmonic":
+        print(
+            "  Auditing harmonic-cache split overlap "
+            "(file-set disjointness) ..."
+        )
+        split_overlap_info = audit_harmonic_split_overlap(
+            full_sphere_cache_dir,
+            harmonic_regime,
+            args.compressor_train_split,
+            args.nde_train_split,
+        )
+        print(
+            "  Harmonic split audit | "
+            f"comp_files={split_overlap_info['compressor_train_files']} "
+            f"nde_files={split_overlap_info['nde_train_files']} "
+            f"overlap={split_overlap_info['overlap_count']}"
+        )
+        if int(split_overlap_info["overlap_count"]) > 0:
+            raise ValueError(
+                "Detected shared training files between compressor and NDE "
+                f"splits on harmonic cache: {split_overlap_info['overlap_count']}. "
+                f"First 5: {split_overlap_info['overlap_examples_first5']}"
+            )
+        wandb.config.update(
+            {"data/harmonic_split_overlap": split_overlap_info},
             allow_val_change=True,
         )
 
@@ -3934,13 +4075,18 @@ def main():
         "data/summary_clip_value": (
             float(summary_clip_value) if summary_clip_value is not None else 0.0
         ),
+        # Audit-info keys differ between TFDS audit and harmonic-cache audit.
+        # TFDS:     shared_example_count, shared_theta_count
+        # Harmonic: overlap_count (file-level); no per-theta overlap.
+        # Fall back to -1 when either is not applicable.
         "data/shared_train_examples": (
-            int(split_overlap_info["shared_example_count"])
+            int(split_overlap_info.get("shared_example_count",
+                                       split_overlap_info.get("overlap_count", -1)))
             if split_overlap_info is not None
             else -1
         ),
         "data/shared_train_theta": (
-            int(split_overlap_info["shared_theta_count"])
+            int(split_overlap_info.get("shared_theta_count", -1))
             if split_overlap_info is not None
             else -1
         ),
