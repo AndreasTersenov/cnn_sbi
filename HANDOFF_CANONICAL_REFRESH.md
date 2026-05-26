@@ -1,8 +1,45 @@
 # HANDOFF — canonical-anchors-refresh campaign
 
+**UPDATE 2026-05-26 ~06:30 UTC: campaign COMPUTE COMPLETE. All 12 canonical posteriors landed cleanly. See §"Final canonical anchors" below.** Remaining work is write-up only (METHODOLOGY.md, refresh of CNN_CROSS_MAPS_INFORMATION_NOTE.md, close fibers with exit interviews). No more compute needed.
+
 **Read this first. Do not launch anything before completing the §"Before doing anything" checklist below.**
 
 This document hands off the `canonical-anchors-refresh-2026-05` felt campaign to a fresh Claude session. The previous session got into a "launch → bug → relaunch" loop that consumed a lot of GPU. The new session should be more deliberate.
+
+## Final canonical anchors (all four arms × 3 seeds, fully clean)
+
+| arm | per-seed FoM3 | MoS | **Pool** | haircut | \|bias\| med |
+|:---|:---|---:|---:|---:|---:|
+| CNN auto-only | 18,060 / 17,732 / 14,845 | 16,879 | **12,873** | 0.76 | 0.48σ |
+| CNN auto+cross | 19,699 / 14,914 / 18,214 | 17,609 | **12,615** | 0.72 | 0.19σ |
+| L1 auto-only | 11,419 / 21,951 / 11,752 | 15,041 | **12,004** | 0.80 | 0.31σ |
+| L1 auto+cross | 39,895 / 36,423 / 38,361 | 38,226 | **34,004** | 0.89 | 0.18σ |
+
+**Verification**: L1 cross s43 came out at 38,361 — **identical to the v2_chsigma anchor**. Pool 34,004 vs stale 33,820 (within 0.5%). The canonical setup reproduces L1 cross exactly.
+
+### Canonical ratios
+
+| ratio | stale | **canonical** |
+|:---|---:|---:|
+| CNN cross/auto pool | 2.16× | **0.98×** — cross-maps essentially don't help CNN under clean splits |
+| L1 cross/auto pool | 3.07× | **2.83×** — cross-maps give L1 a robust ~3× lift |
+| CNN/L1 at auto-only | 1.23× | **1.07×** — essentially tied |
+| CNN/L1 at auto+cross | 0.71× | **0.37×** — L1 dominates auto+cross by ~2.7× |
+
+### Stale anchor shifts
+
+| arm | stale → canonical | shift | interpretation |
+|:---|---:|---:|:---|
+| CNN auto-only | 11,130 → 12,873 | +16% | small clean-up from 70/30 splits |
+| CNN auto+cross | 23,986 → 12,615 | **−47%** | the big contamination correction (train/train compressor-NDE overlap removed) |
+| L1 auto-only | 11,073 → 12,004 | +8% | essentially unchanged |
+| L1 auto+cross | 33,820 → 34,004 | +0.5% | matches v2_chsigma anchor exactly |
+
+### Plots
+- Bound PDF: `scripts/sbi/results/exploratory/canonical_anchors_refresh/canonical_diagnostics.pdf`
+- PNGs: `canonical_diagnostics_png/00_overview/` (cross-arm comparisons) and `canonical_diagnostics_png/<arm>/seed_<N>/` (per-(arm, seed) detail pages)
+
+---
 
 ---
 

@@ -138,11 +138,13 @@ sub-Nyquist scales but the maps are NOT byte-identical between the two
 data sources. We need a sanity-check arm to bound whether this matters
 for the cross/auto FoM3 comparison.
 
-**SESSION HANDOFF 2026-05-26 ~05:46 UTC**: previous session was switched out due to too-reactive launch pattern. See **`HANDOFF_CANONICAL_REFRESH.md` at repo root** for the comprehensive next-session brief. Quick state:
-- 9 of 12 canonical posteriors clean (CNN auto, CNN cross via NDE-only recovery, L1 auto with PCA off).
-- 3 L1 cross seeds running on GPU 1 (correct harmonic-cache route + channel-aware noise + PCA off — third attempt after PCA-on bug and TFDS-route bug). Jobs `b5h20e82q`, `bcgq3r2ck`, `b4vzwosz2`. ETA ~30 min.
-- TWO new hard rules saved to project memory: `feedback_never_pca_l1.md` and `feedback_l1_cross_must_use_harmonic_route.md`.
-- Pre-flight `flag_diff.py` now has gotcha checks for both. The new session MUST run it before any compute.
+**COMPUTE COMPLETE 2026-05-26 ~06:30 UTC.** All 12 canonical posteriors landed cleanly. L1 cross verifies the v2_chsigma anchor to 0.5%. See **`HANDOFF_CANONICAL_REFRESH.md`** at repo root for the final numbers + ratios. Remaining work: write-up only.
+
+Final pool FoM3: CNN auto=12,873; CNN cross=12,615; L1 auto=12,004; **L1 cross=34,004** (matches v2_chsigma anchor to 0.5%).
+
+Canonical headline ratios: CNN cross/auto=0.98×; L1 cross/auto=2.83×; CNN/L1 at auto=1.07×; **CNN/L1 at auto+cross=0.37× (L1 dominates by 2.7×)**.
+
+TWO new hard rules saved to project memory: `feedback_never_pca_l1.md` and `feedback_l1_cross_must_use_harmonic_route.md`. Pre-flight `flag_diff.py` now has gotcha tripwires for both.
 
 **Iteration 2 status (2026-05-24 ~15:00 UTC, in flight)**:
 - ✅ (a) Pre-flight flag-diff tool at `tools/flag_diff.py` — caught the 5
