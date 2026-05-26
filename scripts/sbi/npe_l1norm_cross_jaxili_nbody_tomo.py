@@ -1633,6 +1633,19 @@ def parse_args() -> argparse.Namespace:
     # Sampling / execution
     p.add_argument("--npe-samples", type=int, default=100_000)
     p.add_argument("--seed", type=int, default=42)
+    p.add_argument(
+        "--nde-train-split",
+        type=str,
+        default="train",
+        help=(
+            "TFDS / harmonic-cache split used to build the NDE training "
+            "datavector + theta pairs. Use e.g. 'train[70%:]' to restrict "
+            "to the held-out NDE subset under the canonical 70/30 split "
+            "discipline (see METHODOLOGY.md). Default 'train' for "
+            "backward-compat. Preprocessing stats (SNR calibration, log1p-"
+            "zscore) continue to use the full 'train' split."
+        ),
+    )
     p.add_argument("--no-train", action="store_true")
     p.add_argument("--no-sample", action="store_true")
     p.add_argument("--plot", action="store_true")
@@ -2424,7 +2437,7 @@ def main() -> None:
                 dataset_train = compute_l1_dataset_from_harmonic_cache(
                     cache_dir=full_sphere_cache_dir,
                     regime=harmonic_regime,
-                    split="train",
+                    split=args.nde_train_split,
                     stats=stats,
                     noise_sigma=noise_sigma,
                     l1_nbins=args.l1_nbins,
@@ -2468,7 +2481,7 @@ def main() -> None:
             else:
                 dataset_train = compute_l1_dataset(
                     args.tfds_name,
-                    "train",
+                    args.nde_train_split,
                     augmentation,
                     stats,
                     noise_sigma,
@@ -2810,6 +2823,7 @@ def main() -> None:
         "npe_samples_requested": int(args.npe_samples),
         "npe_samples_finite": int(samples_np.shape[0]),
         "npe_epochs": int(args.epochs),
+        "nde_train_split": str(args.nde_train_split),
         "npe_batch_size": int(args.batch_size),
         "npe_learning_rate": float(args.learning_rate),
         "npe_warmup_steps": int(args.npe_warmup_steps),
