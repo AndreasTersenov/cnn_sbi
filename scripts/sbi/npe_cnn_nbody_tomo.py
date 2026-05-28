@@ -380,6 +380,29 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     p.add_argument(
+        "--harmonic-tfrecord-dir",
+        type=str,
+        default=None,
+        help=(
+            "Optional TFRecord root built by build_harmonic_tfrecord.py "
+            "(e.g. /nas/tersenov/harmonic_tfrecord/full_sphere_cache_grid). "
+            "When set (alongside --full-sphere-cross-cache), the CNN compressor "
+            "TRAINS by reading TFRecord shards via tf.data instead of the .npz "
+            "loader -- numerically identical, ~6-7x faster. The .npz cache is "
+            "still used for channel-RMS, observed data, and the split audit."
+        ),
+    )
+    p.add_argument(
+        "--harmonic-tfrecord-compression",
+        type=str,
+        default="auto",
+        choices=["auto", "NONE", "GZIP"],
+        help=(
+            "TFRecord compression for the reader. 'auto' (default) reads it "
+            "from the TFRecord manifest; NONE/GZIP force it."
+        ),
+    )
+    p.add_argument(
         "--harmonic-cache-regime",
         type=str,
         default=None,
@@ -757,6 +780,35 @@ def _read_harmonic_manifest(cache_dir: Path) -> Dict[str, object]:
             f"{HARMONIC_CACHE_CHANNELS}, got {n_channels}."
         )
     return payload
+
+
+def _resolve_harmonic_tfrecord_compression(
+    tfrecord_dir: Path, regime: str, override: str = "auto"
+) -> str:
+    """Return the TFRecord compression ('NONE' or 'GZIP').
+
+    'auto' reads it from `<tfrecord_dir>/<regime>/tfrecord_manifest.json`
+    (written by build_harmonic_tfrecord.py). A mismatch between the reader's
+    compression_type and what was written silently yields garbage, so we pin
+    it to the manifest by default rather than guessing.
+    """
+    if override != "auto":
+        return override
+    manifest_path = tfrecord_dir / regime / "tfrecord_manifest.json"
+    if not manifest_path.is_file():
+        raise FileNotFoundError(
+            f"Missing TFRecord manifest at {manifest_path}. Build the shards "
+            "with build_harmonic_tfrecord.py, or pass "
+            "--harmonic-tfrecord-compression NONE|GZIP explicitly."
+        )
+    payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    comp = str(payload.get("compression", "")).upper()
+    if comp not in ("NONE", "GZIP"):
+        raise ValueError(
+            f"TFRecord manifest at {manifest_path} has invalid compression "
+            f"{comp!r}; expected NONE or GZIP."
+        )
+    return comp
 
 
 _HARMONIC_SPLIT_SLICE_RE = re.compile(
@@ -1250,6 +1302,185 @@ def build_harmonic_batch_iterator(
             _refill_to(target_patches)
     finally:
         stop_event.set()
+
+
+def _list_harmonic_tfrecord_shards(
+    tfrecord_dir: Path, regime: str, split: str
+) -> list[Path]:
+    """Sorted .tfrecord shards for a (regime, split), with the same percent
+    slicing semantics as `_list_harmonic_cache_files` (spec §1.5).
+
+    Shard stems are 1:1 with the source `.npz` stems, so sorting then applying
+    `round(frac*n)` selects the identical realization subset on both paths.
+    """
+    if regime not in ("bnt", "nobnt"):
+        raise ValueError(f"regime must be 'bnt' or 'nobnt', got {regime}")
+    basename, slice_low, slice_high = _parse_harmonic_split_slice(split)
+    split_dir = tfrecord_dir / regime / basename
+    if not split_dir.exists():
+        raise FileNotFoundError(
+            f"Harmonic TFRecord split missing: {split_dir}. "
+            "Did build_harmonic_tfrecord.py complete this regime/split?"
+        )
+    files = sorted(p for p in split_dir.iterdir() if p.suffix == ".tfrecord")
+    if not files:
+        raise FileNotFoundError(f"No .tfrecord shards found under {split_dir}.")
+    n = len(files)
+    lo = int(round(slice_low * n))
+    hi = int(round(slice_high * n))
+    sliced = files[lo:hi]
+    if not sliced:
+        raise FileNotFoundError(
+            f"Slice [{slice_low:.3f}:{slice_high:.3f}] of {basename} "
+            f"({n} shards) is empty."
+        )
+    if (slice_low, slice_high) != (0.0, 1.0):
+        print(
+            f"  Harmonic TFRecord split {split!r}: {len(sliced)}/{n} shards "
+            f"(indices [{lo}:{hi}])."
+        )
+    return sliced
+
+
+def build_harmonic_tfrecord_iterator(
+    tfrecord_dir: Path,
+    regime: str,
+    split: str,
+    batch_size: int,
+    seed: int,
+    flip: bool,
+    max_realizations: int | None = None,
+    channel_scale: np.ndarray | None = None,
+    channel_slice: slice | None = None,
+    shuffle_buffer: int = 4096,
+    compression: str = "GZIP",
+) -> Iterator[Dict[str, np.ndarray]]:
+    """Infinite shuffled batches from the harmonic TFRecord shards (spec §3.2).
+
+    Drop-in replacement for `build_harmonic_batch_iterator` that reads
+    TFRecord shards via `tf.data` (C++ decompression, no GIL, AUTOTUNE
+    prefetch). The data delivered is numerically identical to the `.npz` path:
+    per-patch read order is `parse -> slice -> scale -> (flip)` and theta gets
+    the H0/100 conversion at yield time, exactly like the `.npz` path.
+
+    `flip=True` is the train indicator (matches the call site), and gates the
+    shard-order shuffle, the cross-shard buffer shuffle, and an in-graph
+    per-patch LR/UD flip (p=0.5 each). The flip runs on tf.data worker threads
+    (not the main thread) so it overlaps GPU compute -- see `_parse`. Its
+    distribution matches the `.npz` path's `_harmonic_random_flip`; the exact
+    per-patch sequence is not reproduced (flip is stochastic aug, spec §1.7).
+    """
+    tfrecord_dir = Path(tfrecord_dir)
+    shards = _list_harmonic_tfrecord_shards(tfrecord_dir, regime, split)
+    if max_realizations is not None:
+        shards = shards[:max_realizations]
+    shard_paths = [str(p) for p in shards]
+    is_train = bool(flip)
+
+    # Resolve channel_slice to static ints (step must be 1; spec §6).
+    if channel_slice is not None:
+        start = 0 if channel_slice.start is None else int(channel_slice.start)
+        stop = (
+            HARMONIC_CACHE_CHANNELS
+            if channel_slice.stop is None
+            else int(channel_slice.stop)
+        )
+        if channel_slice.step not in (None, 1):
+            raise ValueError(
+                f"channel_slice step must be 1, got {channel_slice.step}."
+            )
+        sliced_channels = stop - start
+    else:
+        start, stop = 0, HARMONIC_CACHE_CHANNELS
+        sliced_channels = HARMONIC_CACHE_CHANNELS
+
+    # channel_scale is post-slice, so its length must equal the sliced count.
+    scale_const = None
+    if channel_scale is not None:
+        channel_scale = np.asarray(channel_scale, dtype=np.float32)
+        if channel_scale.shape[0] != sliced_channels:
+            raise ValueError(
+                f"channel_scale length {channel_scale.shape[0]} != sliced "
+                f"channel count {sliced_channels}."
+            )
+        scale_const = tf.constant(channel_scale, dtype=tf.float32)
+
+    comp_type = "" if str(compression).upper() == "NONE" else "GZIP"
+    feature_desc = {
+        "patch": tf.io.FixedLenFeature([], tf.string),
+        "theta": tf.io.FixedLenFeature([], tf.string),
+    }
+
+    def _parse(raw):
+        ex = tf.io.parse_single_example(raw, feature_desc)
+        patch = tf.reshape(
+            tf.io.decode_raw(ex["patch"], tf.float32),
+            (160, 160, HARMONIC_CACHE_CHANNELS),
+        )
+        # slice -> scale (order matches the .npz path, spec §1.4).
+        if channel_slice is not None:
+            patch = patch[:, :, start:stop]
+        if scale_const is not None:
+            patch = patch / scale_const
+        # In-graph flip (train only): per-patch independent left-right (width,
+        # axis 1) and up-down (height, axis 0) flips, each p=0.5 -- the same
+        # distribution as the numpy `_harmonic_random_flip`, but run on tf.data
+        # worker threads so it overlaps GPU compute. This replaces the
+        # main-thread numpy flip, which was a 175 ms/batch (131 MB) bottleneck
+        # capping throughput at ~3 it/s. Per Andreas's 2026-05-28 decision this
+        # deviates from spec §6 ("flip in numpy"); flip is stochastic
+        # augmentation (§1.7) so the exact per-patch sequence need not match the
+        # .npz path. flip=False (val / equivalence tests) applies no flip and
+        # stays bit-deterministic.
+        if is_train:
+            patch = tf.image.random_flip_left_right(patch)
+            patch = tf.image.random_flip_up_down(patch)
+        theta = tf.reshape(tf.io.decode_raw(ex["theta"], tf.float64), (6,))
+        return patch, theta
+
+    ds = tf.data.Dataset.from_tensor_slices(shard_paths)
+    if is_train:
+        ds = ds.shuffle(
+            len(shard_paths), seed=int(seed), reshuffle_each_iteration=True
+        )
+    ds = ds.interleave(
+        lambda p: tf.data.TFRecordDataset(p, compression_type=comp_type),
+        cycle_length=tf.data.AUTOTUNE,
+        num_parallel_calls=tf.data.AUTOTUNE,
+        deterministic=not is_train,
+    )
+    if is_train:
+        ds = ds.shuffle(
+            int(shuffle_buffer), seed=int(seed), reshuffle_each_iteration=True
+        )
+    ds = ds.map(_parse, num_parallel_calls=tf.data.AUTOTUNE)
+    ds = ds.batch(int(batch_size), drop_remainder=True)
+    ds = ds.repeat()
+    ds = ds.prefetch(tf.data.AUTOTUNE)
+
+    # Target device for the maps batch. DLPack-importing a CPU tf tensor yields
+    # a host-backed JAX array; device_put MUST name the accelerator explicitly,
+    # otherwise the array stays on CpuDevice and the whole training step runs on
+    # CPU (~10x slowdown -- observed 2026-05-28). In CPU-only contexts (tests,
+    # CUDA_VISIBLE_DEVICES="") devices()[0] is the CPU, which is correct there.
+    target_device = jax.devices()[0]
+    for maps_tf, theta_tf in ds:
+        # maps already flipped in-graph when is_train (see _parse). Hand the tf
+        # CPU tensor's buffer to JAX zero-copy via DLPack, then device_put it to
+        # the accelerator -- this bypasses the slow EagerTensor.numpy()
+        # materialization (profiled at ~69 ms per 131 MB batch, ~5x slower than
+        # a raw memcpy). DLPack is a zero-copy view of identical float32 bytes,
+        # so the data is unchanged (contract-test reader-vs-.npz stays 0.0).
+        # Consumers must treat maps as a JAX device array (NaN guard via
+        # _array_has_nan).
+        maps_dev = jax.device_put(
+            jax.dlpack.from_dlpack(tf.experimental.dlpack.to_dlpack(maps_tf)),
+            target_device,
+        )
+        # theta is tiny (6 floats); keep it on host and apply H0/100 there.
+        theta_np = theta_tf.numpy().copy()  # (B, 6) float64, raw H0
+        theta_np[:, 3] = theta_np[:, 3] / 100.0  # H0 -> h0 (spec §1.2)
+        yield {"maps": maps_dev, "theta": theta_np}
 
 
 def compress_dataset_from_harmonic_cache(
@@ -1963,6 +2194,20 @@ def log_compressor_checkpoint_provenance(
 # Compressor training (VMIM)
 # =============================================================================
 
+def _array_has_nan(arr) -> bool:
+    """Per-step NaN guard that avoids a device->host copy for JAX arrays.
+
+    The harmonic TFRecord reader yields `maps` as a JAX device array (DLPack
+    zero-copy, no .numpy()); `np.isnan` on it would copy 131 MB back to host
+    every step and undo the speedup. Use a device-side reduction there and the
+    plain numpy path for host arrays (TFDS / .npz / paired-BNT), which stay
+    byte-for-byte unchanged.
+    """
+    if isinstance(arr, np.ndarray):
+        return bool(np.isnan(arr).any())
+    return bool(jnp.isnan(arr).any())
+
+
 def train_compressor_vmim(
     compressor,
     augmentation_fn,
@@ -2341,11 +2586,11 @@ def train_compressor_vmim(
             step = global_step + 1
             ex = next(ds_train_iter)
             if paired_training:
-                has_nan = bool(np.isnan(ex["maps_nobnt"]).any()) or bool(
-                    np.isnan(ex["maps_bnt"]).any()
+                has_nan = _array_has_nan(ex["maps_nobnt"]) or _array_has_nan(
+                    ex["maps_bnt"]
                 )
             else:
-                has_nan = bool(np.isnan(ex["maps"]).any())
+                has_nan = _array_has_nan(ex["maps"])
             if has_nan:
                 global_step = step
                 continue
@@ -3310,9 +3555,17 @@ def main():
     cnn_map_route = args.cnn_map_route or (
         "harmonic" if args.full_sphere_cross_cache else "tfds"
     )
+    if args.harmonic_tfrecord_dir and cnn_map_route != "harmonic":
+        raise ValueError(
+            "--harmonic-tfrecord-dir requires the harmonic route "
+            "(--full-sphere-cross-cache). The .npz cache is still needed for "
+            "channel-RMS, observed data, and the split audit."
+        )
     full_sphere_cache_dir: Optional[Path] = None
     full_sphere_cache_manifest_sha = ""
     harmonic_regime = ""
+    harmonic_tfrecord_dir: Optional[Path] = None
+    harmonic_tfrecord_compression = ""
     if args.full_sphere_cross_cache:
         if cnn_map_route != "harmonic":
             raise ValueError(
@@ -3375,6 +3628,22 @@ def main():
         print(f"  harmonic cache = {full_sphere_cache_dir}")
         print(f"  harmonic regime = {harmonic_regime}")
         print(f"  manifest sha256 = {full_sphere_cache_manifest_sha[:16]}...")
+        if args.harmonic_tfrecord_dir:
+            harmonic_tfrecord_dir = Path(args.harmonic_tfrecord_dir).resolve()
+            if not harmonic_tfrecord_dir.is_dir():
+                raise FileNotFoundError(
+                    f"--harmonic-tfrecord-dir not found: {harmonic_tfrecord_dir}"
+                )
+            harmonic_tfrecord_compression = _resolve_harmonic_tfrecord_compression(
+                harmonic_tfrecord_dir,
+                harmonic_regime,
+                args.harmonic_tfrecord_compression,
+            )
+            print(
+                f"  harmonic TFRecord = {harmonic_tfrecord_dir} "
+                f"(compression={harmonic_tfrecord_compression}) -- compressor "
+                "TRAIN reads tf.data; .npz cache still used for RMS/obs/audit."
+            )
     else:
         if cnn_map_route != "tfds":
             raise ValueError(
@@ -3735,6 +4004,24 @@ def main():
                 if is_train_split
                 else args.harmonic_val_realizations_limit
             )
+            # TFRecord branch (spec §3.3): same split/seed/flip/limit/scale/slice
+            # as the .npz path, only the byte source differs. channel_scale is
+            # still computed from the .npz cache (a property of the data), and
+            # the split audit (below) also runs on the .npz cache -- shard stems
+            # are 1:1 with .npz stems so its disjointness result is valid.
+            if harmonic_tfrecord_dir is not None:
+                return build_harmonic_tfrecord_iterator(
+                    tfrecord_dir=harmonic_tfrecord_dir,
+                    regime=harmonic_regime,
+                    split=split,
+                    batch_size=batch_size,
+                    seed=split_seed,
+                    flip=is_train_split,
+                    max_realizations=split_limit,
+                    channel_scale=harmonic_channel_scale,
+                    channel_slice=cnn_channel_slice,
+                    compression=harmonic_tfrecord_compression,
+                )
             return build_harmonic_batch_iterator(
                 cache_dir=full_sphere_cache_dir,
                 regime=harmonic_regime,
@@ -3964,8 +4251,16 @@ def main():
 
     if args.exit_after_compress:
         print("######## EXIT-AFTER-COMPRESS ########")
-        print(f"  Compressor params dir: {comp_save_dir}")
+        _comp_dir_label = comp_save_dir if "comp_save_dir" in dir() else compressor_params_ref
+        print(f"  Compressor params dir: {_comp_dir_label}")
         print(f"  Compressed-dataset cache dir: {cache_dir}")
+        if cache_dir is not None:
+            np.savez(
+                cache_dir / "cnn_obs.npz",
+                x=obs_compressed,
+                theta=truth,
+            )
+            print(f"  Saved observed summary to {cache_dir / 'cnn_obs.npz'}")
         print("  NDE training skipped (shared-compressor mode).")
         print("  Reuse with: --no-train-compressor "
               "--compressor-params <comp_save_dir>/params_nd_compressor_batch<N>.pkl "
@@ -4251,6 +4546,16 @@ def main():
             ),
             "full_sphere_cache_manifest_sha256": str(full_sphere_cache_manifest_sha),
             "harmonic_regime": str(harmonic_regime) if harmonic_regime else None,
+            "harmonic_tfrecord_dir": (
+                str(harmonic_tfrecord_dir)
+                if harmonic_tfrecord_dir is not None
+                else None
+            ),
+            "harmonic_tfrecord_compression": (
+                harmonic_tfrecord_compression
+                if harmonic_tfrecord_dir is not None
+                else None
+            ),
         }
         if flow_summary_path.exists():
             metadata["flow_training_summary"] = json.loads(
