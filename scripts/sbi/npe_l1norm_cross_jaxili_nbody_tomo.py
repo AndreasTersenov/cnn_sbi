@@ -292,10 +292,41 @@ def _read_harmonic_manifest_sha(cache_dir: Path) -> str:
     return sha
 
 
+_HARMONIC_SPLIT_SLICE_RE = re.compile(
+    r"^([a-zA-Z_][a-zA-Z_0-9]*)(?:\[(?:(\d+(?:\.\d+)?)%)?:(?:(\d+(?:\.\d+)?)%)?\])?$"
+)
+
+
+def _parse_harmonic_split_slice(split: str) -> tuple[str, float, float]:
+    """Parse 'name' or 'name[:N%]' or 'name[N%:]' or 'name[A%:B%]'.
+
+    Returns (basename, slice_low_frac, slice_high_frac) with fractions in [0, 1].
+    Mirrors npe_cnn_nbody_tomo.py exactly so the L1 and CNN harmonic routes
+    select identical file subsets for a given split spec (e.g. 'train[70%:]').
+    """
+    m = _HARMONIC_SPLIT_SLICE_RE.match(split.strip())
+    if not m:
+        raise ValueError(
+            f"Cannot parse harmonic split spec {split!r}. "
+            f"Expected 'name' or 'name[A%:B%]'."
+        )
+    name = m.group(1)
+    low_pct = m.group(2)
+    high_pct = m.group(3)
+    low = float(low_pct) / 100.0 if low_pct else 0.0
+    high = float(high_pct) / 100.0 if high_pct else 1.0
+    if not (0.0 <= low <= high <= 1.0):
+        raise ValueError(
+            f"Invalid slice bounds in {split!r}: low={low}, high={high}."
+        )
+    return name, low, high
+
+
 def _list_harmonic_cache_files(cache_dir: Path, regime: str, split: str) -> list[Path]:
     if regime not in ("bnt", "nobnt"):
         raise ValueError(f"regime must be 'bnt' or 'nobnt', got {regime}")
-    split_dir = cache_dir / regime / split
+    basename, slice_low, slice_high = _parse_harmonic_split_slice(split)
+    split_dir = cache_dir / regime / basename
     if not split_dir.exists():
         raise FileNotFoundError(
             f"Harmonic cache split missing: {split_dir}. "
@@ -304,7 +335,21 @@ def _list_harmonic_cache_files(cache_dir: Path, regime: str, split: str) -> list
     files = sorted(p for p in split_dir.iterdir() if p.suffix == ".npz")
     if not files:
         raise FileNotFoundError(f"No .npz files found under {split_dir}.")
-    return files
+    n = len(files)
+    lo = int(round(slice_low * n))
+    hi = int(round(slice_high * n))
+    sliced = files[lo:hi]
+    if not sliced:
+        raise FileNotFoundError(
+            f"Slice [{slice_low:.3f}:{slice_high:.3f}] of {basename} "
+            f"({n} files) is empty."
+        )
+    if (slice_low, slice_high) != (0.0, 1.0):
+        print(
+            f"  Harmonic split {split!r}: {len(sliced)}/{n} files "
+            f"(indices [{lo}:{hi}])."
+        )
+    return sliced
 
 
 def _harmonic_random_flip(maps: np.ndarray, rng: np.random.Generator) -> np.ndarray:
@@ -566,6 +611,14 @@ def calibrate_snr_range_from_harmonic_cache(
         )
 
     device = stats.device
+    # Deterministic, seed-independent reservoir subsampling. torch is otherwise
+    # unseeded in this script, so the cross-channel reservoir `torch.randint`
+    # would draw a different sample every run -> non-reproducible SNR percentile
+    # -> non-reproducible L1 datavector. A fixed generator makes the SNR range
+    # identical across runs and NDE seeds, which is what lets the 9 seed×perm
+    # runs of an arm reuse one cached datavector (the cross-seed dedup).
+    reservoir_gen = torch.Generator(device=device)
+    reservoir_gen.manual_seed(0xC0FFEE)
     auto_min = float("inf")
     auto_max = float("-inf")
     cross_min = float("inf")
@@ -606,7 +659,8 @@ def calibrate_snr_range_from_harmonic_cache(
                     n = flat.numel()
                     if n > reservoir_per_batch:
                         idx = torch.randint(
-                            0, n, (reservoir_per_batch,), device=flat.device
+                            0, n, (reservoir_per_batch,),
+                            generator=reservoir_gen, device=flat.device,
                         )
                         sample = flat[idx]
                     else:
@@ -795,6 +849,14 @@ def calibrate_snr_range(
     ds = ds.prefetch(tf.data.AUTOTUNE)
 
     device = stats.device
+    # Deterministic, seed-independent reservoir subsampling. torch is otherwise
+    # unseeded in this script, so the cross-channel reservoir `torch.randint`
+    # would draw a different sample every run -> non-reproducible SNR percentile
+    # -> non-reproducible L1 datavector. A fixed generator makes the SNR range
+    # identical across runs and NDE seeds, which is what lets the 9 seed×perm
+    # runs of an arm reuse one cached datavector (the cross-seed dedup).
+    reservoir_gen = torch.Generator(device=device)
+    reservoir_gen.manual_seed(0xC0FFEE)
     auto_min = float("inf")
     auto_max = float("-inf")
     cross_min = float("inf")
@@ -830,7 +892,8 @@ def calibrate_snr_range(
                     n = flat.numel()
                     if n > reservoir_per_batch:
                         idx = torch.randint(
-                            0, n, (reservoir_per_batch,), device=flat.device
+                            0, n, (reservoir_per_batch,),
+                            generator=reservoir_gen, device=flat.device,
                         )
                         sample = flat[idx]
                     else:
@@ -1492,6 +1555,21 @@ def parse_args() -> argparse.Namespace:
             "OOM. Only affects the harmonic-cache route."
         ),
     )
+    p.add_argument(
+        "--l1-train-flip",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "Apply random LR/UD flip augmentation when computing the TRAIN L1 "
+            "datavector (default True, the historical behaviour). "
+            "--no-l1-train-flip disables it. NOTE: the wavelet L1 statistic is "
+            "NOT flip-invariant (boundary effects change the datavector by "
+            "order 0.1 relative), so flip=True is a real per-seed augmentation; "
+            "flip=False makes the train datavector deterministic and "
+            "seed-independent (enables datavector reuse). Val and observed are "
+            "always flip=False."
+        ),
+    )
 
     # Harmonic full-sphere cross-maps cache (built by
     # `build_full_sphere_cross_cache.py`). When set, the script bypasses TFDS
@@ -1711,6 +1789,14 @@ def build_l1_cache_metadata(
         "l1_clamp_overflow": bool(l1_clamp_overflow),
         "subtract_coarse_mean": bool(subtract_coarse_mean),
         "l1_implementation": str(args.l1_implementation),
+        # Distinguish train split (full vs train[70%:]) and flip augmentation in
+        # the cache key. Without nde_train_split a shared cache-dir could serve a
+        # full-train datavector to a 70/30 run; l1_train_flip keeps flip=True and
+        # flip=False datavectors from colliding. Neither depends on the NDE seed,
+        # so the 9 seed×perm runs of an arm still share one cached datavector
+        # (the cross-seed dedup).
+        "nde_train_split": str(args.nde_train_split),
+        "l1_train_flip": bool(args.l1_train_flip),
         "apply_bnt": bool(args.apply_bnt),
         "bnt_matrix_version": BNT_MATRIX_VERSION if args.apply_bnt else "none",
         "zero_mean_maps": bool(args.zero_mean_maps),
@@ -2451,7 +2537,7 @@ def main() -> None:
                     subtract_coarse_mean=effective_subtract_coarse_mean,
                     l1_implementation=args.l1_implementation,
                     rng=np.random.default_rng(int(args.seed) + 1001),
-                    flip=True,
+                    flip=bool(args.l1_train_flip),
                     channel_slice=l1_channel_slice,
                     channel_scale=l1_channel_scale,
                     realizations_per_batch=int(args.l1_realizations_per_batch),
