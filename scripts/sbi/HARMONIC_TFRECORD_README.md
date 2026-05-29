@@ -74,19 +74,29 @@ A 80k-step production compressor: ~9.3 h → **~1.3 h**.
 **Host threading (important — was a perf regression 2026-05-29).** Both the
 tf.data decode/batch *and* the per-step host work in compressor training are
 host-CPU-bound. This node's login shell exports `OMP_NUM_THREADS=1` (+ MKL/
-OpenBLAS/NumExpr), which throttles them to a single thread → **~1 it/s with the
-GPU starved at ~0% util** (looks like a broken DLPack handoff but isn't — maps
-are verified on GPU). The script now self-corrects, in two places, governed by
-one knob `CNN_TF_THREADS` (default 32, capped by available CPUs):
-- sets `OMP/MKL/OPENBLAS/NUMEXPR_NUM_THREADS` **before `import numpy`** (the
-  numpy/MKL host work in the training step), and
-- sets `tf.config.threading.set_intra/inter_op_parallelism_threads` after
-  `import tensorflow` (the tf.data reader).
+OpenBLAS/NumExpr), pinning them to one thread → **~1 it/s with the GPU starved
+at ~0% util** (looks like a broken DLPack handoff but isn't — maps are verified
+on GPU). The naive over-correction (set everything to 32) is *worse*: the BLAS,
+TF, and tf.data threadpools stack super-linearly on a 128-core node → ~1200
+threads → lock thrash → still ~1 it/s.
 
-So you **no longer need any thread env prefix** — `--train-compressor` runs at
-**~15 it/s under the default `OMP=1` shell** (validated; bit-exact gate intact).
-Caveat: under heavy multi-tenant load (load avg ~40+) these threads still
-compete for CPU and throughput drops, so also run when the node has free cores.
+Fix: a single, **small** CPU budget the script sets itself, governed by one knob
+`CNN_CPU_THREADS` (default **8**, capped by available CPUs; `CNN_TF_THREADS`
+still honored):
+- `OMP/MKL/OPENBLAS/NUMEXPR_NUM_THREADS` set **before `import numpy`** (the
+  numpy/MKL host work), and
+- `tf.config.threading.set_intra/inter_op` after `import tensorflow` (tf.data
+  uses the intra-op pool). We deliberately do **not** set tf.data
+  `private_threadpool_size`/`autotune.cpu_budget` — empirically that *raised*
+  the thread count, not lowered it.
+
+So you **need no thread env prefix** — `--train-compressor` runs at **~15 it/s
+under the default `OMP=1` shell on a free-ish GPU** (validated; bit-exact gate
+intact). Caveats: (1) a GPU-bound compressor only needs a few host threads, so
+8 is plenty to feed it — don't raise it (32 thrashes on this node). (2) Absolute
+throughput is **GPU-exclusivity-bound**: on a shared GPU it drops (~2–3 it/s
+observed when another job co-tenants the card), so run on a free GPU for full
+speed.
 
 ## Correctness
 

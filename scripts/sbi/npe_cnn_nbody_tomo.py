@@ -28,21 +28,35 @@ import hashlib
 import json
 import os
 
-# Multi-thread the host-side BLAS (numpy/MKL/OpenBLAS) work. This node's login
-# shell exports OMP_NUM_THREADS=1 (and MKL/OPENBLAS/NUMEXPR=1), which throttles
-# the per-step host work in compressor training to a single thread -> ~1 it/s
-# with the GPU idle, even with the tf.data reader fixed. Must be set BEFORE numpy
-# is imported (directly or via wandb/h5py below) so the BLAS backend picks it up.
-# Same CNN_TF_THREADS knob as the TF threadpool config (set after `import
-# tensorflow`); together they restore ~15-20 it/s regardless of the shell env.
-_cnn_threads = os.environ.get("CNN_TF_THREADS")
-if not _cnn_threads:
+# --- Bounded CPU parallelism budget (one modest knob, applied to BLAS + TF) ---
+# Why this exists: this node's login shell exports OMP_NUM_THREADS=1 (+ MKL/
+# OpenBLAS/NumExpr=1), which pins the host-side training pipeline to one thread
+# -> ~1 it/s with the GPU starved. But raising those to a LARGE value is WORSE:
+# the BLAS pools, the TF intra/inter-op pools, and tf.data's AUTOTUNE threadpool
+# all size off the value (and the 128 logical cores) and STACK super-linearly --
+# measured ~1237 threads at 32 -> lock thrash -> still ~1 it/s. A GPU-bound
+# compressor only needs a handful of host threads to keep the GPU fed, so the
+# fix is simply a SMALL budget: at 8, the process settles at ~few-dozen threads
+# and the GPU runs at 88-93% util (no thrash). We bound the two thread sources
+# that honor a numeric budget -- the BLAS env vars (here) and the TF intra/inter
+# pools (after `import tensorflow`). Do NOT also set tf.data
+# private_threadpool_size/autotune.cpu_budget: empirically that *raised* the
+# thread count (~775 at budget 8). Override with CNN_CPU_THREADS (CNN_TF_THREADS
+# honored for back-compat). The BLAS env MUST be set before numpy is imported
+# (here, before wandb/h5py/numpy below).
+def _resolve_cnn_cpu_threads() -> int:
+    _v = os.environ.get("CNN_CPU_THREADS") or os.environ.get("CNN_TF_THREADS")
+    if _v:
+        return max(1, int(_v))
     try:
-        _cnn_threads = str(min(32, len(os.sched_getaffinity(0))))
+        _avail = len(os.sched_getaffinity(0))
     except AttributeError:
-        _cnn_threads = str(min(32, os.cpu_count() or 1))
+        _avail = os.cpu_count() or 1
+    return max(1, min(8, _avail))
+
+_CNN_CPU_THREADS = _resolve_cnn_cpu_threads()
 for _v in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS", "NUMEXPR_NUM_THREADS"):
-    os.environ[_v] = _cnn_threads
+    os.environ[_v] = str(_CNN_CPU_THREADS)
 
 import pickle
 import queue
@@ -64,23 +78,17 @@ import numpy as np
 import optax
 import tensorflow as tf
 
-# Make the tf.data host pipeline multi-threaded too (the BLAS env above only
-# covers numpy/MKL). On this node the shell exports OMP/MKL=1, which otherwise
-# throttles the tf.data decode_raw/batch of the 131 MB harmonic-cache batches to
-# a single thread (~0.9 it/s, GPU starved). TF threadpool config must be set
-# before any TF op runs, so this lives right after `import tensorflow`. Affects
-# only TF/tf.data ops (jax/haiku training is unchanged). Uses the same
-# CNN_TF_THREADS value as the BLAS env above.
-_cnn_tf_threads = max(1, int(_cnn_threads))
+# TF op threadpools, from the same budget (must be set before any TF op runs;
+# tf.data uses the intra-op pool, so this also bounds the reader).
 try:
-    tf.config.threading.set_intra_op_parallelism_threads(_cnn_tf_threads)
-    tf.config.threading.set_inter_op_parallelism_threads(max(2, _cnn_tf_threads // 4))
+    tf.config.threading.set_intra_op_parallelism_threads(_CNN_CPU_THREADS)
+    tf.config.threading.set_inter_op_parallelism_threads(max(2, _CNN_CPU_THREADS // 4))
     print(
-        f"[cnn-tf-threading] intra={_cnn_tf_threads} "
-        f"inter={max(2, _cnn_tf_threads // 4)} (host BLAS threads={_cnn_threads})"
+        f"[cnn-threading] CPU budget={_CNN_CPU_THREADS} "
+        f"(BLAS env + TF intra={_CNN_CPU_THREADS}/inter={max(2, _CNN_CPU_THREADS // 4)})"
     )
 except RuntimeError as _exc:
-    print(f"[cnn-tf-threading] could not set TF threads (already initialized): {_exc}")
+    print(f"[cnn-threading] TF threads already initialized: {_exc}")
 
 from jax.lib import xla_bridge
 from tensorflow_probability.substrates import jax as tfp
