@@ -71,6 +71,18 @@ TFRecord shards (/nas)
 
 A 80k-step production compressor: ~9.3 h → **~1.3 h**.
 
+**Host threading (important — was a perf regression 2026-05-29).** The tf.data
+decode/batch of the 131 MB/batch is host-CPU-bound. This node's login shell
+exports `OMP_NUM_THREADS=1` (and MKL/etc.), which throttles the pipeline to a
+single thread → **~0.9 it/s with the GPU starved at ~0% util** (looks like a
+broken handoff but isn't — maps are correctly on GPU). The script now sets
+`tf.config.threading.set_intra/inter_op_parallelism_threads` at import
+(`intra=32, inter=8`, override via `CNN_TF_THREADS`) so the pipeline is
+multi-threaded regardless of the shell env — restoring ~17–20 it/s. You no
+longer need an `OMP_NUM_THREADS` prefix. Note: under heavy multi-tenant load
+(e.g. load avg ~40+), those threads still compete for CPU and throughput drops,
+so also run when the node has free cores.
+
 ## Correctness
 
 Bit-identical to the `.npz` path — proven, not assumed:

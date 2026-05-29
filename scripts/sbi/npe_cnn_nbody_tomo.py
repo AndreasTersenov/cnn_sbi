@@ -46,6 +46,29 @@ import jax.numpy as jnp
 import numpy as np
 import optax
 import tensorflow as tf
+
+# Make the tf.data host pipeline multi-threaded regardless of the shell's
+# OMP_NUM_THREADS. On this node the login shell exports OMP/MKL/...=1, which
+# otherwise throttles the tf.data decode_raw/batch of the 131 MB harmonic-cache
+# batches to a single thread (~0.9 it/s, GPU starved at ~0% util) instead of the
+# ~17-20 it/s the GPU can be fed at. TF threadpool config must be set before any
+# TF op runs, so this lives right after `import tensorflow`. Affects only TF/
+# tf.data ops (the jax/haiku training is unchanged). Override with CNN_TF_THREADS.
+try:
+    _cnn_avail_cpus = len(os.sched_getaffinity(0))
+except AttributeError:
+    _cnn_avail_cpus = os.cpu_count() or 1
+_cnn_tf_threads = max(1, min(int(os.environ.get("CNN_TF_THREADS", "32")), _cnn_avail_cpus))
+try:
+    tf.config.threading.set_intra_op_parallelism_threads(_cnn_tf_threads)
+    tf.config.threading.set_inter_op_parallelism_threads(max(2, _cnn_tf_threads // 4))
+    print(
+        f"[cnn-tf-threading] intra={_cnn_tf_threads} "
+        f"inter={max(2, _cnn_tf_threads // 4)} (avail_cpus={_cnn_avail_cpus})"
+    )
+except RuntimeError as _exc:
+    print(f"[cnn-tf-threading] could not set TF threads (already initialized): {_exc}")
+
 from jax.lib import xla_bridge
 from tensorflow_probability.substrates import jax as tfp
 
