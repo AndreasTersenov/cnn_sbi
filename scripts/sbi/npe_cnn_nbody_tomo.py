@@ -27,6 +27,23 @@ import argparse
 import hashlib
 import json
 import os
+
+# Multi-thread the host-side BLAS (numpy/MKL/OpenBLAS) work. This node's login
+# shell exports OMP_NUM_THREADS=1 (and MKL/OPENBLAS/NUMEXPR=1), which throttles
+# the per-step host work in compressor training to a single thread -> ~1 it/s
+# with the GPU idle, even with the tf.data reader fixed. Must be set BEFORE numpy
+# is imported (directly or via wandb/h5py below) so the BLAS backend picks it up.
+# Same CNN_TF_THREADS knob as the TF threadpool config (set after `import
+# tensorflow`); together they restore ~15-20 it/s regardless of the shell env.
+_cnn_threads = os.environ.get("CNN_TF_THREADS")
+if not _cnn_threads:
+    try:
+        _cnn_threads = str(min(32, len(os.sched_getaffinity(0))))
+    except AttributeError:
+        _cnn_threads = str(min(32, os.cpu_count() or 1))
+for _v in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS", "NUMEXPR_NUM_THREADS"):
+    os.environ[_v] = _cnn_threads
+
 import pickle
 import queue
 import re
@@ -47,24 +64,20 @@ import numpy as np
 import optax
 import tensorflow as tf
 
-# Make the tf.data host pipeline multi-threaded regardless of the shell's
-# OMP_NUM_THREADS. On this node the login shell exports OMP/MKL/...=1, which
-# otherwise throttles the tf.data decode_raw/batch of the 131 MB harmonic-cache
-# batches to a single thread (~0.9 it/s, GPU starved at ~0% util) instead of the
-# ~17-20 it/s the GPU can be fed at. TF threadpool config must be set before any
-# TF op runs, so this lives right after `import tensorflow`. Affects only TF/
-# tf.data ops (the jax/haiku training is unchanged). Override with CNN_TF_THREADS.
-try:
-    _cnn_avail_cpus = len(os.sched_getaffinity(0))
-except AttributeError:
-    _cnn_avail_cpus = os.cpu_count() or 1
-_cnn_tf_threads = max(1, min(int(os.environ.get("CNN_TF_THREADS", "32")), _cnn_avail_cpus))
+# Make the tf.data host pipeline multi-threaded too (the BLAS env above only
+# covers numpy/MKL). On this node the shell exports OMP/MKL=1, which otherwise
+# throttles the tf.data decode_raw/batch of the 131 MB harmonic-cache batches to
+# a single thread (~0.9 it/s, GPU starved). TF threadpool config must be set
+# before any TF op runs, so this lives right after `import tensorflow`. Affects
+# only TF/tf.data ops (jax/haiku training is unchanged). Uses the same
+# CNN_TF_THREADS value as the BLAS env above.
+_cnn_tf_threads = max(1, int(_cnn_threads))
 try:
     tf.config.threading.set_intra_op_parallelism_threads(_cnn_tf_threads)
     tf.config.threading.set_inter_op_parallelism_threads(max(2, _cnn_tf_threads // 4))
     print(
         f"[cnn-tf-threading] intra={_cnn_tf_threads} "
-        f"inter={max(2, _cnn_tf_threads // 4)} (avail_cpus={_cnn_avail_cpus})"
+        f"inter={max(2, _cnn_tf_threads // 4)} (host BLAS threads={_cnn_threads})"
     )
 except RuntimeError as _exc:
     print(f"[cnn-tf-threading] could not set TF threads (already initialized): {_exc}")

@@ -71,17 +71,22 @@ TFRecord shards (/nas)
 
 A 80k-step production compressor: ~9.3 h → **~1.3 h**.
 
-**Host threading (important — was a perf regression 2026-05-29).** The tf.data
-decode/batch of the 131 MB/batch is host-CPU-bound. This node's login shell
-exports `OMP_NUM_THREADS=1` (and MKL/etc.), which throttles the pipeline to a
-single thread → **~0.9 it/s with the GPU starved at ~0% util** (looks like a
-broken handoff but isn't — maps are correctly on GPU). The script now sets
-`tf.config.threading.set_intra/inter_op_parallelism_threads` at import
-(`intra=32, inter=8`, override via `CNN_TF_THREADS`) so the pipeline is
-multi-threaded regardless of the shell env — restoring ~17–20 it/s. You no
-longer need an `OMP_NUM_THREADS` prefix. Note: under heavy multi-tenant load
-(e.g. load avg ~40+), those threads still compete for CPU and throughput drops,
-so also run when the node has free cores.
+**Host threading (important — was a perf regression 2026-05-29).** Both the
+tf.data decode/batch *and* the per-step host work in compressor training are
+host-CPU-bound. This node's login shell exports `OMP_NUM_THREADS=1` (+ MKL/
+OpenBLAS/NumExpr), which throttles them to a single thread → **~1 it/s with the
+GPU starved at ~0% util** (looks like a broken DLPack handoff but isn't — maps
+are verified on GPU). The script now self-corrects, in two places, governed by
+one knob `CNN_TF_THREADS` (default 32, capped by available CPUs):
+- sets `OMP/MKL/OPENBLAS/NUMEXPR_NUM_THREADS` **before `import numpy`** (the
+  numpy/MKL host work in the training step), and
+- sets `tf.config.threading.set_intra/inter_op_parallelism_threads` after
+  `import tensorflow` (the tf.data reader).
+
+So you **no longer need any thread env prefix** — `--train-compressor` runs at
+**~15 it/s under the default `OMP=1` shell** (validated; bit-exact gate intact).
+Caveat: under heavy multi-tenant load (load avg ~40+) these threads still
+compete for CPU and throughput drops, so also run when the node has free cores.
 
 ## Correctness
 
