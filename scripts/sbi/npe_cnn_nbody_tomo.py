@@ -424,26 +424,21 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     p.add_argument(
-        "--harmonic-tfrecord-dir",
+        "--grain-tfds-name",
+        type=str,
+        default="nbody_cosmogrid_dataset_tomo_cross/grid_20deg_160px_nonoverlap48",
+        help="TFDS dataset name for the cross dataset (used by --cross-tfdata-dir).",
+    )
+    p.add_argument(
+        "--cross-tfdata-dir",
         type=str,
         default=None,
         help=(
-            "Optional TFRecord root built by build_harmonic_tfrecord.py "
-            "(e.g. /nas/tersenov/harmonic_tfrecord/full_sphere_cache_grid). "
-            "When set (alongside --full-sphere-cross-cache), the CNN compressor "
-            "TRAINS by reading TFRecord shards via tf.data instead of the .npz "
-            "loader -- numerically identical, ~6-7x faster. The .npz cache is "
-            "still used for channel-RMS, observed data, and the split audit."
-        ),
-    )
-    p.add_argument(
-        "--harmonic-tfrecord-compression",
-        type=str,
-        default="auto",
-        choices=["auto", "NONE", "GZIP"],
-        help=(
-            "TFRecord compression for the reader. 'auto' (default) reads it "
-            "from the TFRecord manifest; NONE/GZIP force it."
+            "Optional TFRecord TFDS root (built by build_cross_tfds_dataset.py "
+            "--file-format tfrecord). When set (alongside --full-sphere-cross-cache), the "
+            "CNN compressor TRAINS via the standard tfds.load + tf.data path (the same "
+            "mechanism the fast auto-only route uses), no Grain. .npz cache still used for "
+            "channel-RMS / observed / audit."
         ),
     )
     p.add_argument(
@@ -3599,17 +3594,15 @@ def main():
     cnn_map_route = args.cnn_map_route or (
         "harmonic" if args.full_sphere_cross_cache else "tfds"
     )
-    if args.harmonic_tfrecord_dir and cnn_map_route != "harmonic":
+    if args.cross_tfdata_dir and cnn_map_route != "harmonic":
         raise ValueError(
-            "--harmonic-tfrecord-dir requires the harmonic route "
-            "(--full-sphere-cross-cache). The .npz cache is still needed for "
-            "channel-RMS, observed data, and the split audit."
+            "--cross-tfdata-dir requires the harmonic route (--full-sphere-cross-cache). "
+            "The .npz cache is still needed for channel-RMS, observed data, and the split audit."
         )
     full_sphere_cache_dir: Optional[Path] = None
     full_sphere_cache_manifest_sha = ""
     harmonic_regime = ""
-    harmonic_tfrecord_dir: Optional[Path] = None
-    harmonic_tfrecord_compression = ""
+    cross_tfdata_dir: Optional[str] = None
     if args.full_sphere_cross_cache:
         if cnn_map_route != "harmonic":
             raise ValueError(
@@ -3672,21 +3665,14 @@ def main():
         print(f"  harmonic cache = {full_sphere_cache_dir}")
         print(f"  harmonic regime = {harmonic_regime}")
         print(f"  manifest sha256 = {full_sphere_cache_manifest_sha[:16]}...")
-        if args.harmonic_tfrecord_dir:
-            harmonic_tfrecord_dir = Path(args.harmonic_tfrecord_dir).resolve()
-            if not harmonic_tfrecord_dir.is_dir():
-                raise FileNotFoundError(
-                    f"--harmonic-tfrecord-dir not found: {harmonic_tfrecord_dir}"
-                )
-            harmonic_tfrecord_compression = _resolve_harmonic_tfrecord_compression(
-                harmonic_tfrecord_dir,
-                harmonic_regime,
-                args.harmonic_tfrecord_compression,
-            )
+        if args.cross_tfdata_dir:
+            cross_tfdata_dir = str(Path(args.cross_tfdata_dir).resolve())
+            if not Path(cross_tfdata_dir).is_dir():
+                raise FileNotFoundError(f"--cross-tfdata-dir not found: {cross_tfdata_dir}")
             print(
-                f"  harmonic TFRecord = {harmonic_tfrecord_dir} "
-                f"(compression={harmonic_tfrecord_compression}) -- compressor "
-                "TRAIN reads tf.data; .npz cache still used for RMS/obs/audit."
+                f"  Cross TFDS (tf.data) = {cross_tfdata_dir} (name={args.grain_tfds_name}) "
+                "-- compressor TRAIN reads TFRecord via standard tfds.load + tf.data "
+                "(the auto-only mechanism); .npz cache still used for RMS/obs/audit."
             )
     else:
         if cnn_map_route != "tfds":
@@ -4053,18 +4039,17 @@ def main():
             # still computed from the .npz cache (a property of the data), and
             # the split audit (below) also runs on the .npz cache -- shard stems
             # are 1:1 with .npz stems so its disjointness result is valid.
-            if harmonic_tfrecord_dir is not None:
-                return build_harmonic_tfrecord_iterator(
-                    tfrecord_dir=harmonic_tfrecord_dir,
-                    regime=harmonic_regime,
+            if cross_tfdata_dir is not None:
+                from tfds_cross_tfdata_loader import build_tfds_tfdata_iterator
+                return build_tfds_tfdata_iterator(
+                    tfds_name=args.grain_tfds_name,
+                    data_dir=cross_tfdata_dir,
                     split=split,
                     batch_size=batch_size,
                     seed=split_seed,
                     flip=is_train_split,
-                    max_realizations=split_limit,
                     channel_scale=harmonic_channel_scale,
                     channel_slice=cnn_channel_slice,
-                    compression=harmonic_tfrecord_compression,
                 )
             return build_harmonic_batch_iterator(
                 cache_dir=full_sphere_cache_dir,
@@ -4590,16 +4575,7 @@ def main():
             ),
             "full_sphere_cache_manifest_sha256": str(full_sphere_cache_manifest_sha),
             "harmonic_regime": str(harmonic_regime) if harmonic_regime else None,
-            "harmonic_tfrecord_dir": (
-                str(harmonic_tfrecord_dir)
-                if harmonic_tfrecord_dir is not None
-                else None
-            ),
-            "harmonic_tfrecord_compression": (
-                harmonic_tfrecord_compression
-                if harmonic_tfrecord_dir is not None
-                else None
-            ),
+            "cross_tfdata_dir": str(cross_tfdata_dir) if cross_tfdata_dir is not None else None,
         }
         if flow_summary_path.exists():
             metadata["flow_training_summary"] = json.loads(
