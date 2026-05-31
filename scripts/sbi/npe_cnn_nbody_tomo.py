@@ -618,6 +618,28 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     p.add_argument(
+        "--vmim-companion-backend",
+        choices=["sbi_lens", "maf"],
+        default="sbi_lens",
+        help=(
+            "VMIM companion flow family. 'sbi_lens' (default) = ConditionalRealNVP "
+            "(unchanged). 'maf' = hand-rolled conditional MAF (vmim_maf_companion.py) "
+            "to test whether the companion flow quality limits the compressor."
+        ),
+    )
+    p.add_argument(
+        "--vmim-maf-transforms",
+        type=int,
+        default=8,
+        help="MAF companion: number of autoregressive transforms (backend=maf). Default 8.",
+    )
+    p.add_argument(
+        "--vmim-maf-hidden",
+        type=int,
+        default=256,
+        help="MAF companion: MADE hidden width, used for 2 layers (backend=maf). Default 256.",
+    )
+    p.add_argument(
         "--compressor-plot-contours",
         action="store_true",
         help="Plot compressor contour diagnostics at each compressor checkpoint",
@@ -2273,6 +2295,9 @@ def train_compressor_vmim(
     domain_adv_weight: float = 0.0,
     domain_hidden: int = 64,
     vmim_nf_hidden: int = 128,
+    vmim_companion_backend: str = "sbi_lens",
+    vmim_maf_transforms: int = 8,
+    vmim_maf_hidden: int = 256,
     dataset_iter_factory: Optional[
         Callable[[str, int], Iterator[Dict[str, np.ndarray]]]
     ] = None,
@@ -2297,22 +2322,41 @@ def train_compressor_vmim(
     save_dir.mkdir(parents=True, exist_ok=True)
 
     # --- Companion normalizing flow for VMIM ---
-    bijector_fn = partial(
-        AffineCoupling, layers=[vmim_nf_hidden] * 2, activation=jax.nn.silu,
-    )
-    NF_compressor = partial(
-        ConditionalRealNVP, n_layers=4, bijector_fn=bijector_fn,
-    )
-
-    class FlowNdCompressor(hk.Module):
-        def __call__(self, y):
-            return NF_compressor(n_cosmo)(y)
-
-    nf = hk.without_apply_rng(
-        hk.transform(
-            lambda theta, y: FlowNdCompressor()(y).log_prob(theta).squeeze()
+    if str(vmim_companion_backend) == "maf":
+        # Conditional MAF companion (vmim_maf_companion.py) — same nf.apply(params,
+        # theta, y) -> log_prob interface; params merge into model_params and train
+        # jointly. Validated by test_vmim_maf_companion.py.
+        from vmim_maf_companion import conditional_maf_log_prob
+        _maf_hidden = (int(vmim_maf_hidden), int(vmim_maf_hidden))
+        print(f"  VMIM companion: conditional MAF "
+              f"(n_transforms={int(vmim_maf_transforms)}, hidden={_maf_hidden})")
+        nf = hk.without_apply_rng(
+            hk.transform(
+                lambda theta, y: conditional_maf_log_prob(
+                    theta, y, n_cosmo, compressor_dim,
+                    n_transforms=int(vmim_maf_transforms), hidden=_maf_hidden,
+                )
+            )
         )
-    )
+    else:
+        print(f"  VMIM companion: sbi_lens ConditionalRealNVP "
+              f"(4 layers, hidden={vmim_nf_hidden})")
+        bijector_fn = partial(
+            AffineCoupling, layers=[vmim_nf_hidden] * 2, activation=jax.nn.silu,
+        )
+        NF_compressor = partial(
+            ConditionalRealNVP, n_layers=4, bijector_fn=bijector_fn,
+        )
+
+        class FlowNdCompressor(hk.Module):
+            def __call__(self, y):
+                return NF_compressor(n_cosmo)(y)
+
+        nf = hk.without_apply_rng(
+            hk.transform(
+                lambda theta, y: FlowNdCompressor()(y).log_prob(theta).squeeze()
+            )
+        )
 
     # --- Initialize params ---
     params_cnn, state_cnn = compressor.init(
@@ -4125,6 +4169,9 @@ def main():
             domain_adv_weight=float(args.compressor_domain_adv_weight),
             domain_hidden=int(args.compressor_domain_hidden),
             vmim_nf_hidden=int(args.vmim_nf_hidden),
+            vmim_companion_backend=str(args.vmim_companion_backend),
+            vmim_maf_transforms=int(args.vmim_maf_transforms),
+            vmim_maf_hidden=int(args.vmim_maf_hidden),
             dataset_iter_factory=compressor_dataset_iter_factory,
             checkpoint_policy=args.compressor_checkpoint_policy,
         )
