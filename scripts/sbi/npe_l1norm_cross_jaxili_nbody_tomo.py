@@ -1510,12 +1510,15 @@ def parse_args() -> argparse.Namespace:
         "--channel-mode",
         type=str,
         default="auto_cross",
-        choices=["auto_cross", "cross_only"],
+        choices=["auto_cross", "cross_only", "auto_only"],
         help=(
             "Which subset of the 10-channel harmonic cache to feed to the L1 "
             "pipeline. 'auto_cross' (default) uses all 10 channels (4 auto + "
             "6 cross). 'cross_only' slices to the 6 cross channels at read "
             "time and routes them all through the cross-SNR calibration. "
+            "'auto_only' slices to the 4 auto channels (0:nbins) and routes "
+            "them all through the auto-SNR calibration — the route-matched "
+            "auto-only baseline for the cross-channel-gain comparison. "
             "Only meaningful with --full-sphere-cross-cache."
         ),
     )
@@ -2199,6 +2202,24 @@ def main() -> None:
             f"channels {l1_channel_slice.start}:{l1_channel_slice.stop}, "
             f"all routed through cross-SNR calibration)"
         )
+    elif args.channel_mode == "auto_only":
+        # Symmetric to cross_only: slice to the FIRST nbins (auto) channels and
+        # route them all through the auto-SNR calibration (l1_auto_boundary=nbins
+        # => every channel index b < nbins => auto-SNR). This is the route-matched
+        # auto-only baseline (same harmonic cache, FFT, BNT, noise, demean as
+        # auto_cross) for an apples-to-apples cross-channel-gain comparison.
+        if cross_maps_route != "harmonic":
+            raise ValueError(
+                "--channel-mode auto_only requires --full-sphere-cross-cache "
+                "(no flat-sky channel-slicing path)."
+            )
+        l1_channel_slice = slice(0, args.nbins)
+        l1_auto_boundary = args.nbins
+        n_l1_channels = args.nbins
+        print(
+            f"  channel_mode    = auto_only (slicing harmonic cache to "
+            f"channels 0:{args.nbins}, all routed through auto-SNR calibration)"
+        )
     else:
         l1_channel_slice = None
         l1_auto_boundary = args.nbins
@@ -2244,7 +2265,10 @@ def main() -> None:
     print(f"  pixel_arcmin   = {pixel_arcmin:.2f}")
     print(f"  noise_sigma    = {noise_sigma:.6f}")
     print(f"  zero_mean_maps = {bool(args.zero_mean_maps)}")
-    cross_desc = f" + {n_cross_pairs} cross" if args.cross_maps else ""
+    # Describe channels actually in use (after any channel_mode slicing), not the
+    # pre-slice n_cross_pairs — so auto_only shows "[4 auto]", cross_only "[0 auto + 6 cross]".
+    n_cross_used = n_l1_channels - l1_auto_boundary
+    cross_desc = f" + {n_cross_used} cross" if n_cross_used > 0 else ""
     print(
         f"  raw_summary    = {raw_summary_dim} "
         f"({args.n_scales} scales × {args.l1_nbins} bins × "

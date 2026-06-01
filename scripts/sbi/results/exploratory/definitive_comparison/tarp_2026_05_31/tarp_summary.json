@@ -1,0 +1,266 @@
+{
+  "generated_at_utc": "2026-05-31T11:53:33.651593+00:00",
+  "dumps_root": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/definitive_comparison/tarp_2026_05_31/dumps",
+  "n_dumps": 18,
+  "dims": [
+    3,
+    6
+  ],
+  "num_bootstrap": 200,
+  "num_alpha_bins": null,
+  "norm": true,
+  "curves": [
+    {
+      "arm": "cnn_autocross_maf",
+      "seed": 41,
+      "dim": 3,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/definitive_comparison/tarp_2026_05_31/dumps/cnn_autocross_maf/seed_41/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/definitive_comparison/tarp_2026_05_31/curves/tarp_curve_cnn_autocross_maf_seed41_dim3.npz"
+    },
+    {
+      "arm": "cnn_autocross_maf",
+      "seed": 42,
+      "dim": 3,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/definitive_comparison/tarp_2026_05_31/dumps/cnn_autocross_maf/seed_42/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/definitive_comparison/tarp_2026_05_31/curves/tarp_curve_cnn_autocross_maf_seed42_dim3.npz"
+    },
+    {
+      "arm": "cnn_autocross_maf",
+      "seed": 43,
+      "dim": 3,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/definitive_comparison/tarp_2026_05_31/dumps/cnn_autocross_maf/seed_43/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/definitive_comparison/tarp_2026_05_31/curves/tarp_curve_cnn_autocross_maf_seed43_dim3.npz"
+    },
+    {
+      "arm": "cnn_autocross_rnvp",
+      "seed": 41,
+      "dim": 3,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/definitive_comparison/tarp_2026_05_31/dumps/cnn_autocross_rnvp/seed_41/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/definitive_comparison/tarp_2026_05_31/curves/tarp_curve_cnn_autocross_rnvp_seed41_dim3.npz"
+    },
+    {
+      "arm": "cnn_autocross_rnvp",
+      "seed": 42,
+      "dim": 3,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/definitive_comparison/tarp_2026_05_31/dumps/cnn_autocross_rnvp/seed_42/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/definitive_comparison/tarp_2026_05_31/curves/tarp_curve_cnn_autocross_rnvp_seed42_dim3.npz"
+    },
+    {
+      "arm": "cnn_autocross_rnvp",
+      "seed": 43,
+      "dim": 3,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/definitive_comparison/tarp_2026_05_31/dumps/cnn_autocross_rnvp/seed_43/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/definitive_comparison/tarp_2026_05_31/curves/tarp_curve_cnn_autocross_rnvp_seed43_dim3.npz"
+    },
+    {
+      "arm": "cnn_autoonly_maf",
+      "seed": 41,
+      "dim": 3,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/definitive_comparison/tarp_2026_05_31/dumps/cnn_autoonly_maf/seed_41/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/definitive_comparison/tarp_2026_05_31/curves/tarp_curve_cnn_autoonly_maf_seed41_dim3.npz"
+    },
+    {
+      "arm": "cnn_autoonly_maf",
+      "seed": 42,
+      "dim": 3,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/definitive_comparison/tarp_2026_05_31/dumps/cnn_autoonly_maf/seed_42/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/definitive_comparison/tarp_2026_05_31/curves/tarp_curve_cnn_autoonly_maf_seed42_dim3.npz"
+    },
+    {
+      "arm": "cnn_autoonly_maf",
+      "seed": 43,
+      "dim": 3,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/definitive_comparison/tarp_2026_05_31/dumps/cnn_autoonly_maf/seed_43/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/definitive_comparison/tarp_2026_05_31/curves/tarp_curve_cnn_autoonly_maf_seed43_dim3.npz"
+    },
+    {
+      "arm": "cnn_autoonly_rnvp",
+      "seed": 41,
+      "dim": 3,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/definitive_comparison/tarp_2026_05_31/dumps/cnn_autoonly_rnvp/seed_41/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/definitive_comparison/tarp_2026_05_31/curves/tarp_curve_cnn_autoonly_rnvp_seed41_dim3.npz"
+    },
+    {
+      "arm": "cnn_autoonly_rnvp",
+      "seed": 42,
+      "dim": 3,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/definitive_comparison/tarp_2026_05_31/dumps/cnn_autoonly_rnvp/seed_42/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/definitive_comparison/tarp_2026_05_31/curves/tarp_curve_cnn_autoonly_rnvp_seed42_dim3.npz"
+    },
+    {
+      "arm": "cnn_autoonly_rnvp",
+      "seed": 43,
+      "dim": 3,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/definitive_comparison/tarp_2026_05_31/dumps/cnn_autoonly_rnvp/seed_43/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/definitive_comparison/tarp_2026_05_31/curves/tarp_curve_cnn_autoonly_rnvp_seed43_dim3.npz"
+    },
+    {
+      "arm": "l1_autocross",
+      "seed": 41,
+      "dim": 3,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/definitive_comparison/tarp_2026_05_31/dumps/l1_autocross/seed_41/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/definitive_comparison/tarp_2026_05_31/curves/tarp_curve_l1_autocross_seed41_dim3.npz"
+    },
+    {
+      "arm": "l1_autocross",
+      "seed": 42,
+      "dim": 3,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/definitive_comparison/tarp_2026_05_31/dumps/l1_autocross/seed_42/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/definitive_comparison/tarp_2026_05_31/curves/tarp_curve_l1_autocross_seed42_dim3.npz"
+    },
+    {
+      "arm": "l1_autocross",
+      "seed": 43,
+      "dim": 3,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/definitive_comparison/tarp_2026_05_31/dumps/l1_autocross/seed_43/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/definitive_comparison/tarp_2026_05_31/curves/tarp_curve_l1_autocross_seed43_dim3.npz"
+    },
+    {
+      "arm": "l1_autoonly",
+      "seed": 41,
+      "dim": 3,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/definitive_comparison/tarp_2026_05_31/dumps/l1_autoonly/seed_41/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/definitive_comparison/tarp_2026_05_31/curves/tarp_curve_l1_autoonly_seed41_dim3.npz"
+    },
+    {
+      "arm": "l1_autoonly",
+      "seed": 42,
+      "dim": 3,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/definitive_comparison/tarp_2026_05_31/dumps/l1_autoonly/seed_42/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/definitive_comparison/tarp_2026_05_31/curves/tarp_curve_l1_autoonly_seed42_dim3.npz"
+    },
+    {
+      "arm": "l1_autoonly",
+      "seed": 43,
+      "dim": 3,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/definitive_comparison/tarp_2026_05_31/dumps/l1_autoonly/seed_43/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/definitive_comparison/tarp_2026_05_31/curves/tarp_curve_l1_autoonly_seed43_dim3.npz"
+    },
+    {
+      "arm": "cnn_autocross_maf",
+      "seed": 41,
+      "dim": 6,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/definitive_comparison/tarp_2026_05_31/dumps/cnn_autocross_maf/seed_41/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/definitive_comparison/tarp_2026_05_31/curves/tarp_curve_cnn_autocross_maf_seed41_dim6.npz"
+    },
+    {
+      "arm": "cnn_autocross_maf",
+      "seed": 42,
+      "dim": 6,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/definitive_comparison/tarp_2026_05_31/dumps/cnn_autocross_maf/seed_42/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/definitive_comparison/tarp_2026_05_31/curves/tarp_curve_cnn_autocross_maf_seed42_dim6.npz"
+    },
+    {
+      "arm": "cnn_autocross_maf",
+      "seed": 43,
+      "dim": 6,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/definitive_comparison/tarp_2026_05_31/dumps/cnn_autocross_maf/seed_43/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/definitive_comparison/tarp_2026_05_31/curves/tarp_curve_cnn_autocross_maf_seed43_dim6.npz"
+    },
+    {
+      "arm": "cnn_autocross_rnvp",
+      "seed": 41,
+      "dim": 6,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/definitive_comparison/tarp_2026_05_31/dumps/cnn_autocross_rnvp/seed_41/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/definitive_comparison/tarp_2026_05_31/curves/tarp_curve_cnn_autocross_rnvp_seed41_dim6.npz"
+    },
+    {
+      "arm": "cnn_autocross_rnvp",
+      "seed": 42,
+      "dim": 6,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/definitive_comparison/tarp_2026_05_31/dumps/cnn_autocross_rnvp/seed_42/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/definitive_comparison/tarp_2026_05_31/curves/tarp_curve_cnn_autocross_rnvp_seed42_dim6.npz"
+    },
+    {
+      "arm": "cnn_autocross_rnvp",
+      "seed": 43,
+      "dim": 6,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/definitive_comparison/tarp_2026_05_31/dumps/cnn_autocross_rnvp/seed_43/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/definitive_comparison/tarp_2026_05_31/curves/tarp_curve_cnn_autocross_rnvp_seed43_dim6.npz"
+    },
+    {
+      "arm": "cnn_autoonly_maf",
+      "seed": 41,
+      "dim": 6,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/definitive_comparison/tarp_2026_05_31/dumps/cnn_autoonly_maf/seed_41/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/definitive_comparison/tarp_2026_05_31/curves/tarp_curve_cnn_autoonly_maf_seed41_dim6.npz"
+    },
+    {
+      "arm": "cnn_autoonly_maf",
+      "seed": 42,
+      "dim": 6,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/definitive_comparison/tarp_2026_05_31/dumps/cnn_autoonly_maf/seed_42/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/definitive_comparison/tarp_2026_05_31/curves/tarp_curve_cnn_autoonly_maf_seed42_dim6.npz"
+    },
+    {
+      "arm": "cnn_autoonly_maf",
+      "seed": 43,
+      "dim": 6,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/definitive_comparison/tarp_2026_05_31/dumps/cnn_autoonly_maf/seed_43/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/definitive_comparison/tarp_2026_05_31/curves/tarp_curve_cnn_autoonly_maf_seed43_dim6.npz"
+    },
+    {
+      "arm": "cnn_autoonly_rnvp",
+      "seed": 41,
+      "dim": 6,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/definitive_comparison/tarp_2026_05_31/dumps/cnn_autoonly_rnvp/seed_41/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/definitive_comparison/tarp_2026_05_31/curves/tarp_curve_cnn_autoonly_rnvp_seed41_dim6.npz"
+    },
+    {
+      "arm": "cnn_autoonly_rnvp",
+      "seed": 42,
+      "dim": 6,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/definitive_comparison/tarp_2026_05_31/dumps/cnn_autoonly_rnvp/seed_42/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/definitive_comparison/tarp_2026_05_31/curves/tarp_curve_cnn_autoonly_rnvp_seed42_dim6.npz"
+    },
+    {
+      "arm": "cnn_autoonly_rnvp",
+      "seed": 43,
+      "dim": 6,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/definitive_comparison/tarp_2026_05_31/dumps/cnn_autoonly_rnvp/seed_43/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/definitive_comparison/tarp_2026_05_31/curves/tarp_curve_cnn_autoonly_rnvp_seed43_dim6.npz"
+    },
+    {
+      "arm": "l1_autocross",
+      "seed": 41,
+      "dim": 6,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/definitive_comparison/tarp_2026_05_31/dumps/l1_autocross/seed_41/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/definitive_comparison/tarp_2026_05_31/curves/tarp_curve_l1_autocross_seed41_dim6.npz"
+    },
+    {
+      "arm": "l1_autocross",
+      "seed": 42,
+      "dim": 6,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/definitive_comparison/tarp_2026_05_31/dumps/l1_autocross/seed_42/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/definitive_comparison/tarp_2026_05_31/curves/tarp_curve_l1_autocross_seed42_dim6.npz"
+    },
+    {
+      "arm": "l1_autocross",
+      "seed": 43,
+      "dim": 6,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/definitive_comparison/tarp_2026_05_31/dumps/l1_autocross/seed_43/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/definitive_comparison/tarp_2026_05_31/curves/tarp_curve_l1_autocross_seed43_dim6.npz"
+    },
+    {
+      "arm": "l1_autoonly",
+      "seed": 41,
+      "dim": 6,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/definitive_comparison/tarp_2026_05_31/dumps/l1_autoonly/seed_41/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/definitive_comparison/tarp_2026_05_31/curves/tarp_curve_l1_autoonly_seed41_dim6.npz"
+    },
+    {
+      "arm": "l1_autoonly",
+      "seed": 42,
+      "dim": 6,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/definitive_comparison/tarp_2026_05_31/dumps/l1_autoonly/seed_42/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/definitive_comparison/tarp_2026_05_31/curves/tarp_curve_l1_autoonly_seed42_dim6.npz"
+    },
+    {
+      "arm": "l1_autoonly",
+      "seed": 43,
+      "dim": 6,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/definitive_comparison/tarp_2026_05_31/dumps/l1_autoonly/seed_43/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/definitive_comparison/tarp_2026_05_31/curves/tarp_curve_l1_autoonly_seed43_dim6.npz"
+    }
+  ]
+}

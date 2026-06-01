@@ -40,12 +40,26 @@ ARM_DISPLAY = {
     "cnn_auto_only": "CNN auto-only (plain)",
     "cnn_harm_cross_plain": "CNN auto + harm cross (plain)",
     "cnn_harm_cross_gn": "CNN auto + harm cross (resnet50-GN)",
+    # definitive comparison arms (2026-05-31)
+    "l1_autocross": "L1 auto+cross",
+    "l1_autoonly": "L1 auto-only",
+    "cnn_autocross_rnvp": "CNN auto+cross (RealNVP)",
+    "cnn_autoonly_rnvp": "CNN auto-only (RealNVP)",
+    "cnn_autocross_maf": "CNN auto+cross (MAF)",
+    "cnn_autoonly_maf": "CNN auto-only (MAF)",
 }
 ARM_COLOR = {
     "l1_harm_cross": "tab:red",
     "cnn_auto_only": "tab:blue",
     "cnn_harm_cross_plain": "tab:green",
     "cnn_harm_cross_gn": "tab:orange",
+    # definitive comparison arms (2026-05-31)
+    "l1_autocross": "tab:red",
+    "l1_autoonly": "tab:pink",
+    "cnn_autocross_rnvp": "tab:blue",
+    "cnn_autoonly_rnvp": "tab:cyan",
+    "cnn_autocross_maf": "tab:green",
+    "cnn_autoonly_maf": "tab:olive",
 }
 
 

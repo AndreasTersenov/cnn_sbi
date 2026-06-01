@@ -640,6 +640,29 @@ def parse_args() -> argparse.Namespace:
         help="MAF companion: MADE hidden width, used for 2 layers (backend=maf). Default 256.",
     )
     p.add_argument(
+        "--harmonic-loader-threads",
+        type=int,
+        default=4,
+        help=(
+            "Number of .npz loader threads for build_harmonic_batch_iterator (the "
+            "DISJOINT/clean route, used when --cross-tfdata-dir is NOT set). Default 4 "
+            "is loader-bound (~2 it/s, GPU-starved); raise (e.g. 24) to use the CPU "
+            "budget and recover GPU-bound throughput. No effect on the tf.data route."
+        ),
+    )
+    p.add_argument(
+        "--harmonic-loader-pool",
+        type=int,
+        default=6,
+        help="Working-set ring-buffer size (files) for the .npz harmonic loader. Default 6.",
+    )
+    p.add_argument(
+        "--harmonic-loader-prefetch",
+        type=int,
+        default=6,
+        help="Prefetch depth (files) for the .npz harmonic loader. Default 6.",
+    )
+    p.add_argument(
         "--compressor-plot-contours",
         action="store_true",
         help="Plot compressor contour diagnostics at each compressor checkpoint",
@@ -4105,6 +4128,9 @@ def main():
                 max_realizations=split_limit,
                 channel_scale=harmonic_channel_scale,
                 channel_slice=cnn_channel_slice,
+                loader_threads=int(args.harmonic_loader_threads),
+                pool_size=int(args.harmonic_loader_pool),
+                prefetch_depth=int(args.harmonic_loader_prefetch),
             )
 
         compressor_dataset_iter_factory = _harmonic_dataset_iter_factory

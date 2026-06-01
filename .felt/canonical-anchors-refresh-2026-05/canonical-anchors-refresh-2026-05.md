@@ -14,7 +14,7 @@ outcome: 'Refresh of the 4 headline anchors (CNN auto-only, CNN auto+cross, L1 a
 
 ## Objective
 
-Refresh the four headline anchors used in `[[CNN_CROSS_MAPS_INFORMATION_NOTE]]`
+Refresh the four headline anchors used in `CNN_CROSS_MAPS_INFORMATION_NOTE`
 and all downstream cross-pipeline comparisons:
 
 - **CNN auto-only** (current stale anchor: pooled FoM3 ≈ 11,130)
@@ -87,7 +87,7 @@ For each arm, report:
 **This is a measurement campaign, not a hypothesis test** — there is no
 pass/fail threshold. We report the four anchors and the corrected
 cross/auto ratios; downstream hypothesis re-evaluation happens in
-`[[CNN_CROSS_MAPS_INFORMATION_NOTE]]` based on those numbers.
+`CNN_CROSS_MAPS_INFORMATION_NOTE` based on those numbers.
 
 Sanity checks that would flag a problem and trigger a re-investigation:
 
@@ -294,7 +294,7 @@ interpretability-first plot suite via `plot_canonical_diagnostics.py`
    seed-to-seed mode drift.
 5. **Bias-vs-truth bar chart** (3 params × 3 seeds per arm) — calibration
    check, cross-check against the
-   [[project_resnet_bn_contamination]] signature (shared bias direction
+   project_resnet_bn_contamination signature (shared bias direction
    across seeds = BN contamination).
 6. **Pool/MoS haircut** — should be ~0.69-0.85 for plain-CNN auto-only,
    plain-CNN auto+cross was ~0.98 in iter-108-Q6ON-60k.
@@ -342,7 +342,7 @@ an independent investigation, file a sub-fiber at that point.
 ## Connections
 
 - **Triggers**: Andreas's pushback during the
-  `[[CNN_CROSS_MAPS_INFORMATION_NOTE]]` discussion (2026-05-24) — asking
+  `CNN_CROSS_MAPS_INFORMATION_NOTE` discussion (2026-05-24) — asking
   whether old runs at 10deg might have contaminated the analysis. Audit
   revealed the more serious split-discipline issue.
 - **Precedent for the canonical setup**:

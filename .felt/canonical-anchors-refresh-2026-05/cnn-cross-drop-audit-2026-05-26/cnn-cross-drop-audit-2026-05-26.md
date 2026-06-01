@@ -198,4 +198,4 @@ significant compute or analysis is involved.)
   `/nas/tersenov/claude-notes/runs/cnn-auto-cross-push-18-20-2026/iter-108-Q6ON-60k/`
 - Related: `[[project_pool_haircut_invariant_to_architecture]]`,
   `[[feedback_val_loss_not_reliable_fom3_proxy]]`,
-  `[[project_resnet50gn_120k_overfits]]`.
+  `project_resnet50gn_120k_overfits`.

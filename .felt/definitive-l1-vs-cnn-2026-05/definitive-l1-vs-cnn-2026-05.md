@@ -8,7 +8,7 @@ tags:
     - l1
     - definitive
 created-at: 2026-05-27T21:17:28.520289295Z
-outcome: 'OPEN. 10-arm comparison (3 L1 + 4 CNN-RealNVP-companion + 2 CNN-MAF-companion + 1 sanity check), jaxili MAF NDE for all, 3 seeds × 3 perms = 90 posteriors. Architecture: 64,128,256/dense=256/cdim=10, 80k steps, best-val. Primary metric: FoM3 (2D areas + marginal σ secondary). Plan: plans/mighty-tumbling-sparrow.md. Triggered by comprehensive-experiment-audit-2026-05.'
+outcome: 'OPEN (substantively complete 2026-05-31; refinements remain). 10 arms computed (jaxili MAF NDE all), σ/2D primary (FoM3 secondary, fragile). KEY: (1) G8 patch-center confound REAL & large — native-TFDS auto-only ≫ harmonic-sliced auto-only (FoM3 14969 vs 9125), so CNN cross-gain is ~1.8× over a fair auto-only, not 2.93×; (2) MAF companion WORSE than RealNVP → companion not the bottleneck, sub-investigation CLOSED; (3) standardization ~neutral; (4) L1 ≥ CNN-RealNVP driven by w0; (5) all arms reasonably calibrated (TARP 3-seed); (6) leakage empirically negligible → clean rerun deprioritized. Remaining: per-perm-average the multi-perm arms, TARP the new arms, write G8 into summary, commit code. See HANDOFF_DEFINITIVE_COMPARISON_2026-05-31.md. Plan: plans/mighty-tumbling-sparrow.md.'
 ---
 
 ## Objective
@@ -29,7 +29,109 @@ All 90 posteriors (10 arms × 3 seeds × 3 perms) computed, analysis complete,
 `SUMMARY.md` written with definitive comparison table. No plateau-stop
 (fixed plan, not iterative). Wall-clock budget: ~3 days.
 
+**TARP coverage gate (added 2026-05-31, Andreas — priority 1):** the comparison is
+NOT done until every "final definitive" posterior arm has a **TARP expected-coverage
+plot** (N=200 cosmologies × M=2000 samples convention; test ensemble = the held-out
+`cnn_val.npz` (θ,x)). A tight posterior only counts if it is *calibrated*, not just
+narrow — so coverage is reported alongside FoM3/σ/2D for L1 and CNN (RealNVP + MAF
+companions). Tooling: `tarp_from_compressed.py` (reuses the `train_jaxili_from_compressed`
+NDE; separate from it so it doesn't disturb running campaigns). This was previously
+only an offhand "SBC is the proper follow-up" note in the flip=False entry; it is now
+a formal done-condition item.
+
 ## Loop Status (live)
+
+**[2026-05-31] ✅ CAMPAIGN SUBSTANTIVELY COMPLETE — read `HANDOFF_DEFINITIVE_COMPARISON_2026-05-31.md` (root) FIRST.**
+**Sub-fibers (filed 2026-06-01):** [[finding-patch-center-confound-g8]] · [[maf-companion-not-bottleneck]] · [[bug-multiperm-no-train-flag]] (all closed); **[[refine-phase-c-perm-matched]]** (OPEN — the next session's task).
+10 arms computed (jaxili MAF NDE all), TARP coverage (3-seed) for the 6 core arms, Phase C table
+written (`results/exploratory/definitive_comparison/PHASE_C_2026_05_31/SUMMARY_DEFINITIVE.md`).
+Key results (σ-based; FoM3 fragile):
+- **Patch-center confound (G8) is REAL and large** — native-TFDS auto-only (FoM3 14969, σw0 0.148)
+  ≫ harmonic-cache-sliced auto-only (9125, 0.216). ⟹ the CNN cross-gain is route-sensitive: ~1.8×
+  over a fair auto-only, not the 2.93× over the lossy harmonic auto-only. **Quote cross-gain with this caveat.**
+- **MAF companion is WORSE than RealNVP** (≤ across all 5 seed pairings) ⟹ companion is NOT the
+  bottleneck. Sub-investigation CLOSED.
+- **Standardization ~neutral** (doesn't destroy info). **L1 ≥ CNN-RealNVP**, driven by **w₀**
+  (σ 0.125 vs 0.151). **All arms reasonably calibrated** (TARP, mildly over-confident).
+- **Leakage empirically negligible** (Andreas) → fast-route absolute FoM is fine; **clean rerun
+  DEPRIORITIZED** (and `.npz` loader is GIL-bound, can't be sped up).
+Remaining iterations (none mid-flight): (a) per-perm-AVERAGE the multi-perm arms in
+`aggregate_all_arms.py` (currently perm-POOLED → broader, not apples-to-apples vs perm-0 arms);
+(b) TARP the new arms (std, native-auto, multi-perm); (c) write the G8 confound into the summary;
+(d) commit session code w/ Andreas OK. Deeper threads held for Andreas: 120k steps, the w₀ question, SBC.
+
+**[2026-05-30] ⛔ CNN DATA-PATH RESOLVED — read `HANDOFF_PERF_REGRESSION_RESOLVED_2026-05-30.md`
+BEFORE any CNN retrain.** The CNN ~1 it/s / ~0% GPU wall was **storage** (the cross dataset on
+`/nas` is a FUSE `mergerfs` mount, ~100 MB/s for the random-read pattern), NOT threads / DLPack /
+mem-fraction. **Fix: read the LOCAL copy** — `--cross-tfdata-dir /home/tersenov/tensorflow_datasets`
+(NOT `/nas`) → ~15–19 it/s, 80k compressor ≈ ~1.5 h. A loader **normalization bug was fixed**
+(`ad75511`; be on HEAD ≥ `676d407` — any pre-fix `--cross-tfdata-dir` run is scientifically
+invalid). The old `--harmonic-tfrecord-dir` / Grain paths are **deleted**. ⚠️ `train[:70%]` /
+`train[70%:]` disjointness is NOT preserved on the new path (example-slice vs file-slice →
+compressor↔NDE leakage → inflated FoM; the in-run "overlap=0" audit is misleading). Corrected
+command + a smoke tripwire (must hit ~15–19 it/s, else still on `/nas` or pre-fix) are in that doc,
+which supersedes `HANDOFF_CNN_TFRECORD_PERF_REGRESSION.md`.
+
+**PART 2 (run continuation) — LAUNCHED 2026-05-28 ~22:25, autonomous overnight.**
+Andreas greenlit "proceed flip=False now" (flip A/B verdict still pending). State:
+- Arm-1 warm-up `l1_autocross_fulltrain` s41/p0 (flip=False, full-train) running on
+  **GPU 0** — route confirmed (`cross_noise_model=channel_empirical_global`,
+  channel_scale ~10⁴× on cross ch, 10-ch auto_cross, pca off). Summarizing ~138 patches/s.
+- Master orchestrator `scripts/sbi/orchestrate_l1_autocross_overnight.sh` (PID-detached)
+  self-drives the rest: launches arm-2 `l1_autocross_split70` s41/p0 on GPU 1 when the
+  F-leg frees it (falls back to GPU 0), waits for both datavector caches + warm-up
+  posteriors, fans out the 16 remaining (3 seeds × 3 perms − warm-up) across GPU 0+1
+  (cache hits, ~fast NDE), then runs analysis.
+- Scripts: launcher `run_l1_autocross_definitive.sh`, analysis
+  `analyze_l1_autocross_definitive.py` (FoM3 perm-avg-pooled primary + marginal σ +
+  getdist overlays; VALIDATED — reproduces baselines 10,452/8,086 exactly).
+- **flip A/B verdict (RESOLVED 2026-05-28 23:14, s41/p0 full-train):** flip=False=**48,408**
+  vs flip=True=**39,895**. flip=False is NOT worse (~+21% single-seed) → pause-trigger
+  ("flip=True materially better") did NOT fire → **flip=False campaign proceeds + dedup is
+  sound**. Caveats: (a) single-seed FoM3 is fragile (read as flip≈neutral-to-mildly-favorable,
+  not a hard 21%); (b) flip=False is *tighter* → possibly mildly optimistic coverage → SBC
+  check is the proper follow-up (out of scope tonight). **Flip-consistency TODO**: auto-only
+  baselines are flip=True; for a one-flip-setting definitive table, re-run auto-only flip=False
+  (cheap, 4ch) after the auto+cross campaign frees GPUs. Snapshot: `flip_ab_Fleg.fom.json`.
+- **Status files**: `OVERNIGHT_STATUS.md` (live phase), `.OVERNIGHT_L1_DONE` (marker),
+  `DEFINITIVE_L1_SUMMARY.md` + `definitive_l1_fom3.csv` + `figures/definitive_l1/` (results),
+  `logs/orchestrator.log`. Killed flip=True s41/p0 debris preserved in
+  `posteriors/l1_autocross_fulltrain/_killed_run_debris_flipTrue/`.
+- **CNN side (§7)**: NOT run unsupervised. Plan: retrain 2 RealNVP compressors on TFRecord
+  (regime fix Andreas approved) + draft Phase 0a `train_jaxili_from_compressed.py`, then
+  RealNVP NDE arms. Phase 0b (MAF companion, SHARED-code edit) left for Andreas sign-off.
+- **Full overnight handoff**: `HANDOFF_OVERNIGHT_L1_RUN.md`.
+- **✅ L1 auto+cross DONE + VERIFIED (23:57, ~89 min total).** 18 posteriors, all (100000,6)
+  finite valid_fom3=True; fan-out = dedup cache hits (verified). **auto+cross full pooled FoM3
+  = 34,949** (σ 0.0277/0.0430/0.1392 perm-consistent), **70/30 = 25,808** (σ 0.0296/0.0444/0.1284).
+  **Honest cross gain (FoM3 overstates — trust 2D+σ per feedback_fom3_fragile_use_2d_areas (memory)):**
+  marginal σ tighten ×1.25-1.28 (Ωm) /1.11 (σ8) /1.25-1.29 (w0); 2D FoM ×1.9-2.1 (Ωm,σ8); FoM3 3.34×/3.19×.
+  Split penalty 26%. ⚠️ flip-INCONSISTENT (auto+cross flip=False vs baselines flip=True; flip=False
+  ~21% higher single-seed) but Ωm tightening robust. NOTE: fixed a marginal-σ pooling bug (all-perm
+  pooled → per-perm pooled) in `analyze_l1_autocross_definitive.py`. Results: `DEFINITIVE_L1_SUMMARY.md`
+  (now with 2D-FoM table), `definitive_l1_fom3.csv`, `figures/definitive_l1/`.
+- **CNN NOT run autonomously — 2 decisions for Andreas (see `HANDOFF_OVERNIGHT_L1_RUN.md`):**
+  (1) auto-only flip=False re-run needs a route choice (add `auto_only` channel-mode to cross
+  script vs TFDS auto-only script vs accept flip=True); (2) compressor regime is asymmetric —
+  `auto_rnvp`=TFDS-4ch, `autocross_rnvp`=harmonic-10ch, so "retrain both on TFRecord" is ill-posed
+  (only autocross is a candidate). Exact original configs recovered from `logs/phase_a_*_rnvp.log`.
+  Phase 0a `train_jaxili_from_compressed.py` DRAFTED + compiles (grounded on real npz format; un-run).
+
+**Auto-only flip=False re-run — LAUNCHED 2026-05-29 06:46 (Andreas-authorized).** Added an
+`auto_only` `--channel-mode` to `npe_l1norm_cross_jaxili_nbody_tomo.py` (purely additive elif:
+slice 0:nbins, l1_auto_boundary=nbins → all auto-SNR; verified config: `channel_mode=auto_only`,
+`raw_summary=800`=5×40×4, auto-SNR [-13,13]; auto_cross/cross_only untouched; also fixed a cosmetic
+channel-count label). Route-matched flip=False auto-only arms `l1_autoonly_{fulltrain,split70}`
+(harmonic route, 4 auto ch, flip=False, dedup) via `run_l1_autoonly_definitive.sh` +
+`orchestrate_l1_autoonly_overnight.sh`. **✅ DONE (06:46→07:18, 18/18 valid).** Route-matched
+auto-only pooled FoM3: full **10,191** (σ 0.0368/0.0480/0.1855), 70/30 **8,774** — within ~3% of the
+old TFDS/flip=True baselines (10,452/8,086), so route+flip barely moved auto-only ⇒ comparison robust.
+**CLEAN apples-to-apples cross gain** (auto+cross vs route-matched auto-only, both harmonic+flip=False):
+full **3.43×** FoM3 / σ-tighten Ωm 1.33×,σ8 1.12×,w0 1.33× / 2D (Ωm,σ8) 2.09×; 70/30 **2.94×** FoM3 /
+σ Ωm 1.30× / 2D (Ωm,σ8) 1.96×. ⇒ flip-consistency caveat RESOLVED — clean gain (3.43/2.94×) brackets
+the earlier inconsistent (3.34/3.19×); cross gain is real, strongest in Ωm and the Ωm–σ8 plane.
+Figures `figures/definitive_l1/gain_{fulltrain,split70}_routematched.{pdf,png}`. (Note: pre-existing
+latent `--help` argparse `%`-format bug in the L1 script, unrelated to runs — surfaced, not fixed.)
 
 **Phase tracker:**
 - [~] Phase 0a: Code — `train_jaxili_from_compressed.py` (NEW) — in progress (separate session)

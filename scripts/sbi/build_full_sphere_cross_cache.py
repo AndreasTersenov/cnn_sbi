@@ -199,6 +199,79 @@ def _patch_one_realization(
     return patches
 
 
+# -----------------------------------------------------------------------------
+# Shared compute (single source of truth for the .npz cache AND the TFDS builder)
+# -----------------------------------------------------------------------------
+
+def _noise_seed(cosmo_idx: int, perm: int, noise_seed_base: int) -> int:
+    """Deterministic per-(cosmo, perm) shape-noise seed."""
+    return int(noise_seed_base) + 100 * int(cosmo_idx) + int(perm)
+
+
+def compute_noisy_alms(
+    noiseless: np.ndarray, cosmo_idx: int, perm: int, cfg: BuildConfig
+) -> np.ndarray:
+    """Steps 2-3: add per-pixel iid sphere noise to the 4 auto bins, then SHT each.
+
+    `noiseless` is (N_AUTO, npix) float64. Returns (N_AUTO, n_lm) complex128 alms,
+    deterministic in (cosmo_idx, perm).
+    """
+    seed = _noise_seed(cosmo_idx, perm, cfg.noise_seed_base)
+    rng = np.random.default_rng(seed)
+    noise_std = _per_pixel_noise_std(cfg.sigma_e, cfg.galaxy_density, cfg.nside)
+    noisy = noiseless + rng.normal(0.0, noise_std, size=noiseless.shape)
+    return np.stack(
+        [hp.map2alm(noisy[b], lmax=cfg.lmax, iter=0) for b in range(N_AUTO)],
+        axis=0,
+    )
+
+
+def cross_patches_from_alms(
+    alms: np.ndarray, regime: str, centers: np.ndarray, cfg: BuildConfig
+) -> tuple[np.ndarray, list, list]:
+    """Steps 5-8 for one regime: optional BNT on the alm bin-axis -> element-wise
+    alm cross products -> iSHT auto+cross -> patch extraction + per-patch demean.
+
+    Returns (patches[n_centers, H, W, N_CHANNELS] f32, full_auto, full_cross).
+    """
+    regime_alms = alms.copy()
+    if regime == "bnt":
+        # BNT is a 4x4 linear combination on the bin axis; it commutes with SHT,
+        # so applying BNT_MATRIX directly to alms is equivalent to applying it on
+        # the maps and re-doing the SHT.
+        regime_alms = (BNT_MATRIX.astype(np.float64) @ regime_alms).astype(
+            regime_alms.dtype
+        )
+    elif regime != "nobnt":
+        raise ValueError(f"Unknown regime '{regime}'")
+
+    cross_alms = [regime_alms[i] * regime_alms[j] for (i, j) in CROSS_PAIRS]
+    full_auto = [hp.alm2map(regime_alms[b], nside=cfg.nside, lmax=cfg.lmax)
+                 for b in range(N_AUTO)]
+    full_cross = [hp.alm2map(a, nside=cfg.nside, lmax=cfg.lmax) for a in cross_alms]
+    patches = _patch_one_realization(
+        full_auto + full_cross,
+        centers=centers,
+        nside=cfg.nside,
+        field_npix=cfg.field_npix,
+        reso_arcmin=cfg.reso_arcmin,
+    )
+    return patches, full_auto, full_cross
+
+
+def compute_cross_patches(
+    noiseless: np.ndarray, cosmo_idx: int, perm: int, regime: str,
+    centers: np.ndarray, cfg: BuildConfig
+) -> np.ndarray:
+    """Full per-(cosmo, perm, regime) compute: noiseless 4-bin maps -> 10-channel
+    patches. The one entry point the TFDS builder reuses to stay bit-identical to
+    the `.npz` cache.
+    """
+    alms = compute_noisy_alms(noiseless, cosmo_idx, perm, cfg)
+    patches, _, _ = cross_patches_from_alms(alms, regime, centers, cfg)
+    return patches
+
+
 def _worker(job: tuple[CosmoEntry, int], cfg: BuildConfig) -> tuple[str, dict]:
     """Build one (cosmo, perm) job. Returns (status, info dict for manifest)."""
     # Pin healpy / OpenMP to 1 thread per worker process to avoid oversubscription
@@ -249,49 +322,17 @@ def _worker(job: tuple[CosmoEntry, int], cfg: BuildConfig) -> tuple[str, dict]:
             axis=0,
         )  # (4, npix)
 
-    # 2. Add per-pixel iid noise on the sphere (shared across regimes for parity).
-    seed = cfg.noise_seed_base + 100 * entry.cosmo_idx + perm
-    rng = np.random.default_rng(seed)
-    noise_std = _per_pixel_noise_std(cfg.sigma_e, cfg.galaxy_density, cfg.nside)
-    noisy = noiseless + rng.normal(0.0, noise_std, size=noiseless.shape)
-
-    # 3. SHT each bin (shared across regimes).
-    alms = np.stack(
-        [hp.map2alm(noisy[b], lmax=cfg.lmax, iter=0) for b in range(N_AUTO)],
-        axis=0,
-    )  # (4, n_lm) complex128
+    # 2-3. Per-pixel sphere noise + SHT of the 4 auto bins (shared across regimes).
+    seed = _noise_seed(entry.cosmo_idx, perm, cfg.noise_seed_base)
+    alms = compute_noisy_alms(noiseless, entry.cosmo_idx, perm, cfg)
 
     snapshot_dir = cfg.out_dir / "_snapshot"
     snapshot_dir.mkdir(parents=True, exist_ok=True)
 
     for regime in pending_regimes:
-        regime_alms = alms.copy()
-        if regime == "bnt":
-            # BNT is a 4x4 linear combination on the bin axis; it commutes with SHT,
-            # so applying BNT_MATRIX directly to alms is equivalent to applying it
-            # on the maps and then re-doing the SHT.
-            regime_alms = (BNT_MATRIX.astype(np.float64) @ regime_alms).astype(
-                regime_alms.dtype
-            )
-        elif regime != "nobnt":
-            raise ValueError(f"Unknown regime '{regime}'")
-
-        # 5. Element-wise alm cross products (Zurcher 2022 ad-hoc convention).
-        cross_alms = [regime_alms[i] * regime_alms[j] for (i, j) in CROSS_PAIRS]
-
-        # 6. ISHT auto + cross back to HEALPix real-space maps.
-        full_auto = [hp.alm2map(regime_alms[b], nside=cfg.nside, lmax=cfg.lmax)
-                     for b in range(N_AUTO)]
-        full_cross = [hp.alm2map(a, nside=cfg.nside, lmax=cfg.lmax)
-                      for a in cross_alms]
-
-        # 7-8. Patch extraction + per-patch demeaning.
-        patches = _patch_one_realization(
-            full_auto + full_cross,
-            centers=centers,
-            nside=cfg.nside,
-            field_npix=cfg.field_npix,
-            reso_arcmin=cfg.reso_arcmin,
+        # 5-8. cross products -> iSHT -> patch extraction + demean (shared compute).
+        patches, full_auto, full_cross = cross_patches_from_alms(
+            alms, regime, centers, cfg
         )
 
         out_path = cfg.out_dir / regime / entry.split / f"{entry.cosmo_id}_perm{perm}.npz"

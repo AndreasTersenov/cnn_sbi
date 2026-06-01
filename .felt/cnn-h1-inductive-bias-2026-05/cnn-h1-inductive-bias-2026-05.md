@@ -14,7 +14,7 @@ outcome: 'H1 (inductive-bias-via-attention) FALSIFIED at the chosen implementati
 
 ## Objective
 
-Test H1 from [[CNN_CROSS_MAPS_INFORMATION_NOTE]]: the plain-CNN's 2.16× gap
+Test H1 from CNN_CROSS_MAPS_INFORMATION_NOTE: the plain-CNN's 2.16× gap
 between auto-only (FoM3 ≈ 11.1k) and auto+cross (FoM3 ≈ 24.0k) is dominantly
 an *inductive-bias* limit of the local-convolutional trunk, not a Fisher
 limit of the auto maps. Falsifier: a compressor with explicit global mixing
@@ -133,7 +133,7 @@ Approximate added parameters for L=1:
 Total new parameters ≈ **8.8 × 10⁵**. The plain-CNN trunk + dense head is
 roughly 1.2 × 10⁶ parameters at this config. Combined ≈ 2.1 × 10⁶, still
 well below the ~25 × 10⁶ of resnet50 where data-limit overfitting bit us
-([[project_resnet50gn_120k_overfits]]).
+(project_resnet50gn_120k_overfits).
 
 Attention compute for L=1, 400 tokens, d=256: O(N² d) ≈ 4 × 10⁷ per head
 per layer ≈ 1.6 × 10⁸ FLOPs total. Cheap; should add < 5% to per-step
@@ -179,8 +179,8 @@ In addition to the primary metric:
 - Builds on the cnn-auto-push ceiling (see closed campaign at
   `[[cnn-auto-push-18-20-2026]]`) and the cross-push best (see
   `[[cnn-auto-cross-push-18-20-2026]]`).
-- Implements the experimental program from §6 of `[[CNN_CROSS_MAPS_INFORMATION_NOTE]]`.
-- Stock-BN contamination memo `[[project_resnet_bn_contamination]]` warns
+- Implements the experimental program from §6 of `CNN_CROSS_MAPS_INFORMATION_NOTE`.
+- Stock-BN contamination memo `project_resnet_bn_contamination` warns
   against any new arm using stock BN; we will use the existing
   GroupNorm conv blocks (no BN in the trunk we are extending).
 
