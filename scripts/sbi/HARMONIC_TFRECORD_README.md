@@ -2,8 +2,11 @@
 
 A faster data path for **CNN compressor training** on the 10-channel harmonic
 cross-map cache. It replaces the GIL-bound per-realization `.npz` loader with a
-TFRecord + `tf.data` pipeline, **~7.4× faster** (2.4 → ~17 it/s on the auto+cross
-`plain` compressor) while delivering **numerically identical** training data.
+TFRecord + `tf.data` pipeline, delivering **numerically identical** training
+data at **~14–17 it/s on a low-load node with a free GPU** (vs 2.4). **That
+speedup only holds when host CPU is free** — see the "Host threading" section:
+throughput is CPU-contention-bound and collapses to ~1 it/s under heavy
+multi-tenant load. A leaner rebuild is under review (`HANDOFF_CNN_LOADER_REBUILD.md`).
 
 Implements `scripts/sbi/HARMONIC_TFRECORD_IMPLEMENTATION_SPEC.md` (read that for
 the full invariants). This file is the short runbook + design note.
@@ -90,13 +93,31 @@ still honored):
   `private_threadpool_size`/`autotune.cpu_budget` — empirically that *raised*
   the thread count, not lowered it.
 
-So you **need no thread env prefix** — `--train-compressor` runs at **~15 it/s
-under the default `OMP=1` shell on a free-ish GPU** (validated; bit-exact gate
-intact). Caveats: (1) a GPU-bound compressor only needs a few host threads, so
-8 is plenty to feed it — don't raise it (32 thrashes on this node). (2) Absolute
-throughput is **GPU-exclusivity-bound**: on a shared GPU it drops (~2–3 it/s
-observed when another job co-tenants the card), so run on a free GPU for full
-speed.
+So you **need no thread env prefix** — the script sets its own budget. But
+**throughput is host-CPU-contention-bound, and this dominates everything**
+(measured end-to-end 2026-05-29, not assumed):
+
+- On a **low-load node** (`uptime` load ~10) with a **free GPU**: **~14 it/s**,
+  GPU fed, bit-exact gate intact. This is the *only* condition under which the
+  "~7.4× / ~1.3 h" headline holds.
+- When node CPU load **spiked to ~44** (other tenants) **mid-run**, the same
+  process **collapsed to ~1.0–1.4 it/s** with the GPU **starved at 21–69 %
+  util** — a 500-step run averaged **4.28 it/s**. The process wanted ~5+ cores
+  and could not get them.
+
+This is **external CPU contention on a shared 128-core node — there is no code
+fix.** The per-step host work (assembling + transferring 131 MB/batch to the
+GPU) needs real cores; when the node is saturated, no thread setting helps.
+**Run compressor training in a low-load window**, and check `uptime` first.
+Two secondary caveats still hold: (1) 8 host threads is plenty for a GPU-bound
+compressor — don't raise it (32 thrashes → ~1200 threads, lock contention).
+(2) A co-tenant *on the same GPU* also drops throughput (~2–3 it/s).
+
+> **Note (2026-05-29):** this whole tf.data + DLPack + thread-budget data path
+> is under review for a leaner rebuild — see `HANDOFF_CNN_LOADER_REBUILD.md`.
+> The contention-sensitivity above is the main motivation: a lower-thread numpy
+> loader should degrade less under load. Until that rebuild lands and is
+> benchmarked, this path is the production one and the guidance above stands.
 
 ## Correctness
 
