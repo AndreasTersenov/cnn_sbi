@@ -807,6 +807,290 @@ def compute_l1_dataset_from_harmonic_cache(
     }
 
 
+# =============================================================================
+# tfds_cross source: read the unified 10-channel cross TFDS directly (no grid
+# cache). Siblings of the harmonic-cache walkers above; the ONLY differences are
+# the byte source (TFDS instead of .npz) and per-EXAMPLE theta (TFDS batches are
+# cosmology-shuffled). channel_scale is applied by MULTIPLY -- the L1 convention,
+# matching _load_harmonic_file (cross channels scaled up by noise_sigma/sigma_c,
+# autos x1). The L1 math (compute_l1_batch) is reused unchanged. See PLAN_PHASE_B2.md.
+# =============================================================================
+
+def _parse_perm_range(spec: str | None) -> tuple[int | None, int | None]:
+    """'5-6' -> (5,6); 'all'/None/'' -> (None,None) (no perm filter)."""
+    if spec is None or str(spec).strip().lower() in ("all", "none", ""):
+        return None, None
+    lo, hi = str(spec).split("-")
+    lo_i, hi_i = int(lo), int(hi)
+    if lo_i > hi_i:
+        raise ValueError(f"--nde-perm-split lo>hi in {spec!r}.")
+    return lo_i, hi_i
+
+
+def iter_cross_tfds_examples(
+    tfds_name: str,
+    data_dir: str,
+    split: str,
+    batch_size: int,
+    channel_slice: slice | None = None,
+    channel_scale: np.ndarray | None = None,
+    perm_lo: int | None = None,
+    perm_hi: int | None = None,
+    flip: bool = False,
+    seed: int = 0,
+    n_take_examples: int | None = None,
+):
+    """Finite pass over the cross TFDS -> (maps[B,H,W,C] float32, theta[B,6] float64 RAW).
+
+    Mirrors iter_harmonic_examples: channel_slice then channel_scale by MULTIPLY.
+    theta is RAW (H0 not /100); the dataset builder applies the h0 rescale, like the
+    cache path. perm_lo/hi filter the 'train' split (example-disjoint NDE set); None
+    = all perms. n_take_examples bounds the walk (calibration).
+    """
+    import tensorflow as tf
+    import tensorflow_datasets as tfds
+
+    _ensure_tfds_builder_registered()
+    split = {"val": "test"}.get(split, split)
+    lo = (channel_slice.start or 0) if channel_slice is not None else 0
+    hi = (channel_slice.stop or 10) if channel_slice is not None else 10
+    scale = None
+    if channel_scale is not None:
+        scale = np.asarray(channel_scale, dtype=np.float32)
+    rng = np.random.default_rng(seed)
+    read_config = tfds.ReadConfig(
+        interleave_cycle_length=8, interleave_block_length=16, shuffle_seed=seed,
+    )
+    ds = tfds.load(tfds_name, split=split, data_dir=data_dir, read_config=read_config)
+    if perm_lo is not None or perm_hi is not None:
+        plo = 0 if perm_lo is None else int(perm_lo)
+        phi = 1_000_000 if perm_hi is None else int(perm_hi)
+        ds = ds.filter(lambda ex: tf.logical_and(ex["perm"] >= plo, ex["perm"] <= phi))
+    ds = ds.batch(batch_size).prefetch(tf.data.AUTOTUNE)
+    n_seen = 0
+    for b in tfds.as_numpy(ds):
+        maps = b["map_nbody"][..., lo:hi].astype(np.float32)
+        theta = b["theta"].astype(np.float64)
+        if scale is not None:
+            if scale.shape != (maps.shape[-1],):
+                raise ValueError(
+                    f"channel_scale shape {scale.shape} != ({maps.shape[-1]},)"
+                )
+            maps = maps * scale
+        if flip:
+            maps = _harmonic_random_flip(maps, rng)
+        yield maps, theta
+        n_seen += maps.shape[0]
+        if n_take_examples is not None and n_seen >= n_take_examples:
+            return
+
+
+def calibrate_channel_noise_sigma_from_cross_tfds(
+    tfds_name: str,
+    data_dir: str,
+    n_calibration_examples: int = 5760,
+    channel_slice: slice | None = None,
+    batch_size: int = 512,
+    seed: int = 7717,
+) -> np.ndarray:
+    """Per-channel std (sqrt(E[x²]−E[x]²)) of the RAW cross-TFDS maps -> σ_c.
+    Mirror of calibrate_channel_noise_sigma_from_harmonic_cache (no channel_scale)."""
+    print("######## CALIBRATING CHANNEL NOISE σ (cross TFDS, global empirical) ########")
+    accum_sq = None
+    accum_sum = None
+    n_total = 0
+    for maps_np, _theta in iter_cross_tfds_examples(
+        tfds_name, data_dir, split="train", batch_size=batch_size,
+        channel_slice=channel_slice, channel_scale=None, flip=False, seed=seed,
+        n_take_examples=n_calibration_examples,
+    ):
+        flat = maps_np.reshape(-1, maps_np.shape[-1]).astype(np.float64)
+        if accum_sq is None:
+            accum_sq = (flat ** 2).sum(axis=0)
+            accum_sum = flat.sum(axis=0)
+        else:
+            accum_sq += (flat ** 2).sum(axis=0)
+            accum_sum += flat.sum(axis=0)
+        n_total += flat.shape[0]
+    if accum_sq is None or n_total == 0:
+        raise RuntimeError("No cross-TFDS patches found for σ calibration")
+    mean = accum_sum / n_total
+    var = accum_sq / n_total - mean ** 2
+    sigma = np.sqrt(np.maximum(var, 0.0))
+    print(f"  Calibrated σ from {n_total} pixels-per-channel:")
+    for c, s in enumerate(sigma):
+        print(f"    channel {c}: σ = {s:.6g}  (mean = {mean[c]:.3g})")
+    return sigma.astype(np.float32)
+
+
+def calibrate_snr_range_from_cross_tfds(
+    stats: WLStatistics,
+    tfds_name: str,
+    data_dir: str,
+    noise_sigma: float,
+    nbins: int,
+    n_l1_channels: int,
+    l1_implementation: str = "cnn_sbi",
+    n_calibration_examples: int = 2880,
+    subtract_coarse_mean: bool = True,
+    margin: float = 0.05,
+    cross_snr_percentile: float = 0.0,
+    reservoir_per_batch: int = 8000,
+    seed: int = 0,
+    channel_slice: slice | None = None,
+    channel_scale: np.ndarray | None = None,
+    batch_size: int = 256,
+) -> Tuple[float, float, float, float]:
+    """SNR-range calibration over the cross TFDS (mirror of the harmonic-cache version)."""
+    print("######## CALIBRATING SNR RANGE (cross TFDS) ########")
+    n_cross_channels = n_l1_channels - nbins
+    device = stats.device
+    reservoir_gen = torch.Generator(device=device)
+    reservoir_gen.manual_seed(0xC0FFEE)
+    auto_min = float("inf")
+    auto_max = float("-inf")
+    cross_min = float("inf")
+    cross_max = float("-inf")
+    cross_reservoirs: list[list[torch.Tensor]] = [[] for _ in range(max(n_cross_channels, 0))]
+    n_used = 0
+    map_dtype = np.float32 if l1_implementation == "cosmoford" else np.float64
+    for maps_np, _theta in iter_cross_tfds_examples(
+        tfds_name, data_dir, split="train", batch_size=batch_size,
+        channel_slice=channel_slice, channel_scale=channel_scale, flip=False, seed=seed,
+        n_take_examples=n_calibration_examples,
+    ):
+        if np.isnan(maps_np).any():
+            continue
+        for b in range(n_l1_channels):
+            img_batch = torch.from_numpy(maps_np[:, :, :, b].astype(map_dtype)).to(device)
+            if l1_implementation == "cosmoford":
+                stats.compute_wavelet_transform(img_batch.float(), float(noise_sigma))
+            else:
+                stats.compute_wavelet_transform(
+                    img_batch, noise_sigma, subtract_coarse_mean=subtract_coarse_mean
+                )
+            snr = stats.snr_coeffs
+            if b < nbins:
+                auto_min = min(auto_min, snr.min().item())
+                auto_max = max(auto_max, snr.max().item())
+            else:
+                if cross_snr_percentile > 0:
+                    flat = snr.reshape(-1)
+                    n = flat.numel()
+                    if n > reservoir_per_batch:
+                        idx = torch.randint(
+                            0, n, (reservoir_per_batch,),
+                            generator=reservoir_gen, device=flat.device,
+                        )
+                        sample = flat[idx]
+                    else:
+                        sample = flat
+                    cross_reservoirs[b - nbins].append(sample.detach().cpu())
+                else:
+                    cross_min = min(cross_min, snr.min().item())
+                    cross_max = max(cross_max, snr.max().item())
+        n_used += maps_np.shape[0]
+    auto_span = auto_max - auto_min
+    auto_min -= margin * auto_span
+    auto_max += margin * auto_span
+    print(f"  Calibrated from {n_used} patches")
+    print(f"  Auto-channel SNR range:  [{auto_min:.4f}, {auto_max:.4f}]")
+    if n_cross_channels > 0:
+        if cross_snr_percentile > 0:
+            pooled = torch.cat([torch.cat(r) for r in cross_reservoirs])
+            lo_q = cross_snr_percentile / 100.0
+            hi_q = 1.0 - lo_q
+            cross_min = float(torch.quantile(pooled, lo_q).item())
+            cross_max = float(torch.quantile(pooled, hi_q).item())
+            cross_span = cross_max - cross_min
+            cross_min -= margin * cross_span
+            cross_max += margin * cross_span
+            print(
+                f"  Cross-channel SNR range (percentile "
+                f"{cross_snr_percentile:.2f}/{100 - cross_snr_percentile:.2f}, "
+                f"{pooled.numel()} samples): [{cross_min:.4f}, {cross_max:.4f}]"
+            )
+        else:
+            cross_span = cross_max - cross_min
+            cross_min -= margin * cross_span
+            cross_max += margin * cross_span
+            print(f"  Cross-channel SNR range: [{cross_min:.4f}, {cross_max:.4f}]")
+    else:
+        cross_min, cross_max = auto_min, auto_max
+    return auto_min, auto_max, cross_min, cross_max
+
+
+def compute_l1_dataset_from_cross_tfds(
+    tfds_name: str,
+    data_dir: str,
+    split: str,
+    stats: WLStatistics,
+    noise_sigma: float,
+    l1_nbins: int,
+    nbins: int,
+    n_l1_channels: int,
+    l1_min_snr: float,
+    l1_max_snr: float,
+    l1_min_snr_cross: float,
+    l1_max_snr_cross: float,
+    perm_lo: int | None = None,
+    perm_hi: int | None = None,
+    clamp_overflow: bool = False,
+    subtract_coarse_mean: bool = True,
+    l1_implementation: str = "cnn_sbi",
+    flip: bool = True,
+    seed: int = 1001,
+    channel_slice: slice | None = None,
+    channel_scale: np.ndarray | None = None,
+    batch_size: int = 480,
+    log_every_examples: int = 20000,
+) -> Dict[str, np.ndarray]:
+    """Compute L1 features over a finite cross-TFDS pass (per-example theta)."""
+    print(
+        f"  Computing L1 from cross TFDS [{split} perms {perm_lo}-{perm_hi} "
+        f"flip={flip}] ..."
+    )
+    theta_list: List[np.ndarray] = []
+    x_list: List[np.ndarray] = []
+    n_processed = 0
+    next_report = log_every_examples
+    t0 = time.time()
+    for maps_np, theta_np in iter_cross_tfds_examples(
+        tfds_name, data_dir, split=split, batch_size=batch_size,
+        channel_slice=channel_slice, channel_scale=channel_scale,
+        perm_lo=perm_lo, perm_hi=perm_hi, flip=flip, seed=seed,
+    ):
+        if np.isnan(maps_np).any():
+            print("    [!] Skipped batch with NaN maps")
+            continue
+        l1_vec = compute_l1_batch(
+            maps_np, noise_sigma, stats, l1_nbins, nbins,
+            l1_min_snr=l1_min_snr, l1_max_snr=l1_max_snr,
+            clamp_overflow=clamp_overflow, subtract_coarse_mean=subtract_coarse_mean,
+            l1_implementation=l1_implementation, n_l1_channels=n_l1_channels,
+            l1_min_snr_cross=l1_min_snr_cross, l1_max_snr_cross=l1_max_snr_cross,
+        )
+        theta_batch = theta_np.copy()
+        theta_batch[:, 3] = theta_batch[:, 3] / 100.0  # h0 (matches cache builder)
+        x_list.append(l1_vec)
+        theta_list.append(theta_batch)
+        n_processed += maps_np.shape[0]
+        if n_processed >= next_report:
+            el = time.time() - t0
+            print(f"    Processed {n_processed} patches "
+                  f"({el:.1f}s, {n_processed/max(el,1e-9):.0f}/s)")
+            next_report += log_every_examples
+    if not theta_list or not x_list:
+        raise RuntimeError(
+            f"No cross-TFDS examples for split={split} perms {perm_lo}-{perm_hi}."
+        )
+    print(f"  Done: {n_processed} patches in {time.time() - t0:.1f}s")
+    return {
+        "theta": np.concatenate(theta_list, axis=0),
+        "x": np.concatenate(x_list, axis=0),
+    }
+
+
 def calibrate_snr_range(
     stats: WLStatistics,
     augmentation_fn,
@@ -1596,11 +1880,46 @@ def parse_args() -> argparse.Namespace:
         "--cross-maps-route",
         type=str,
         default=None,
-        choices=["flat", "harmonic"],
+        choices=["flat", "harmonic", "tfds_cross"],
         help=(
             "Override how cross-maps are computed. Default behavior auto-"
             "selects 'harmonic' when --full-sphere-cross-cache is set, "
-            "'flat' otherwise."
+            "'flat' otherwise. 'tfds_cross' reads the unified 10-channel cross "
+            "TFDS directly (no grid .npz cache) with channel_empirical_global "
+            "noise; obs from --fiducial-obs-cache-dir; NDE-train perms via --nde-perm-split."
+        ),
+    )
+    p.add_argument(
+        "--cross-tfds-name",
+        type=str,
+        default="nbody_cosmogrid_dataset_tomo_cross/grid_10deg_80px_nonoverlap180",
+        help="TFDS name/config for --cross-maps-route tfds_cross.",
+    )
+    p.add_argument(
+        "--cross-tfds-data-dir",
+        type=str,
+        default="/home/tersenov/tensorflow_datasets",
+        help="TFDS data_dir for --cross-tfds-name (--cross-maps-route tfds_cross).",
+    )
+    p.add_argument(
+        "--nde-perm-split",
+        type=str,
+        default="5-6",
+        help=(
+            "Train-split perm range (inclusive 'lo-hi', or 'all') feeding the L1 "
+            "NDE-train set for --cross-maps-route tfds_cross. Default '5-6' matches "
+            "the CNN NDE examples exactly (example-disjoint, Option A)."
+        ),
+    )
+    p.add_argument(
+        "--nde-val-perm-split",
+        type=str,
+        default="all",
+        help=(
+            "Perm range (inclusive 'lo-hi', or 'all') of the 'test' split used for the "
+            "L1 NDE-val set (--cross-maps-route tfds_cross). Val only drives early-"
+            "stopping (the comparison is at the fiducial), so trimming it is free. "
+            "Default 'all' (504k); Phase C uses '0-1' (~144k) to halve datavector cost."
         ),
     )
     p.add_argument(
@@ -1622,6 +1941,35 @@ def parse_args() -> argparse.Namespace:
         help=(
             "Index of the patch (0..n_centers-1) drawn from the observed "
             "realization when using a harmonic cache. Default 0."
+        ),
+    )
+    p.add_argument(
+        "--fiducial-summaries-out",
+        type=str,
+        default=None,
+        help=(
+            "If set, after computing the obs L1 datavector, loop over "
+            "--fiducial-perms x all patches of the harmonic obs cache, compute the "
+            "L1 datavector per patch using the SAME in-scope calibration, save "
+            "S/perm/patch/theta to this .npz, self-check that (obs_perm,obs_patch) "
+            "reproduces obs_l1, then exit. For the full-200 fiducial study."
+        ),
+    )
+    p.add_argument(
+        "--fiducial-perms",
+        type=str,
+        default="0-199",
+        help="Perm spec for --fiducial-summaries-out, e.g. '0-199' or '0,1,2'.",
+    )
+    p.add_argument(
+        "--fiducial-obs-cache-dir",
+        type=str,
+        default=None,
+        help=(
+            "Cache dir to read the fiducial obs perm files from in "
+            "--fiducial-summaries-out mode (default: --full-sphere-cross-cache). "
+            "Use the full_sphere_cache_fiducial dir which holds perms 0-199; "
+            "calibration still uses --full-sphere-cross-cache (grid)."
         ),
     )
     p.add_argument(
@@ -1720,7 +2068,7 @@ def parse_args() -> argparse.Namespace:
         default="train",
         help=(
             "TFDS / harmonic-cache split used to build the NDE training "
-            "datavector + theta pairs. Use e.g. 'train[70%:]' to restrict "
+            "datavector + theta pairs. Use e.g. 'train[70%%:]' to restrict "
             "to the held-out NDE subset under the canonical 70/30 split "
             "discipline (see METHODOLOGY.md). Default 'train' for "
             "backward-compat. Preprocessing stats (SNR calibration, log1p-"
@@ -2133,7 +2481,52 @@ def main() -> None:
     # `harmonic` and forces the 4+6=10 channel layout; the user-passed
     # `--cross-maps`, `--cross-map-*`, `--zero-mean-maps` knobs become
     # no-ops because those operations are baked into the cache.
-    if args.full_sphere_cross_cache:
+    fiducial_obs_cache_dir: Path | None = None
+    nde_perm_lo: int | None = None
+    nde_perm_hi: int | None = None
+    nde_val_perm_lo: int | None = None
+    nde_val_perm_hi: int | None = None
+    if args.cross_maps_route == "tfds_cross":
+        cross_maps_route = "tfds_cross"
+        if args.full_sphere_cross_cache:
+            raise ValueError(
+                "--cross-maps-route tfds_cross is incompatible with "
+                "--full-sphere-cross-cache (it reads the TFDS, not the grid cache)."
+            )
+        if args.fiducial_obs_cache_dir is None:
+            raise ValueError(
+                "--cross-maps-route tfds_cross requires --fiducial-obs-cache-dir "
+                "(the kept fiducial cache; obs source)."
+            )
+        if int(args.pca_components) != 0:
+            raise ValueError(
+                f"--cross-maps-route tfds_cross requires --pca-components 0 (got "
+                f"{args.pca_components}); PCA on L1 craters FoM (feedback_never_pca_l1)."
+            )
+        fiducial_obs_cache_dir = Path(args.fiducial_obs_cache_dir).resolve()
+        if not fiducial_obs_cache_dir.is_dir():
+            raise FileNotFoundError(
+                f"--fiducial-obs-cache-dir not found: {fiducial_obs_cache_dir}"
+            )
+        nde_perm_lo, nde_perm_hi = _parse_perm_range(args.nde_perm_split)
+        nde_val_perm_lo, nde_val_perm_hi = _parse_perm_range(args.nde_val_perm_split)
+        if args.fiducial_summaries_out is not None:
+            raise NotImplementedError(
+                "--fiducial-summaries-out is not yet wired for tfds_cross (Phase D); "
+                "the fiducial obs cache is read directly for the single obs."
+            )
+        # Cross channels are baked into the TFDS (SHT route); demean already applied.
+        args.cross_maps = True
+        args.zero_mean_maps = True
+        full_sphere_cache_dir = None
+        full_sphere_cache_manifest_sha = ""
+        harmonic_regime = "bnt" if args.apply_bnt else "nobnt"
+        print("  cross_maps_route = tfds_cross")
+        print(f"  cross TFDS        = {args.cross_tfds_name} @ {args.cross_tfds_data_dir}")
+        print(f"  fiducial obs cache= {fiducial_obs_cache_dir}")
+        print(f"  NDE-train perms   = {nde_perm_lo}-{nde_perm_hi} (val=test, all perms)")
+        print(f"  regime            = {harmonic_regime}")
+    elif args.full_sphere_cross_cache:
         cross_maps_route = args.cross_maps_route or "harmonic"
         if cross_maps_route != "harmonic":
             raise ValueError(
@@ -2184,10 +2577,10 @@ def main() -> None:
     # calibration (effective auto boundary = 0). Only meaningful for harmonic
     # route, since the flat-sky path constructs cross channels at runtime.
     if args.channel_mode == "cross_only":
-        if cross_maps_route != "harmonic":
+        if cross_maps_route not in ("harmonic", "tfds_cross"):
             raise ValueError(
-                "--channel-mode cross_only requires --full-sphere-cross-cache "
-                "(no flat-sky channel-slicing path)."
+                "--channel-mode cross_only requires --cross-maps-route in "
+                "{harmonic, tfds_cross} (no flat-sky channel-slicing path)."
             )
         if n_cross_pairs == 0:
             raise ValueError(
@@ -2198,7 +2591,7 @@ def main() -> None:
         l1_auto_boundary = 0
         n_l1_channels = n_cross_pairs
         print(
-            f"  channel_mode    = cross_only (slicing harmonic cache to "
+            f"  channel_mode    = cross_only (slicing {cross_maps_route} to "
             f"channels {l1_channel_slice.start}:{l1_channel_slice.stop}, "
             f"all routed through cross-SNR calibration)"
         )
@@ -2206,18 +2599,18 @@ def main() -> None:
         # Symmetric to cross_only: slice to the FIRST nbins (auto) channels and
         # route them all through the auto-SNR calibration (l1_auto_boundary=nbins
         # => every channel index b < nbins => auto-SNR). This is the route-matched
-        # auto-only baseline (same harmonic cache, FFT, BNT, noise, demean as
-        # auto_cross) for an apples-to-apples cross-channel-gain comparison.
-        if cross_maps_route != "harmonic":
+        # auto-only baseline (same maps, FFT, BNT, noise, demean as auto_cross)
+        # for an apples-to-apples cross-channel-gain comparison.
+        if cross_maps_route not in ("harmonic", "tfds_cross"):
             raise ValueError(
-                "--channel-mode auto_only requires --full-sphere-cross-cache "
-                "(no flat-sky channel-slicing path)."
+                "--channel-mode auto_only requires --cross-maps-route in "
+                "{harmonic, tfds_cross} (no flat-sky channel-slicing path)."
             )
         l1_channel_slice = slice(0, args.nbins)
         l1_auto_boundary = args.nbins
         n_l1_channels = args.nbins
         print(
-            f"  channel_mode    = auto_only (slicing harmonic cache to "
+            f"  channel_mode    = auto_only (slicing {cross_maps_route} to "
             f"channels 0:{args.nbins}, all routed through auto-SNR calibration)"
         )
     else:
@@ -2233,14 +2626,23 @@ def main() -> None:
     # to a couple of central bins (~95%% of bins structurally zero).
     l1_channel_scale: np.ndarray | None = None
     l1_channel_sigma: np.ndarray | None = None
-    if args.cross_noise_model == "channel_empirical_global" and cross_maps_route == "harmonic":
-        l1_channel_sigma = calibrate_channel_noise_sigma_from_harmonic_cache(
-            cache_dir=full_sphere_cache_dir,
-            regime=harmonic_regime,
-            n_calibration_realizations=int(args.channel_sigma_calib_realizations),
-            channel_slice=l1_channel_slice,
-            rng=np.random.default_rng(int(args.seed) + 7717),
-        )
+    if args.cross_noise_model == "channel_empirical_global" and cross_maps_route in ("harmonic", "tfds_cross"):
+        if cross_maps_route == "harmonic":
+            l1_channel_sigma = calibrate_channel_noise_sigma_from_harmonic_cache(
+                cache_dir=full_sphere_cache_dir,
+                regime=harmonic_regime,
+                n_calibration_realizations=int(args.channel_sigma_calib_realizations),
+                channel_slice=l1_channel_slice,
+                rng=np.random.default_rng(int(args.seed) + 7717),
+            )
+        else:  # tfds_cross: σ_c from a cross-TFDS train sample (180 patches/realization)
+            l1_channel_sigma = calibrate_channel_noise_sigma_from_cross_tfds(
+                tfds_name=args.cross_tfds_name,
+                data_dir=args.cross_tfds_data_dir,
+                n_calibration_examples=int(args.channel_sigma_calib_realizations) * 180,
+                channel_slice=l1_channel_slice,
+                seed=int(args.seed) + 7717,
+            )
         # Scale factor: for each channel, rescale so its empirical σ matches
         # noise_sigma (auto pixel noise). For auto channels (boundary <= c <
         # l1_auto_boundary in the cross_only case there are no autos), we
@@ -2258,7 +2660,7 @@ def main() -> None:
     elif args.cross_noise_model == "channel_empirical_global":
         print(
             "  WARNING: --cross-noise-model channel_empirical_global is only "
-            "implemented for the harmonic-cache route; ignoring."
+            "implemented for the harmonic-cache / tfds_cross routes; ignoring."
         )
 
     raw_summary_dim = args.n_scales * args.l1_nbins * n_l1_channels
@@ -2282,9 +2684,13 @@ def main() -> None:
     checkpoint_path = (save_path / args.checkpoint_name).resolve()
 
     # 1) Observed map
-    if cross_maps_route == "harmonic":
+    if cross_maps_route in ("harmonic", "tfds_cross"):
+        obs_cache_dir = (
+            full_sphere_cache_dir if cross_maps_route == "harmonic"
+            else fiducial_obs_cache_dir
+        )
         m_data, _, truth = load_observed_from_harmonic_cache(
-            cache_dir=full_sphere_cache_dir,
+            cache_dir=obs_cache_dir,
             regime=harmonic_regime,
             cosmo_id=args.harmonic_obs_cosmo_id,
             perm=args.harmonic_obs_perm,
@@ -2429,6 +2835,28 @@ def main() -> None:
                     channel_slice=l1_channel_slice,
                     channel_scale=l1_channel_scale,
                 )
+            elif cross_maps_route == "tfds_cross":
+                (
+                    l1_min_snr,
+                    l1_max_snr,
+                    l1_min_snr_cross,
+                    l1_max_snr_cross,
+                ) = calibrate_snr_range_from_cross_tfds(
+                    stats=stats,
+                    tfds_name=args.cross_tfds_name,
+                    data_dir=args.cross_tfds_data_dir,
+                    noise_sigma=noise_sigma,
+                    nbins=l1_auto_boundary,
+                    n_l1_channels=n_l1_channels,
+                    l1_implementation=args.l1_implementation,
+                    n_calibration_examples=int(args.harmonic_calibration_realizations) * 180,
+                    subtract_coarse_mean=effective_subtract_coarse_mean,
+                    margin=args.calibration_margin,
+                    cross_snr_percentile=float(args.cross_snr_percentile),
+                    seed=int(args.seed),
+                    channel_slice=l1_channel_slice,
+                    channel_scale=l1_channel_scale,
+                )
             else:
                 (
                     l1_min_snr,
@@ -2502,6 +2930,90 @@ def main() -> None:
         l1_max_snr_cross=l1_max_snr_cross,
     )
     print(f"  Observed L1 shape = {obs_l1.shape}")
+
+    # --- Full-200 fiducial summaries hook (reuses the in-scope calibration) ---
+    if args.fiducial_summaries_out is not None:
+        print("######## FIDUCIAL SUMMARIES DUMP (full-200) ########", flush=True)
+        # G1-calib: the live calibration (in cache_meta_expected: channel_sigma +
+        # SNR ranges) MUST match the campaign's stored l1_cache_meta.npz, else our
+        # fiducial datavectors are not on the same footing as the arm's posteriors.
+        if cache_dir is not None and (cache_dir / "l1_cache_meta.npz").exists():
+            _stored = np.load(cache_dir / "l1_cache_meta.npz", allow_pickle=True)
+            _ok2, _mis = compare_cache_metadata(_stored, cache_meta_expected)
+            print(f"  [G1-calib] live calibration vs stored campaign meta: "
+                  f"{'MATCH' if _ok2 else 'MISMATCH'}", flush=True)
+            if not _ok2:
+                print(f"  [G1-calib] mismatches: {_mis[:5]}", flush=True)
+                raise SystemExit("[G1-calib] calibration != campaign; aborting (no garbage).")
+        else:
+            print("  [G1-calib] WARNING: no stored cache meta to validate against "
+                  f"(cache_dir={cache_dir}).", flush=True)
+        def _parse_perms(spec):
+            out = []
+            for tok in str(spec).split(","):
+                tok = tok.strip()
+                if "-" in tok:
+                    a, b = tok.split("-"); out += list(range(int(a), int(b) + 1))
+                elif tok:
+                    out.append(int(tok))
+            return out
+        fperms = _parse_perms(args.fiducial_perms)
+        _obs_cache = (Path(args.fiducial_obs_cache_dir).resolve()
+                      if args.fiducial_obs_cache_dir is not None
+                      else full_sphere_cache_dir)
+        print(f"  fiducial obs cache dir = {_obs_cache}", flush=True)
+        S_list, P_list, PA_list, TH_list = [], [], [], []
+        _t0 = time.time()
+        for _i, _p in enumerate(fperms):
+            _npz = (_obs_cache / harmonic_regime / "obs"
+                    / f"{args.harmonic_obs_cosmo_id}_perm{_p}.npz")
+            with np.load(_npz, allow_pickle=False) as _d:
+                _patches = np.asarray(_d["patches"], dtype=np.float32)
+                _theta = np.asarray(_d["theta"], dtype=np.float64)
+            if l1_channel_slice is not None:
+                _patches = _patches[..., l1_channel_slice]
+            if l1_channel_scale is not None:
+                # L1 convention: MULTIPLY by channel_scale (= σ_auto/σ_c), matching
+                # load_observed_from_harmonic_cache (NOT divide — that's the CNN/RMS
+                # convention). Brings tiny cross channels up to auto amplitude.
+                _scale = np.asarray(l1_channel_scale, dtype=_patches.dtype)
+                _patches = _patches * _scale
+            _vec = compute_l1_batch(
+                _patches, noise_sigma, stats, args.l1_nbins, l1_auto_boundary,
+                l1_min_snr=l1_min_snr, l1_max_snr=l1_max_snr,
+                clamp_overflow=effective_l1_clamp,
+                subtract_coarse_mean=effective_subtract_coarse_mean,
+                l1_implementation=args.l1_implementation,
+                n_l1_channels=n_l1_channels,
+                l1_min_snr_cross=l1_min_snr_cross, l1_max_snr_cross=l1_max_snr_cross,
+            )  # (n_patches, dim)
+            _th = _theta.copy(); _th[3] = _th[3] / 100.0
+            S_list.append(np.asarray(_vec, dtype=np.float32))
+            P_list.append(np.full(_vec.shape[0], _p, np.int32))
+            PA_list.append(np.arange(_vec.shape[0], dtype=np.int32))
+            TH_list.append(np.broadcast_to(_th, (_vec.shape[0], _th.shape[0])).copy())
+            if (_i + 1) % 25 == 0:
+                print(f"  perm {_p} ({_i+1}/{len(fperms)}) {time.time()-_t0:.0f}s", flush=True)
+        S = np.concatenate(S_list, 0); P = np.concatenate(P_list, 0)
+        PA = np.concatenate(PA_list, 0); TH = np.concatenate(TH_list, 0)
+        # self-check: (obs_perm, obs_patch) row must reproduce obs_l1
+        _sel = (P == int(args.harmonic_obs_perm)) & (PA == int(args.harmonic_obs_patch_idx))
+        _mine = S[_sel][0].astype(np.float64)
+        _maxdev = float(np.max(np.abs(_mine - obs_l1.astype(np.float64))))
+        _ok = bool(np.allclose(_mine, obs_l1, rtol=1e-4, atol=1e-6))
+        print(f"  [G1] reproduce obs_l1 @ (perm{args.harmonic_obs_perm},"
+              f"patch{args.harmonic_obs_patch_idx}): max|Δ|={_maxdev:.3e} -> "
+              f"{'PASS' if _ok else 'FAIL'}", flush=True)
+        if not _ok:
+            raise SystemExit(f"[G1] FAILED: fiducial summary != obs_l1 (max|Δ|={_maxdev:.3e}); "
+                             "aborting (no garbage).")
+        _outp = Path(args.fiducial_summaries_out)
+        _outp.parent.mkdir(parents=True, exist_ok=True)
+        np.savez(_outp, S=S, perm=P, patch=PA, theta=TH,
+                 channel_scale=np.asarray(l1_channel_scale),
+                 g1_maxdev=np.float64(_maxdev))
+        print(f"  [fiducial] wrote {_outp}  S{S.shape} in {time.time()-_t0:.0f}s", flush=True)
+        return
 
     # 3) Train/val L1 datasets with cache metadata checks
     print("######## L1-NORM: DATASETS ########")
@@ -2587,6 +3099,53 @@ def main() -> None:
                     channel_slice=l1_channel_slice,
                     channel_scale=l1_channel_scale,
                     realizations_per_batch=int(args.l1_realizations_per_batch),
+                )
+            elif cross_maps_route == "tfds_cross":
+                dataset_train = compute_l1_dataset_from_cross_tfds(
+                    tfds_name=args.cross_tfds_name,
+                    data_dir=args.cross_tfds_data_dir,
+                    split="train",
+                    stats=stats,
+                    noise_sigma=noise_sigma,
+                    l1_nbins=args.l1_nbins,
+                    nbins=l1_auto_boundary,
+                    n_l1_channels=n_l1_channels,
+                    l1_min_snr=l1_min_snr,
+                    l1_max_snr=l1_max_snr,
+                    l1_min_snr_cross=l1_min_snr_cross,
+                    l1_max_snr_cross=l1_max_snr_cross,
+                    perm_lo=nde_perm_lo,
+                    perm_hi=nde_perm_hi,
+                    clamp_overflow=effective_l1_clamp,
+                    subtract_coarse_mean=effective_subtract_coarse_mean,
+                    l1_implementation=args.l1_implementation,
+                    flip=bool(args.l1_train_flip),
+                    seed=int(args.seed) + 1001,
+                    channel_slice=l1_channel_slice,
+                    channel_scale=l1_channel_scale,
+                )
+                dataset_val = compute_l1_dataset_from_cross_tfds(
+                    tfds_name=args.cross_tfds_name,
+                    data_dir=args.cross_tfds_data_dir,
+                    split="test",            # held-out cosmos (900-1299)
+                    stats=stats,
+                    noise_sigma=noise_sigma,
+                    l1_nbins=args.l1_nbins,
+                    nbins=l1_auto_boundary,
+                    n_l1_channels=n_l1_channels,
+                    l1_min_snr=l1_min_snr,
+                    l1_max_snr=l1_max_snr,
+                    l1_min_snr_cross=l1_min_snr_cross,
+                    l1_max_snr_cross=l1_max_snr_cross,
+                    perm_lo=nde_val_perm_lo,  # val perm range on test cosmos (None=all)
+                    perm_hi=nde_val_perm_hi,
+                    clamp_overflow=effective_l1_clamp,
+                    subtract_coarse_mean=effective_subtract_coarse_mean,
+                    l1_implementation=args.l1_implementation,
+                    flip=False,              # deterministic val
+                    seed=int(args.seed) + 2001,
+                    channel_slice=l1_channel_slice,
+                    channel_scale=l1_channel_scale,
                 )
             else:
                 dataset_train = compute_l1_dataset(
