@@ -417,10 +417,45 @@ def parse_args() -> argparse.Namespace:
         "--cnn-map-route",
         type=str,
         default=None,
-        choices=["tfds", "harmonic"],
+        choices=["tfds", "harmonic", "tfds_cross"],
         help=(
             "Force map input route. Defaults to 'harmonic' when "
-            "--full-sphere-cross-cache is set, 'tfds' otherwise."
+            "--full-sphere-cross-cache is set, 'tfds' otherwise. 'tfds_cross' reads "
+            "the unified 10-channel cross TFDS directly (no grid .npz cache) with an "
+            "example-disjoint compressor<->NDE split by perm; obs from --fiducial-obs-cache."
+        ),
+    )
+    p.add_argument(
+        "--cross-tfds-name",
+        type=str,
+        default="nbody_cosmogrid_dataset_tomo_cross/grid_10deg_80px_nonoverlap180",
+        help="TFDS name/config for the unified cross dataset (--cnn-map-route tfds_cross).",
+    )
+    p.add_argument(
+        "--cross-tfds-data-dir",
+        type=str,
+        default="/home/tersenov/tensorflow_datasets",
+        help="TFDS data_dir for --cross-tfds-name (--cnn-map-route tfds_cross).",
+    )
+    p.add_argument(
+        "--fiducial-obs-cache",
+        type=str,
+        default=None,
+        help=(
+            "Path to the fiducial obs cache (full_sphere_cache_fiducial_*) for "
+            "--cnn-map-route tfds_cross. Supplies the observed map via "
+            "load_observed_from_harmonic_cache (the kept fiducial cache; obs is held "
+            "out of the grid TFDS)."
+        ),
+    )
+    p.add_argument(
+        "--cnn-perm-split",
+        type=str,
+        default="0-4:5-6",
+        help=(
+            "Compressor:NDE perm ranges for --cnn-map-route tfds_cross (inclusive, "
+            "format 'lo-hi:lo-hi'). Example-disjoint split on the train TFDS split "
+            "(both keep all cosmologies). Default '0-4:5-6' (~71/29)."
         ),
     )
     p.add_argument(
@@ -1637,6 +1672,127 @@ def compress_dataset_from_harmonic_cache(
         f"  Done: {n_realizations} realizations / "
         f"{n_processed} patches in {elapsed:.1f}s"
     )
+    return {
+        "theta": np.concatenate(theta_list, axis=0),
+        "x": np.concatenate(x_list, axis=0),
+    }
+
+
+# =============================================================================
+# tfds_cross route: read the unified 10-channel cross TFDS directly (no grid
+# cache) with an EXAMPLE-disjoint compressor<->NDE split by perm. See PLAN_PHASE_B.md.
+# =============================================================================
+
+def _parse_perm_split(spec: str) -> tuple[tuple[int, int], tuple[int, int]]:
+    """'0-4:5-6' -> ((0,4),(5,6)) (inclusive compressor:NDE perm ranges)."""
+    try:
+        comp_str, nde_str = spec.split(":")
+        def _range(s: str) -> tuple[int, int]:
+            lo, hi = s.split("-")
+            return int(lo), int(hi)
+        comp, nde = _range(comp_str), _range(nde_str)
+    except Exception as exc:
+        raise ValueError(
+            f"--cnn-perm-split must be 'lo-hi:lo-hi' (e.g. '0-4:5-6'), got {spec!r}."
+        ) from exc
+    for lo, hi in (comp, nde):
+        if lo > hi:
+            raise ValueError(f"--cnn-perm-split range lo>hi in {spec!r}.")
+    return comp, nde
+
+
+def audit_cross_perm_split(
+    comp_perms: tuple[int, int], nde_perms: tuple[int, int]
+) -> Dict[str, object]:
+    """Assert the compressor and NDE perm ranges are disjoint. Perm-disjointness
+    implies (cosmo,perm,patch) example-disjointness, since both streams read the
+    same cosmologies/patches and differ only in perm -- so no further sample scan
+    is needed. Returns an info dict for logging."""
+    comp_set = set(range(comp_perms[0], comp_perms[1] + 1))
+    nde_set = set(range(nde_perms[0], nde_perms[1] + 1))
+    overlap = sorted(comp_set & nde_set)
+    info = {
+        "compressor_perms": sorted(comp_set),
+        "nde_perms": sorted(nde_set),
+        "perm_overlap": overlap,
+        "example_disjoint_by_construction": len(overlap) == 0,
+    }
+    if overlap:
+        raise ValueError(
+            f"compressor and NDE perm ranges overlap: {overlap}. "
+            "Choose disjoint ranges in --cnn-perm-split."
+        )
+    return info
+
+
+def compress_dataset_from_cross_tfds(
+    tfds_name: str,
+    data_dir: str,
+    split: str,
+    compressor,
+    comp_params: hk.Params,
+    comp_state: hk.State,
+    ds_batch_size: int,
+    channel_scale: np.ndarray | None = None,
+    channel_slice: slice | None = None,
+    perm_lo: int | None = None,
+    perm_hi: int | None = None,
+    flip: bool = False,
+    seed: int = 0,
+) -> Dict[str, np.ndarray]:
+    """Compress one finite pass over the cross TFDS (filtered to a perm range).
+
+    The loader already channel-slices, scale-divides, optionally flips the maps and
+    converts theta H0->h0, so this just runs the compressor batch by batch.
+    """
+    from tfds_cross_tfdata_loader import iter_cross_tfds_batches
+
+    print(
+        f"  Compressing cross TFDS [{split} perms {perm_lo}-{perm_hi} flip={flip}] ..."
+    )
+    theta_list: list[np.ndarray] = []
+    x_list: list[np.ndarray] = []
+    n_processed = 0
+    next_report = 50000
+    t0 = time.time()
+    first_batch_reported = False
+    for maps_np, theta_np in iter_cross_tfds_batches(
+        tfds_name=tfds_name,
+        data_dir=data_dir,
+        split=split,
+        batch_size=ds_batch_size,
+        seed=seed,
+        flip=flip,
+        channel_scale=channel_scale,
+        channel_slice=channel_slice,
+        perm_lo=perm_lo,
+        perm_hi=perm_hi,
+    ):
+        if np.isnan(maps_np).any():
+            print("    [!] Skipped batch with NaN maps")
+            continue
+        if not first_batch_reported:
+            per_map_means = maps_np.mean(axis=(1, 2))
+            print(
+                "    First-batch per-channel spatial-mean stats: "
+                f"abs max = {np.abs(per_map_means).max():.3e}, "
+                f"mean = {per_map_means.mean():.3e}"
+            )
+            first_batch_reported = True
+        comp_y, _ = compressor.apply(comp_params, comp_state, None, maps_np)
+        x_list.append(np.array(comp_y))
+        theta_list.append(np.asarray(theta_np))
+        n_processed += len(theta_np)
+        if n_processed >= next_report:
+            print(f"    Processed {n_processed} patches ({time.time() - t0:.1f}s)")
+            next_report += 50000
+
+    if not theta_list or not x_list:
+        raise RuntimeError(
+            f"No cross-TFDS examples processed for split={split}, "
+            f"perms {perm_lo}-{perm_hi}."
+        )
+    print(f"  Done: {n_processed} patches in {time.time() - t0:.1f}s")
     return {
         "theta": np.concatenate(theta_list, axis=0),
         "x": np.concatenate(x_list, axis=0),
@@ -3670,6 +3826,9 @@ def main():
     full_sphere_cache_manifest_sha = ""
     harmonic_regime = ""
     cross_tfdata_dir: Optional[str] = None
+    fiducial_obs_cache_dir: Optional[Path] = None
+    cross_tfds_comp_perms: tuple[int, int] | None = None
+    cross_tfds_nde_perms: tuple[int, int] | None = None
     if args.full_sphere_cross_cache:
         if cnn_map_route != "harmonic":
             raise ValueError(
@@ -3742,10 +3901,55 @@ def main():
                 "(the auto-only mechanism); .npz cache still used for RMS/obs/audit."
             )
     else:
-        if cnn_map_route != "tfds":
+        if cnn_map_route not in ("tfds", "tfds_cross"):
             raise ValueError(
                 "--cnn-map-route=harmonic requires --full-sphere-cross-cache."
             )
+
+    if cnn_map_route == "tfds_cross":
+        harmonic_regime = (
+            args.harmonic_cache_regime
+            if args.harmonic_cache_regime is not None
+            else ("bnt" if args.apply_bnt else "nobnt")
+        )
+        if harmonic_regime not in ("bnt", "nobnt"):
+            raise ValueError(
+                "--harmonic-cache-regime must be one of {'bnt','nobnt'} "
+                f"(got {harmonic_regime})."
+            )
+        if args.fiducial_obs_cache is None:
+            raise ValueError(
+                "--cnn-map-route tfds_cross requires --fiducial-obs-cache "
+                "(the kept fiducial cache; obs source)."
+            )
+        fiducial_obs_cache_dir = Path(args.fiducial_obs_cache).resolve()
+        if not fiducial_obs_cache_dir.is_dir():
+            raise FileNotFoundError(
+                f"--fiducial-obs-cache not found: {fiducial_obs_cache_dir}"
+            )
+        cross_tfds_comp_perms, cross_tfds_nde_perms = _parse_perm_split(
+            args.cnn_perm_split
+        )
+        if not args.zero_mean_maps:
+            print(
+                "  [warn] Forcing zero_mean_maps=True for tfds_cross route "
+                "(cross patches are already demeaned)."
+            )
+        args.zero_mean_maps = True
+        # Compressor/NDE share cosmologies and split by perm (example-disjoint);
+        # both read the 'train' TFDS split, val/NDE-val read 'test'. The perm
+        # filter (not the split string) does the compressor<->NDE separation.
+        args.compressor_train_split = "train"
+        args.compressor_val_split = "test"
+        args.nde_train_split = "train"
+        args.nde_val_split = "test"
+        print("  cnn_map_route = tfds_cross")
+        print(f"  cross TFDS = {args.cross_tfds_name} @ {args.cross_tfds_data_dir}")
+        print(f"  fiducial obs cache = {fiducial_obs_cache_dir}")
+        print(
+            f"  perm split: compressor {cross_tfds_comp_perms}, NDE "
+            f"{cross_tfds_nde_perms}; regime={harmonic_regime}"
+        )
 
     if cnn_map_route == "harmonic" and args.compressor_paired_bnt_nobnt_consistency:
         raise ValueError(
@@ -3763,7 +3967,8 @@ def main():
     # 'auto_only' keeps the 4 auto channels (used for the TFDS-auto vs
     # cache-auto bandlimiting sanity check).
     cnn_channel_slice: slice | None = None
-    if cnn_map_route == "harmonic" and args.channel_mode == "cross_only":
+    _sliceable_route = cnn_map_route in ("harmonic", "tfds_cross")
+    if _sliceable_route and args.channel_mode == "cross_only":
         n_auto = args.nbins
         n_cross_pairs = HARMONIC_CACHE_CHANNELS - n_auto
         if n_cross_pairs <= 0:
@@ -3773,10 +3978,10 @@ def main():
             )
         cnn_channel_slice = slice(n_auto, HARMONIC_CACHE_CHANNELS)
         print(
-            f"  [channel-mode=cross_only] Slicing harmonic cache channels "
+            f"  [channel-mode=cross_only] Slicing {cnn_map_route} channels "
             f"[{n_auto}:{HARMONIC_CACHE_CHANNELS}] → {n_cross_pairs} cross channels."
         )
-    elif cnn_map_route == "harmonic" and args.channel_mode == "auto_only":
+    elif _sliceable_route and args.channel_mode == "auto_only":
         n_auto = args.nbins
         if n_auto <= 0 or n_auto > HARMONIC_CACHE_CHANNELS:
             raise ValueError(
@@ -3785,16 +3990,16 @@ def main():
             )
         cnn_channel_slice = slice(0, n_auto)
         print(
-            f"  [channel-mode=auto_only] Slicing harmonic cache channels "
+            f"  [channel-mode=auto_only] Slicing {cnn_map_route} channels "
             f"[0:{n_auto}] → {n_auto} auto channels."
         )
-    elif args.channel_mode in ("cross_only", "auto_only") and cnn_map_route != "harmonic":
+    elif args.channel_mode in ("cross_only", "auto_only") and not _sliceable_route:
         raise ValueError(
-            f"--channel-mode={args.channel_mode} requires --cnn-map-route=harmonic "
-            "(must also pass --full-sphere-cross-cache)."
+            f"--channel-mode={args.channel_mode} requires --cnn-map-route in "
+            "{harmonic, tfds_cross}."
         )
 
-    if cnn_map_route == "harmonic":
+    if cnn_map_route in ("harmonic", "tfds_cross"):
         cnn_input_channels = (
             HARMONIC_CACHE_CHANNELS
             if cnn_channel_slice is None
@@ -3826,6 +4031,34 @@ def main():
             f"max={harmonic_channel_scale.max():.4e}, "
             f"ratio={harmonic_channel_scale.max() / harmonic_channel_scale.min():.1f}×"
         )
+    elif cnn_map_route == "tfds_cross" and args.harmonic_normalize_input_channels:
+        print(
+            "  [harmonic-normalize-input-channels] Computing per-channel RMS "
+            "from a cross-TFDS train sample ..."
+        )
+        from tfds_cross_tfdata_loader import compute_cross_tfds_channel_rms
+        harmonic_channel_scale = compute_cross_tfds_channel_rms(
+            tfds_name=args.cross_tfds_name,
+            data_dir=args.cross_tfds_data_dir,
+            split="train",
+            n_sample=8000,
+            channel_slice=cnn_channel_slice,
+        )
+        print(f"  Per-channel RMS (auto first, then cross): {harmonic_channel_scale}")
+        print(
+            f"  RMS range: min={harmonic_channel_scale.min():.4e}, "
+            f"max={harmonic_channel_scale.max():.4e}, "
+            f"ratio={harmonic_channel_scale.max() / harmonic_channel_scale.min():.1f}×"
+        )
+        # Sanity vs the Phase-A-measured fiducial-cache scales: the auto channels
+        # (the largest) should sit in [3e-3, 2e-2]. For auto_cross/auto_only the
+        # max RMS is an auto channel; for cross_only it is a cross channel (~1e-6).
+        _max_rms = float(harmonic_channel_scale.max())
+        if args.channel_mode != "cross_only" and not (3e-3 <= _max_rms <= 2e-2):
+            print(
+                "  [warn] max channel RMS outside the Phase-A auto bound "
+                f"[3e-3, 2e-2]: {_max_rms:.3e} (check the dataset / channel_mode)."
+            )
 
     setup_environment(args.cuda_visible_devices)
     rng = jax.random.PRNGKey(args.seed)
@@ -3837,6 +4070,8 @@ def main():
     save_path = Path(args.save_dir) / "cnn_vmim" / args.map_kind
     if cnn_map_route == "harmonic":
         save_path = save_path / f"harmonic_{harmonic_regime}"
+    elif cnn_map_route == "tfds_cross":
+        save_path = save_path / f"tfds_cross_{harmonic_regime}"
     summary_stats_path = save_path / "cnn_summary_standardization.npz"
 
     param_names = [
@@ -3862,11 +4097,17 @@ def main():
     # ------------------------------------------------------------------
     # 1. Observed map
     # ------------------------------------------------------------------
-    if cnn_map_route == "harmonic":
-        if full_sphere_cache_dir is None:
-            raise RuntimeError("Internal error: harmonic route selected with no cache dir.")
+    if cnn_map_route in ("harmonic", "tfds_cross"):
+        obs_cache_dir = (
+            full_sphere_cache_dir if cnn_map_route == "harmonic"
+            else fiducial_obs_cache_dir
+        )
+        if obs_cache_dir is None:
+            raise RuntimeError(
+                f"Internal error: {cnn_map_route} route selected with no obs cache dir."
+            )
         m_data, cosmo_params, truth = load_observed_from_harmonic_cache(
-            cache_dir=full_sphere_cache_dir,
+            cache_dir=obs_cache_dir,
             regime=harmonic_regime,
             cosmo_id=args.harmonic_obs_cosmo_id,
             perm=args.harmonic_obs_perm,
@@ -3983,6 +4224,24 @@ def main():
             {"data/harmonic_split_overlap": split_overlap_info},
             allow_val_change=True,
         )
+    elif cnn_map_route == "tfds_cross":
+        # Example-disjoint by construction: compressor and NDE read the same 'train'
+        # split (all cosmos/patches) but disjoint perm ranges. Always audit (cheap,
+        # structural) regardless of --require-disjoint-train-examples.
+        print("  Auditing tfds_cross perm split (example-disjoint by construction) ...")
+        split_overlap_info = audit_cross_perm_split(
+            cross_tfds_comp_perms, cross_tfds_nde_perms
+        )
+        print(
+            "  tfds_cross perm audit | "
+            f"compressor_perms={split_overlap_info['compressor_perms']} "
+            f"nde_perms={split_overlap_info['nde_perms']} "
+            f"overlap={split_overlap_info['perm_overlap']}"
+        )
+        wandb.config.update(
+            {"data/tfds_cross_perm_split": split_overlap_info},
+            allow_val_change=True,
+        )
 
     compressor_train, compressor_eval = build_compressors(
         args.compressor_dim,
@@ -4086,7 +4345,7 @@ def main():
                 {"compressor/noise_curriculum": False},
                 allow_val_change=True,
             )
-    else:
+    elif cnn_map_route == "harmonic":
         if full_sphere_cache_dir is None:
             raise RuntimeError("Internal error: harmonic route selected with no cache dir.")
 
@@ -4138,6 +4397,40 @@ def main():
             {"compressor/noise_curriculum": False},
             allow_val_change=True,
         )
+    elif cnn_map_route == "tfds_cross":
+        from tfds_cross_tfdata_loader import build_tfds_tfdata_iterator
+
+        def _tfds_cross_dataset_iter_factory(
+            split: str,
+            batch_size: int,
+        ) -> Iterator[Dict[str, np.ndarray]]:
+            is_train_split = split == args.compressor_train_split
+            split_seed = int(args.seed) + (1001 if is_train_split else 2001)
+            # The perm filter applies only to the compressor TRAIN read (the 'train'
+            # TFDS split): the compressor sees its perm range; the val read ('test')
+            # is a held-out cosmo set, read with all perms.
+            if is_train_split:
+                plo, phi = cross_tfds_comp_perms
+            else:
+                plo, phi = None, None
+            return build_tfds_tfdata_iterator(
+                tfds_name=args.cross_tfds_name,
+                data_dir=args.cross_tfds_data_dir,
+                split=split,
+                batch_size=batch_size,
+                seed=split_seed,
+                flip=is_train_split,
+                channel_scale=harmonic_channel_scale,
+                channel_slice=cnn_channel_slice,
+                perm_lo=plo,
+                perm_hi=phi,
+            )
+
+        compressor_dataset_iter_factory = _tfds_cross_dataset_iter_factory
+        wandb.config.update(
+            {"compressor/noise_curriculum": False},
+            allow_val_change=True,
+        )
     wandb.config.update(
         {
             "compressor/paired_bnt_nobnt_consistency": bool(
@@ -4162,6 +4455,8 @@ def main():
         )
         if cnn_map_route == "harmonic":
             comp_save_dir = comp_save_dir / f"harmonic_{harmonic_regime}_ch{cnn_input_channels}"
+        elif cnn_map_route == "tfds_cross":
+            comp_save_dir = comp_save_dir / f"tfds_cross_{harmonic_regime}_ch{cnn_input_channels}"
         (
             comp_params,
             comp_state,
@@ -4317,6 +4612,37 @@ def main():
                 max_realizations=args.harmonic_val_realizations_limit,
                 channel_scale=harmonic_channel_scale,
                 channel_slice=cnn_channel_slice,
+            )
+        elif cnn_map_route == "tfds_cross":
+            dataset_train = compress_dataset_from_cross_tfds(
+                tfds_name=args.cross_tfds_name,
+                data_dir=args.cross_tfds_data_dir,
+                split=args.nde_train_split,  # 'train' -> NDE perms (5-6)
+                compressor=compressor_eval,
+                comp_params=comp_params,
+                comp_state=comp_state,
+                ds_batch_size=args.ds_batch_size,
+                channel_scale=harmonic_channel_scale,
+                channel_slice=cnn_channel_slice,
+                perm_lo=cross_tfds_nde_perms[0],
+                perm_hi=cross_tfds_nde_perms[1],
+                flip=True,
+                seed=int(args.seed) + 3001,
+            )
+            dataset_val = compress_dataset_from_cross_tfds(
+                tfds_name=args.cross_tfds_name,
+                data_dir=args.cross_tfds_data_dir,
+                split=args.nde_val_split,  # 'test' -> all perms (held-out cosmos)
+                compressor=compressor_eval,
+                comp_params=comp_params,
+                comp_state=comp_state,
+                ds_batch_size=args.ds_batch_size,
+                channel_scale=harmonic_channel_scale,
+                channel_slice=cnn_channel_slice,
+                perm_lo=None,
+                perm_hi=None,
+                flip=False,
+                seed=int(args.seed) + 4001,
             )
         else:
             paired_map_view = (
