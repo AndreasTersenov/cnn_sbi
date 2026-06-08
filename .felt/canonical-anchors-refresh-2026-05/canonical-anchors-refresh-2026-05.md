@@ -1,5 +1,6 @@
 ---
 name: Canonical-anchors refresh — 4 arms × 3 seeds with proper 70/30 split discipline
+status: open
 tags:
     - experiment
     - sbi
@@ -8,7 +9,6 @@ tags:
     - weak-lensing
     - methodology-fix
 created-at: 2026-05-24T09:55:35.882936928Z
-status: open
 outcome: 'Refresh of the 4 headline anchors (CNN auto-only, CNN auto+cross, L1 auto-only, L1 auto+cross) on the canonical setup that all recent runs missed: --compressor-train-split train[:70%], --nde-train-split train[70%:], --require-disjoint-train-examples on. All on nonoverlap48 TFDS. Background: every CNN run in cnn-auto-push and cnn-auto-cross-push used --compressor-train-split=train AND --nde-train-split=train (100% example overlap), leading to over-confident posteriors. L1 anchors were similarly using full train for NDE. Internal comparisons within campaigns (H1 attention haircut identity, H3 cdim=100 cratering) are robust because they share the same contamination pattern; cross-pipeline absolute comparisons need refreshing. Configs match the existing ''best simple plain CNN'' (iter-108-Q6ON-60k recipe) and ''v2_chsigma L1'' anchors. ETA ~3-5h. Decision rule: report 4 anchors, the corrected cross/auto ratios for CNN and L1, the (auto, cross) pool/MoS haircuts. Output dir: scripts/sbi/results/exploratory/canonical_anchors_refresh/. Will write METHODOLOGY.md as the canonical reference once the runs land. Launcher: launch_canonical_all.sh. The fiber [[cnn-h2-data-limit-scoping-2026-05]] depends on these corrected anchors; no other open fibers depend on this.'
 ---
 

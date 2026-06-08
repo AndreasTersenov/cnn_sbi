@@ -8,7 +8,7 @@ tags:
     - l1
     - definitive
 created-at: 2026-05-27T21:17:28.520289295Z
-outcome: 'OPEN (substantively complete 2026-05-31; refinements remain). 10 arms computed (jaxili MAF NDE all), σ/2D primary (FoM3 secondary, fragile). KEY: (1) G8 patch-center confound REAL & large — native-TFDS auto-only ≫ harmonic-sliced auto-only (FoM3 14969 vs 9125), so CNN cross-gain is ~1.8× over a fair auto-only, not 2.93×; (2) MAF companion WORSE than RealNVP → companion not the bottleneck, sub-investigation CLOSED; (3) standardization ~neutral; (4) L1 ≥ CNN-RealNVP driven by w0; (5) all arms reasonably calibrated (TARP 3-seed); (6) leakage empirically negligible → clean rerun deprioritized. Remaining: per-perm-average the multi-perm arms, TARP the new arms, write G8 into summary, commit code. See HANDOFF_DEFINITIVE_COMPARISON_2026-05-31.md. Plan: plans/mighty-tumbling-sparrow.md.'
+outcome: 'OPEN. Original objective (definitive L1-vs-CNN comparison, 10 arms, confounds eliminated) is SUBSTANTIVELY SETTLED, with a corrected headline. Arc of corrections: (1) per-perm-POOL bug -> per-perm-AVERAGE; (2) perm-0 ''L1>=CNN auto+cross'' was a favorable-draw -> perm-matched CNN~L1; (3) THE BIG ONE (2026-06-02/03): moved from 3 fiducial obs to the FULL 200 realizations (9600 patches). The fixed campaign obs was patch-0 = the POLAR patch, atypically low-info for L1''s near-polar wavelets (CNN patch-insensitive). CORRECTED HEADLINE (typical obs patch, median over ~300 patches): L1 ~ CNN auto+cross with a SMALL L1 edge in w0/cross-maps (sigma(w0) x1.34, sigma(Om) x1.18, 2D x1.6; FoM3 x2.17 but FoM3 amplifies ~20-25% diffs); auto-only a TIE. Both calibrated (tight L1 verified via stratified varied-theta TARP). Folded into PHASE_C_2026_05_31/SUMMARY_DEFINITIVE.md (corrected headline at top; perm-averaged patch-0 tables demoted to historical). Dead ends removed: mean-datavector (OOD for L1), fixed-theta coverage (degenerate DRP / shrinkage-confounded Mahalanobis). Sub-fibers all closed except the NEW open [[understand-per-patch-structure-2026-06]] (next phase: diagnostics to understand WHY, using the large per-patch sample). See HANDOFF_PER_PATCH_DIAGNOSTICS_2026-06-03.md.'
 ---
 
 ## Objective
@@ -41,8 +41,40 @@ a formal done-condition item.
 
 ## Loop Status (live)
 
+**[2026-06-03] ✅ ORIGINAL OBJECTIVE SETTLED + CLEAN STOP → next phase is [[understand-per-patch-structure-2026-06]].**
+Read `HANDOFF_PER_PATCH_DIAGNOSTICS_2026-06-03.md` FIRST. The big step: moved from 3 fiducial obs to the
+**FULL 200 realizations (9600 patches)** → more correct results AND stricter diagnostics. The campaign's
+fixed obs was **patch-0 = the POLAR patch** (lat 88.5°), atypically low-info for L1's near-polar wavelets
+(CNN is patch-insensitive) — that biased the original "CNN ≳ L1 auto+cross". **Corrected headline (typical
+obs patch):** L1 ≈ CNN auto+cross with a small L1 edge in w0/cross-maps (σ(w0) ×1.34, σ(Ωm) ×1.18, 2D ×1.6;
+FoM3 ×2.17 but FoM3 amplifies); **auto-only a tie**; tight L1 calibrated (stratified varied-θ TARP). Folded
+into `PHASE_C_2026_05_31/SUMMARY_DEFINITIVE.md` (corrected headline at top; patch-0 perm-averaged tables
+demoted to historical). Dead ends deleted: mean-datavector (OOD for L1), fixed-θ coverage (degenerate DRP /
+shrinkage-confounded Mahalanobis). Clean artifact set in `fiducial_full200/` (see handoff). Nothing running;
+nothing committed. **Next session:** large-sample diagnostics to understand WHY (geometry map, spread
+decomposition, bias structure, w0, SBC) — see the fiber + handoff.
+
+**[2026-06-02] 🌙 FULL-200 FIDUCIAL STUDY RUNNING overnight (detached, GPU1). Fiber [[fiducial-full200-meandv]].**
+Andreas wants the fiducial obs extended from 3 perms to the full 200 realizations (9600 patches): step 1 =
+posterior at the MEAN datavector (de-noised single-survey contour, NOT 200×-tighter); step 2 = per-patch
+FoM3/σ distribution (real which-sky scatter). 6 arms (L1/CNN × auto/auto+cross + CNN std + CNN MAF). Build
+done (200 perms, 9.6 GB); both summary extractors validated (CNN G1 4.7e-5, L1 G1 0.0 + calib MATCH); each
+arm behind a G3 gate (reproduce campaign perm-0 FoM3 within 20%, else abort+skip — no silent garbage). Live:
+`fiducial_full200/STATUS.log`; results `fiducial_full200/FIDUCIAL_FULL200_SUMMARY.md`. NOTE for cold-read:
+this is the only thing in flight; on completion verify G3 verdicts and close the fiber with numbers.
+
+**[2026-06-01] 🔁 PERM-AVERAGING REFINEMENT DONE — headline shift. Read [[finding-perm-averaging-overturns-l1-lead]].**
+Fixed `aggregate_all_arms.py` to per-perm-AVERAGE (the declared metric) instead of perm-POOL.
+**The perm-0 "L1 ≥ CNN on auto+cross" result does NOT survive perm-averaging** — it was a favorable
+perm-0 draw. Matched 3-perm comparison (both perm-averaged): auto+cross FoM3 L1 25808 (±27%) vs CNN
+28093 (±12%) → **CNN nominally ahead**; L1 keeps only a modest, perm-fragile σ(w0) edge (0.128 vs
+0.143). CAVEAT: L1=harmonic vs CNN=tf.data route confound still uncontrolled. TARP for the 2 genuinely-new
+arms (std, native-auto) launched; multi-perm TARP is redundant (same NDE as core RealNVP arms → not
+re-dumped). Decision (Andreas 2026-06-01): **FoM3 stays the declared primary**, reported with per-perm
+spread; σ/2D secondary (no constitution metric-stanza change). Remaining: (d) commit session code w/ OK.
+
 **[2026-05-31] ✅ CAMPAIGN SUBSTANTIVELY COMPLETE — read `HANDOFF_DEFINITIVE_COMPARISON_2026-05-31.md` (root) FIRST.**
-**Sub-fibers (filed 2026-06-01):** [[finding-patch-center-confound-g8]] · [[maf-companion-not-bottleneck]] · [[bug-multiperm-no-train-flag]] (all closed); **[[refine-phase-c-perm-matched]]** (OPEN — the next session's task).
+**Sub-fibers:** [[finding-patch-center-confound-g8]] · [[maf-companion-not-bottleneck]] · [[bug-multiperm-no-train-flag]] · [[finding-perm-averaging-overturns-l1-lead]] (all closed); [[refine-phase-c-perm-matched]] (closed 2026-06-01).
 10 arms computed (jaxili MAF NDE all), TARP coverage (3-seed) for the 6 core arms, Phase C table
 written (`results/exploratory/definitive_comparison/PHASE_C_2026_05_31/SUMMARY_DEFINITIVE.md`).
 Key results (σ-based; FoM3 fragile):
@@ -51,14 +83,16 @@ Key results (σ-based; FoM3 fragile):
   over a fair auto-only, not the 2.93× over the lossy harmonic auto-only. **Quote cross-gain with this caveat.**
 - **MAF companion is WORSE than RealNVP** (≤ across all 5 seed pairings) ⟹ companion is NOT the
   bottleneck. Sub-investigation CLOSED.
-- **Standardization ~neutral** (doesn't destroy info). **L1 ≥ CNN-RealNVP**, driven by **w₀**
-  (σ 0.125 vs 0.151). **All arms reasonably calibrated** (TARP, mildly over-confident).
+- **Standardization ~neutral** (doesn't destroy info). ~~**L1 ≥ CNN-RealNVP**, driven by **w₀**
+  (σ 0.125 vs 0.151)~~ — **SUPERSEDED 2026-06-01:** that was perm-0 only; on the perm-averaged
+  matched comparison **CNN ≳ L1 on FoM3/2D**, L1 keeps only a modest σ(w0) edge. See
+  [[finding-perm-averaging-overturns-l1-lead]]. **All arms reasonably calibrated** (TARP, mildly over-confident).
 - **Leakage empirically negligible** (Andreas) → fast-route absolute FoM is fine; **clean rerun
   DEPRIORITIZED** (and `.npz` loader is GIL-bound, can't be sped up).
-Remaining iterations (none mid-flight): (a) per-perm-AVERAGE the multi-perm arms in
-`aggregate_all_arms.py` (currently perm-POOLED → broader, not apples-to-apples vs perm-0 arms);
-(b) TARP the new arms (std, native-auto, multi-perm); (c) write the G8 confound into the summary;
-(d) commit session code w/ Andreas OK. Deeper threads held for Andreas: 120k steps, the w₀ question, SBC.
+Remaining iterations (none mid-flight): ~~(a) per-perm-AVERAGE the multi-perm arms~~ DONE 2026-06-01;
+~~(b) TARP the new arms~~ DONE (std + native-auto; multi-perm redundant); ~~(c) write the G8 confound
+into the summary~~ DONE; (d) commit session code w/ Andreas OK — **still pending**.
+Deeper threads held for Andreas: 120k steps, the w₀ question, SBC.
 
 **[2026-05-30] ⛔ CNN DATA-PATH RESOLVED — read `HANDOFF_PERF_REGRESSION_RESOLVED_2026-05-30.md`
 BEFORE any CNN retrain.** The CNN ~1 it/s / ~0% GPU wall was **storage** (the cross dataset on

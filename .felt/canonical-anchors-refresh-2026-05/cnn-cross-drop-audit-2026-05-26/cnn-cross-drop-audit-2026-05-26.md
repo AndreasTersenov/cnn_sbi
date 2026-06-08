@@ -1,12 +1,12 @@
 ---
 name: Audit — why did canonical CNN auto+cross drop 47% from the iter-108-Q6ON-60k anchor?
+status: open
 tags:
     - investigation
     - canonical-anchors-refresh-2026-05
     - ship-blocker
     - suspicious
 created-at: 2026-05-26T13:43:07.472081755Z
-status: open
 outcome: 'OPEN AUDIT (2026-05-26). Andreas distrusts the canonical CNN auto+cross pool 12,615 vs stale 23,986 (-47%). Train/train compressor-NDE overlap typically inflates FoM3 by 10-30%, not 2x. The L1 cross arm reproduces v2_chsigma to 0.5% under canonical methodology, validating the data + L1 pipeline. The CNN auto+cross 2x drop is therefore NOT just methodology — there must be another change. Hypotheses to investigate, in priority order: (H-A) re-run iter-108-Q6ON-60k EXACTLY today (train/train, no audit flag) — does it still give ~24k? If YES the drop is methodology+unknown; if NO there is a code regression. (H-B) maybe the NDE on 30% of train (train[70%:], ~90k examples) is under-training relative to the cdim=10 summary capacity; test by running canonical CNN cross with --nde-train-split train (full) to see if it recovers. (H-C) checkpoint policy difference: iter-108 used last_step (old default), canonical used best_val — but best_val typically improves not degrades. (H-D) the saved-compressor recovery path used the iter-2 compressor checkpoints from a buggy run; rerun cross with fresh compressor from scratch to confirm. Primary metric for the audit: CNN auto+cross 3-seed pooled FoM3. Decision rule: if H-A reproduces 24k, drop is real but unexplained; if not, find the code regression. NO COMPUTE until Andreas approves the audit plan in the new session. All 12 canonical posteriors remain on disk for comparison.'
 ---
 
