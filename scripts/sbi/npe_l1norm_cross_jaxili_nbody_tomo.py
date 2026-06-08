@@ -2510,11 +2510,10 @@ def main() -> None:
             )
         nde_perm_lo, nde_perm_hi = _parse_perm_range(args.nde_perm_split)
         nde_val_perm_lo, nde_val_perm_hi = _parse_perm_range(args.nde_val_perm_split)
-        if args.fiducial_summaries_out is not None:
-            raise NotImplementedError(
-                "--fiducial-summaries-out is not yet wired for tfds_cross (Phase D); "
-                "the fiducial obs cache is read directly for the single obs."
-            )
+        # --fiducial-summaries-out IS supported on tfds_cross: the summaries block reads
+        # the fiducial obs cache (--fiducial-obs-cache-dir) and applies the SAME in-scope
+        # TFDS-calibrated σ_c + SNR ranges as the arm's training datavector, with built-in
+        # [G1-calib] (live cal == arm's stored meta) and [G1] (obs row reproduces obs_l1) gates.
         # Cross channels are baked into the TFDS (SHT route); demean already applied.
         args.cross_maps = True
         args.zero_mean_maps = True
