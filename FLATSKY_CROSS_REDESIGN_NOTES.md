@@ -204,7 +204,10 @@ Ran no-training construction checks on cached fiducial auto patches (10°/80px).
   cleaner in principle but judged too complex for likely-small gain; **kept as a backlog item** to
   test if time permits.)
 - **Experiment matrix** (all vs the auto-only baseline; patch-local cross only, no leakage):
-  1. **auto + convolution-cross** (apodized κᵢ⊛κⱼ, one map/pair)
+  1. **auto + convolution-cross** (apodized κᵢ⊛κⱼ, one map/pair) — standardize on the
+     **apodized-circular** definition (lag-0 at index 0); the zero-pad+crop variant only differs by
+     a measured (N−1)//2=39-px crop-offset shift (registration, not physics) + a ~15% edge wrap, so
+     it is dropped.
   2. **auto + product-cross** (κᵢ·κⱼ, one map/pair)
   3. **auto + BOTH cross sets** — run only if (1) and (2) show complementary information.
   Each arm for both L1 and CNN.
@@ -212,5 +215,26 @@ Ran no-training construction checks on cached fiducial auto patches (10°/80px).
   set — fixes the old shared-auto-σ bug (V3).
 - **Cheap correctness check still wanted:** the product map's mean reproduces the known tomographic
   cross-correlation ξᵢⱼ on sims (no training).
-- **Still TODO before rebuild+retrain:** wavelet scale set; mask/apodization forward-model; the
-  ξᵢⱼ-recovery check; consistent tf (train) / np (obs) implementations of both operators.
+- **Still TODO before rebuild+retrain:** wavelet scale set; mask/apodization forward-model;
+  consistent tf (train) / np (obs) implementations of both operators.
+
+## 14. ξᵢⱼ-RECOVERY CHECK (2026-06-08, fiducial cache, 7200 patches = 40 perms × 180)
+
+Validates the **product** construction physically (no training). Maps are demeaned per patch, so the
+product map's spatial mean = the sample cross-covariance ⟨κᵢκⱼ⟩.
+
+- **Product mean recovers a sensible tomographic cross-covariance matrix** (×1e4): diagonal grows
+  0.53→1.04 from bin1→bin4 (higher-z sources → larger κ variance ✓); all off-diagonals POSITIVE
+  (bins positively correlated ✓); correlation ordered correctly — r(3,4)=0.48 > r(2,4)=0.31 >
+  r(1,4)=0.17, and adjacent ⟨|i−j|=1⟩=0.31 > distant ⟨|i−j|=3⟩=0.17 ✓. Physically correct
+  tomographic structure ⇒ the product cross map is a valid, interpretable cross-correlation probe.
+- Off-diagonals are **noise-unbiased** (shape noise is independent across bins, ⟨nᵢnⱼ⟩=0); the
+  diagonals are noise-inflated, so the quoted r are **lower bounds** (true signal r is higher).
+- **Convolution mean = 0 exactly** (unapodized: 1e−12; algebraically (Σκᵢ)(Σκⱼ)/N²=0 for demeaned),
+  so the convolution does NOT estimate ξᵢⱼ through its mean — confirms the product is the direct
+  cross-correlation probe and the convolution stores its cross-info in morphology. (An apodized
+  convolution mean is nonzero but that is a window artifact, not ξᵢⱼ.)
+- **SCOPE / honest limit:** this validates construction *physics at the fiducial*. It does NOT show
+  the cross channels carry cosmological *information beyond the autos* — that needs multi-cosmology
+  patches (none exist for 10° yet; only the fiducial cache). The decisive info test happens with the
+  actual build (the cross statistics must vary with cosmology). Script: inline (not yet saved).
