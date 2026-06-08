@@ -47,6 +47,9 @@ ARM_DISPLAY = {
     "cnn_autoonly_rnvp": "CNN auto-only (RealNVP)",
     "cnn_autocross_maf": "CNN auto+cross (MAF)",
     "cnn_autoonly_maf": "CNN auto-only (MAF)",
+    # new arms (2026-06-01)
+    "cnn_autocross_rnvp_std": "CNN auto+cross (RealNVP, std)",
+    "cnn_auto_native_rnvp": "CNN auto native-TFDS (RealNVP)",
 }
 ARM_COLOR = {
     "l1_harm_cross": "tab:red",
@@ -60,6 +63,12 @@ ARM_COLOR = {
     "cnn_autoonly_rnvp": "tab:cyan",
     "cnn_autocross_maf": "tab:green",
     "cnn_autoonly_maf": "tab:olive",
+    # new arms (2026-06-01)
+    "cnn_autocross_rnvp_std": "tab:purple",
+    "cnn_auto_native_rnvp": "tab:brown",
+    # stratified val terciles (2026-06-02)
+    "l1_autocross_LOW": "#F1948A", "l1_autocross_MID": "#C0392B", "l1_autocross_HIGH": "#7B241C",
+    "cnn_autocross_LOW": "#AED6F1", "cnn_autocross_MID": "#2471A3", "cnn_autocross_HIGH": "#1B4F72",
 }
 
 
