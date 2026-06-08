@@ -86,19 +86,26 @@ train the matrix → GATE C (calibration) → contours vs auto-only and vs the f
 
 ## Guardrails (non-negotiable — these are how we avoid wrong conclusions)
 
-Patch-local cross ONLY · per-channel noise (not shared auto-σ) · never PCA L1 (`--pca-components 0`) ·
-don't headline FoM3 · calibrate BEFORE contours · example-disjoint compressor/NDE split by perm ·
-same auto channels across all arms · one apodized-circular convolution definition · stage git files by
-path (never `git add .`/`-A`; don't commit artifacts/figures unless asked) · measure perf, don't guess.
+Patch-local cross ONLY · per-channel noise (not shared auto-σ) · **don't reuse the old `--cross-maps`
+route wholesale — math only, rewrite the noise + move FFTs on-device** · never PCA L1
+(`--pca-components 0`) · don't headline FoM3 · calibrate BEFORE contours · example-disjoint
+compressor/NDE split by perm · same auto channels across all arms · one apodized-circular convolution
+definition · **benchmark augment ON vs OFF before scaling — don't starve the GPU** · stage git files
+by path (never `git add .`/`-A`; don't commit artifacts/figures unless asked) · measure perf, don't guess.
 
 ## First concrete actions for the new session
 
 1. Read the 4 docs above; recreate env; confirm GPU 1 free.
-2. Implement the flat-sky augmentation: L1 `--cross-op {conv,product,both}` (the route exists; add
-   product + per-channel noise), and ADD flat-sky support to `npe_cnn_nbody_tomo.py` (reuse
-   `_compute_cross_maps_*` + per-channel RMS). Keep tf (train) / np (obs) bit-identical.
+2. Implement the flat-sky augmentation — but **do not "reuse" the old `--cross-maps` route wholesale**
+   (it's the bad one we just dissected; see BUILD_PLAN §4.5 reuse audit). Reuse only the FFT-product
+   *math* (re-validated) + the apodization window; **rewrite** the noise/SNR (per-channel, not the
+   old shared auto-σ) and **move the FFTs on-device/batched** (torch for L1, JAX for CNN), NOT inside
+   a CPU `tf.data` map — that starves the GPU (BUILD_PLAN §7). Add the pointwise **product** operator
+   and flat-sky support to `npe_cnn_nbody_tomo.py` (none exists). Keep the two implementations
+   bit-identical.
 3. **GATE A** before any training: bit-match; re-run `validate_flatsky_cross.py` on loader output;
-   ξᵢⱼ recovery; per-channel noise sane.
+   ξᵢⱼ recovery; per-channel noise sane; **AND benchmark it/s with augment ON vs OFF** — if the cross
+   augmentation starves the GPU, fix placement before training (BUILD_PLAN §7).
 4. **GATE B**: confirm cross statistics move with cosmology across the TFDS (the decisive info test
    the fiducial-only check could not do).
 5. Then train the matrix, GATE C calibration, contours. Update felt + memory + write-up as you go.

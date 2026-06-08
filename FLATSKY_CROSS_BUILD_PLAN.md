@@ -37,8 +37,11 @@ cosine taper, **roll ≈ 12%** (`_apod_window_np`). For each of the 6 pairs (i<j
 - **Product cross map:** `Pᵢⱼ = κᵢ · κⱼ` (pointwise; no FFT, strictly local). Decide whether to also
   multiply by W² for edge consistency — likely yes for the L1/SNR path so edges don't dominate.
 
-Each arm appends the 4 raw auto channels + 6 cross channels → 10 channels. Keep the **tf (train) and
-np (obs) implementations bit-identical** (validate; this has bitten before).
+Each arm appends the 4 raw auto channels + 6 cross channels → 10 channels. Keep the train and obs
+implementations bit-identical (validate; this has bitten before). The FFT-product *math* in
+`_compute_cross_maps_{np,tf}` is a correct *reference* — but see §4.5 (reuse audit) and §7
+(performance): do NOT reuse its noise handling, and do NOT reuse its placement inside a CPU `tf.data`
+map. Re-validate the math against `validate_flatsky_cross.py`; don't trust it blind.
 
 > Operator rationale (do not relitigate; see notes §8–10, §12): convolution = multiply in Fourier
 > (Zürcher-faithful, smooth/large-scale, carries cross-info in morphology); product = multiply in
@@ -91,6 +94,28 @@ re-introduce PCA (`--pca-components 0`, HARD RULE `feedback_never_pca_l1`).
 
 ---
 
+## 4.5 Reuse audit — what to reuse / rewrite / DISCARD (be strict)
+
+The old `--cross-maps` flat-sky route is the one we spent this session proving was bad
+(`FLATSKY_CROSS_REDESIGN_NOTES.md` §5). Treat it as a **reference to critique, not a foundation**.
+
+- **REUSE (after re-validating):** the apodization window `_apod_window_np` (but use ~12% roll, not
+  8%); the FFT-product *formula* (one line) as the convolution operator — re-check it against
+  `validate_flatsky_cross.py`, don't assume.
+- **ADD (new):** the pointwise **product** operator; flat-sky support in `npe_cnn_nbody_tomo.py`
+  (none exists).
+- **REWRITE (the broken parts — do NOT carry over):**
+  - the **noise/SNR** for cross channels — old route used a *shared auto-σ* (the documented bug);
+    replace with per-channel(/per-scale) σ from noise realizations (§2). Discard the old
+    `--cross-map-min/max-snr`, `--cross-map-auto-calibrate-snr`, `cross_snr_percentile` band-aids —
+    they patched the symptom (histogram range), not the cause (the σ denominator).
+  - the **computation placement** — old route runs the FFTs inside a CPU `tf.data` map
+    (`_compute_cross_maps_tf`); that starves the GPU (§7). Move the augmentation **on-device,
+    batched** (torch for L1, JAX for CNN), with `tf.data` delivering only the 4 auto channels.
+- **VERIFY don't assume:** the old autos-appended-raw-while-cross-from-apodized is actually correct
+  (we want raw autos, apodized cross inputs) — keep, but confirm. tf vs np (or torch vs np) bit-match
+  is a GATE, not an afterthought.
+
 ## 5. Experiment matrix & decision rule
 
 All arms share the identical auto channels; cross built patch-local.
@@ -117,9 +142,12 @@ All arms share the identical auto channels; cross built patch-local.
 
 0. **Read** `FLATSKY_CROSS_REDESIGN_NOTES.md`, `CROSS_MAP_LEAKAGE_FINDING.md`, this plan, and the
    memory index. Recreate the env (`conda run -n jaxili`, GPU **1 only**).
-1. **Implement** the augmentation (L1 `--cross-op`, CNN flat-sky support, per-channel noise). Compile-check.
-2. **GATE A — construction:** bit-match tf vs np; re-run `validate_flatsky_cross.py` on the *loader*
-   output; per-channel noise σ sane; product mean reproduces ξᵢⱼ (extend the §14 check to the loader).
+1. **Implement** the augmentation **on-device, batched** (L1 `--cross-op` via torch.fft; CNN flat-sky
+   via jax.fft; per-channel noise) — NOT in a CPU `tf.data` map (§7). Compile-check.
+2. **GATE A — construction + throughput:** bit-match the two implementations; re-run
+   `validate_flatsky_cross.py` on the *loader* output; per-channel noise σ sane; product mean
+   reproduces ξᵢⱼ (extend the §14 check to the loader); **AND benchmark it/s with augment ON vs OFF**
+   (≥3 runs, load recorded) — if ON ≪ OFF, fix the placement before training (§7).
 3. **GATE B — cosmology-dependence (NEW, decisive):** confirm the cross statistics **vary with
    cosmology** across the TFDS (the full multi-cosmo set now allows this — the fiducial-only check
    could not). If they don't move with θ, the channels carry no info — stop and debug.
@@ -134,13 +162,35 @@ All arms share the identical auto channels; cross built patch-local.
 
 ---
 
-## 7. Performance / running
+## 7. Performance — keep the GPU fed, don't bottleneck on CPU FFTs
 
-- **GPU 1 only** (`feedback_gpu1_only`). Flat-sky cross = cheap FFTs on 80px (negligible vs training).
-- Detached jobs: `setsid nohup … &` + poll with `pgrep`/log-grep (shell `wait` returns early on
+The cross augmentation is cheap *per map* (FFT of 80px × 6 pairs) but, done wrong, it **starves the
+GPU**. The project has already paid for this: the harmonic-TFRecord loader ran ~1 it/s under CPU load
+(`project_harmonic_tfrecord_training_path`), and `tfds.load` interleave defaults collapse 16→1 it/s
+after the shuffle buffer drains (`project_tfds_load_interleave_tuning`). Design for throughput from
+the start (`cluster-resources`, `coding-guidelines`):
+
+- **Compute the cross on-DEVICE, batched — not per-example in a CPU `tf.data` map.** Let `tf.data`
+  deliver only the **4 auto channels** (light), then compute the 6 cross channels batched on the GPU
+  in the consumer: **JAX** `jnp.fft` inside the CNN compressor input step, **torch** `torch.fft`
+  right before the wavelet-ℓ₁ (the L1 summary already runs on GPU). This keeps the FFTs on the A100
+  and the CPU free for I/O. The old `_compute_cross_maps_tf` (CPU `tf.data`) is the anti-pattern.
+- **Tune the loader:** `tfds.ReadConfig(interleave_cycle_length=8, interleave_block_length=16)` +
+  `prefetch(AUTOTUNE)` + a real shuffle buffer; `num_parallel_calls=AUTOTUNE` for any remaining map.
+- **One-time precompute is the fallback, not the default.** If on-device augmentation still
+  bottlenecks, precompute the 10-ch flat-sky cross to a cache once (batched on GPU) and train off it
+  — but that's ~245 GB and a build step, so only if the benchmark forces it.
+- **BENCHMARK before scaling (GATE):** measure it/s with cross-augmentation ON vs OFF, on-node, with
+  load + co-tenant recorded, ≥3 runs (`feedback_benchmark_dont_assume`,
+  `feedback_dont_guess_time_estimates`). If augment-ON it/s ≪ augment-OFF, the GPU is starving — fix
+  the placement before training. Do NOT state throughput you haven't measured.
+- **GPU:** **GPU 1 only** (`feedback_gpu1_only`); sole tenant ⇒ `XLA_PYTHON_CLIENT_MEM_FRACTION` up
+  to ~1.0; pick a batch size that saturates the A100. **CPU:** the loader threads are GIL-bound —
+  more `--harmonic-loader-threads` did NOT help before (`project_tfdata_cross_route_leakage`); rely
+  on `tf.data`'s C++ parallelism + on-device FFTs, not Python threads.
+- Detached jobs: `setsid nohup … &` + poll with `pgrep`/log-grep (shell `wait` returns early under
   setsid; never `pkill -f` a self-matching pattern — `feedback_no_pkill_self_match`).
-- Don't guess throughput — measure (`feedback_benchmark_dont_assume`, `feedback_dont_guess_time_estimates`).
-- Checkpoint-reload gotcha: jaxili truncates high-dim Standardizer in hparams.json → L1 (2000-d)
+- Checkpoint-reload gotcha: jaxili truncates the high-dim Standardizer in hparams.json → L1 (2000-d)
   must RETRAIN, CNN (10-d) reloads bit-exact with an ABSOLUTE path
   (`reference_jaxili_checkpoint_reload_truncation`).
 
