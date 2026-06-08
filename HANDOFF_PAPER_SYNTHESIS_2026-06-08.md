@@ -143,3 +143,79 @@ provenance:
 2. Reconcile the May audit with the June work (SUMMARY_PHASE_D, leakage, flat-sky).
 3. Draft `PAPER_FILE_TRIAGE.md`, then `PAPER_SCIENTIFIC_SYNTHESIS.md`. Get Andreas's review before
    handing to `paper-draft`.
+
+## Recommended execution — dynamic workflow (Stage 1 only)
+
+This task is a strong fit for Claude Code **dynamic workflows** (research preview; needs ≥ v2.1.154,
+enabled in `/config`). Why: it is *width-shaped* (sweep 1,517 runs / 190 dirs / 13 branches / 2
+worktrees in parallel) and the hard part — resolving self-contradictions — is exactly the
+**adversarial cross-check / vote-and-filter** pattern workflows provide. Workflows also defeat the
+two failure modes this task is most prone to: **agentic laziness** (a single session will quietly
+triage only part of 1,517 runs) and **goal drift** (intermediate state lives in script variables,
+not a degrading context).
+
+**Stage it** (workflows take no mid-run user input → run each stage separately for sign-off):
+
+- **STAGE 1 = a workflow (read-only fan-out + cross-check + triage).** Invoke with `ultracode` /
+  "use a workflow". Phases: (a) enumerate branches/worktrees/results-dirs/docs; (b) one **read-only**
+  agent per chunk extracts {what it is, dates, claimed numbers, experiments}; (c) **adversarial
+  verification** — agents screen every claimed number against `EXPERIMENT_AUDIT.md` + the 6
+  invalidators + the June docs, vote, filter, and assign **CITE / BACKGROUND / SUPERSEDED / WRONG**.
+  Output: `PAPER_FILE_TRIAGE.md` + the verified evidence base. **Pilot on one branch/phase first** to
+  gauge token cost; tell the gather agents "read-only, do not edit any file"; make sure the
+  verification agents are pointed at the bug timeline + invalidators (or the cross-check is toothless).
+- **→ Andreas reviews the triage.**
+- **STAGE 2 = a normal single session** (NOT a workflow): write `PAPER_SCIENTIFIC_SYNTHESIS.md` from
+  the verified evidence, two-pillar structure. The narrative is judgment-heavy and Andreas will steer
+  it — keep it in one coherent, reviewable pass.
+
+(Most tasks don't need a workflow; this one does because of scale + cross-check. Don't use a workflow
+for Stage 2.)
+
+## Copy-paste prompt for the new session
+
+```
+I'm continuing a weak-lensing SBI project (cnn_sbi repo on titan). This session is a separate,
+READ-ONLY task: I'm about to write the paper for this project, but the repo is huge and messy after
+months of work, with lots of superseded and self-contradictory material. Your job is to produce a
+clean scientific synthesis and a good/bad file triage so that my paper-writing skill can work from
+solid ground.
+
+START by reading `HANDOFF_PAPER_SYNTHESIS_2026-06-08.md` in the repo root — it's the entry point and
+tells you where everything is (incl. the recommended dynamic-workflow execution). Then read
+`EXPERIMENT_AUDIT.md` (the May trust-catalog of 1,517 runs — the backbone, but it predates the June
+work and must be reconciled), `MEMORY.md`, and the two pillars' key docs. Use `git log` across
+branches/worktrees to reconstruct the project timeline.
+
+READ-ONLY: no GPU, no training, no new experiments. Understand and organize what exists; separate
+trustworthy from superseded/wrong; write it up for the paper.
+
+For STAGE 1 (gather + cross-check + triage), USE A DYNAMIC WORKFLOW (`ultracode`): fan out read-only
+agents across the branches/worktrees/results-dirs/docs, then run an adversarial cross-check that
+screens every claimed number against EXPERIMENT_AUDIT.md + the known invalidators (mass-sheet leak,
+L1 cross noise-model bug, FoM3 fragility, NDE-architecture mismatch, compressor↔NDE overlap,
+cross-map leakage) + the June docs, votes, and assigns CITE/BACKGROUND/SUPERSEDED/WRONG. Pilot on one
+branch/phase first to gauge cost; keep the gather agents strictly read-only. Output `PAPER_FILE_TRIAGE.md`.
+Then STOP for my review. STAGE 2 (writing `PAPER_SCIENTIFIC_SYNTHESIS.md`, the input for paper-draft)
+is a normal single session, NOT a workflow — the two-pillar narrative is judgment-heavy and I want to
+steer it.
+
+The paper has two pillars (full framing in the handoff): (1) L1-norm vs CNN-VMIM constraining power
+in tomographic weak-lensing SBI, incl. the best strategy to build cross-maps for extra cosmological
+info; (2) the BNT contour-inflation question — prior work (incl. mine) found BNT + higher-order
+statistics inflates contours; the thesis is this is from failing to extract inter-bin
+cross-correlations (BNT is invertible/linear, so no info is truly lost — it decorrelates signal but
+correlates noise), and that a CNN compressor (auto-maps as channels, VMIM) does NOT inflate because
+it recovers those cross-correlations. We came close to showing this; it must be re-run cleanly later.
+
+Trust rule — newest-wins with provenance: every cited number must survive the invalidators above;
+June docs override earlier cross-map/L1-vs-CNN conclusions; memory files are the tie-breaker; if a
+number was never computed, say so — do NOT invent one. Don't headline FoM3 (use σ + 2D areas).
+Clearly separate DONE from TO-BE-RUN (the flat-sky cross rebuild and the clean BNT-CNN run are future
+work, not results). Don't overwrite existing docs; create the two new ones. Track the task in a felt
+fiber.
+
+Read everything first, then give me a short plan + the proposed structure of the synthesis doc, and
+get my sign-off before writing. Begin by reading the handoff and confirming you understand the two
+pillars, the trust rule, and the staged workflow plan.
+```
