@@ -28,12 +28,19 @@ channels are likewise reused for the observed-map path.
 
 Inputs: the 4 auto maps κ₁…κ₄ per patch, **after `--zero-mean-maps`** (per-channel spatial demean) and
 after optional BNT — exactly as the current pipeline produces them. Apodization window W = separable
-cosine taper, **roll ≈ 12%** (`_apod_window_np`). For each of the 6 pairs (i<j):
+cosine taper, **roll fraction = 0.12 — LOCKED** (decided 2026-06-08, supersedes the drifting
+8%/10%/12% literals). Make it a **single named constant `APOD_ROLL_FRAC = 0.12`** referenced
+everywhere (augmentation, validation, gallery, obs path) and **passed explicitly** — do NOT rely on
+`_apod_window_np`'s 0.08 default. Record `apod_roll_frac` in every run's meta. It is a fixed
+convention applied **identically to all arms** (so it cancels to first order in auto-vs-cross and
+L1-vs-CNN); sensitivity-testing {0.08, 0.12, 0.16} later is optional, but 0.12 is locked for the
+campaign. For each of the 6 pairs (i<j):
 
 - **Convolution cross map (Zürcher flat-sky analog):**
   `Cᵢⱼ = irfft2( rfft2(κᵢ·W) · rfft2(κⱼ·W) )` — **apodized circular** (standardized; do NOT use the
   zero-pad+crop variant — it only differs by a 39-px crop-offset shift + small edge wrap, notes §13).
-  This is what `_compute_cross_maps_{np,tf}` already compute (just confirm the apodization width).
+  This is what `_compute_cross_maps_{np,tf}` already compute — but set the roll to the locked
+  `APOD_ROLL_FRAC = 0.12` (not the old 0.08 default), passed explicitly.
 - **Product cross map:** `Pᵢⱼ = κᵢ · κⱼ` (pointwise; no FFT, strictly local). Decide whether to also
   multiply by W² for edge consistency — likely yes for the L1/SNR path so edges don't dominate.
 
@@ -99,8 +106,9 @@ re-introduce PCA (`--pca-components 0`, HARD RULE `feedback_never_pca_l1`).
 The old `--cross-maps` flat-sky route is the one we spent this session proving was bad
 (`FLATSKY_CROSS_REDESIGN_NOTES.md` §5). Treat it as a **reference to critique, not a foundation**.
 
-- **REUSE (after re-validating):** the apodization window `_apod_window_np` (but use ~12% roll, not
-  8%); the FFT-product *formula* (one line) as the convolution operator — re-check it against
+- **REUSE (after re-validating):** the apodization window `_apod_window_np` (but pass the LOCKED
+  `APOD_ROLL_FRAC = 0.12`, not the 0.08 default); the FFT-product *formula* (one line) as the
+  convolution operator — re-check it against
   `validate_flatsky_cross.py`, don't assume.
 - **ADD (new):** the pointwise **product** operator; flat-sky support in `npe_cnn_nbody_tomo.py`
   (none exists).

@@ -24,7 +24,7 @@ os.makedirs(OUT, exist_ok=True)
 PAIRS = [(0, 1), (0, 2), (0, 3), (1, 2), (1, 3), (2, 3)]
 
 
-def apod(n, roll=0.10):
+def apod(n, roll=0.12):  # LOCKED APOD_ROLL_FRAC=0.12 (BUILD_PLAN §1)
     r = np.ones(n, np.float32); k = max(1, int(roll * n))
     c = 0.5 * (1 - np.cos(np.pi * np.arange(k) / k)); r[:k] = c; r[-k:] = c[::-1]
     return np.outer(r, r).astype(np.float32)
