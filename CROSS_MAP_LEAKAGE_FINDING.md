@@ -132,13 +132,27 @@ Rebuild the 6 cross channels **per patch** with the flat-sky construction
 flat-sky is a reasonable approximation, so it is a fair construction. Then rerun the auto+cross
 arms through the same Phase-C/D pipeline and compare gains over auto-only.
 
-**Predictions / what it disentangles** (flat-sky gain = the *physical* cross information):
-- **If leakage was the driver (expected):** the CNN's auto+cross gain largely collapses toward its
-  auto-only level — because κ^{ij}_flat = κ^i ⊛ κ^j is a convolution the CNN could already compute
-  from the auto channels — so the dramatic CNN≫L1 gap shrinks.
-- **L1 may still gain** modestly from flat-sky cross-maps (they hand L1 the cross combination it
-  cannot form itself), which would make the *physical* auto+cross story closer to (or even favor)
-  L1 — the opposite of the leaky-data headline. This is the key reason the test matters.
+**Predictions / what it disentangles** (flat-sky gain = the *physical*, patch-local cross
+information).
+
+> **Important caveat — a vanilla CNN does NOT natively form the product of two input channels.**
+> A conv layer convolves each channel with a kernel and *sums*: it is linear in the inputs.
+> κ^{ij}_flat = κ^i ⊛ κ^j is a *bilinear* combination of two channels. A ReLU CNN can only
+> approximate such products with extra depth/capacity and learns them imperfectly from finite data,
+> and L1 never forms cross-channel products at all. That is exactly *why* the cross-map trick
+> exists — it injects a bilinear cross-statistic neither compressor computes natively. So an
+> explicit flat-sky cross-map is still a legitimate, useful feature; do **not** expect the CNN's
+> gain to vanish just because the map is "derivable in principle" from the autos.
+
+- The flat-sky rebuild removes the *unphysical* (full-sky leakage) part of the cross information but
+  **keeps** a legitimate, physically-realizable local cross-statistic. Expect the CNN (and L1) to
+  still gain *something* from explicit cross-maps — just **less** than the leaky version.
+- The leaky result therefore **overstates** the physical auto+cross gain, and — because the leaked
+  part is large-scale info the CNN reads but L1 (small-scale ℓ₁) does not — it **differentially
+  overstates the CNN's advantage**.
+- The L1-vs-CNN ordering on the *physical* cross information is genuinely **OPEN**: it may stay
+  CNN-favored, tie, or flip toward L1 (L1 is handed a feature it cannot form itself, while the CNN
+  loses its leakage-driven edge). Settling this is the reason to run the test.
 - Whatever gain survives the flat-sky rebuild is the physically defensible auto+cross result.
 
 **Scope:** dataset rebuild (cross channels only; autos unchanged) + retrain CNN + L1 auto+cross
