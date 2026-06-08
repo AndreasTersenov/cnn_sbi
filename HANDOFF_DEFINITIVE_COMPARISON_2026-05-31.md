@@ -18,8 +18,14 @@ steps 1–4. Everything below is verified (jobs finished, files on disk), not gu
   other tenants — don't touch. Pin every job with `--cuda-visible-devices`.
 - **Git:** never `git add .`/`-A`; stage by path. **Don't commit without explicit OK.**
   Tree is chronically dirty — that's normal.
-- **Felt workflow:** this campaign is a felt fiber (above). Keep its "Loop Status (live)"
-  and `outcome:` current; one primary metric; declare done-conditions. I updated it this session.
+- **Felt (use it properly — see §6):** felt is a *persistent-context research substrate* (a tree of
+  markdown "fibers" + a CLI), **not** an autonomous-loop driver. Before any felt work, **load the
+  canonical skill** `~/.claude/plugins/marketplaces/cailmdaley-felt/claude-plugin/skills/felt/SKILL.md`,
+  then read `FELT_AGENT_GUIDE.md` + `FELT_TUTORIAL.md` + CLAUDE.md §"Felt / Ralph operating conventions".
+  **Drive it with the CLI** (`felt ls` / `felt show` / `felt add` / `felt edit --status closed
+  --outcome "…"` / `felt history`) as concerns crystallize — don't hand-edit frontmatter (that bypasses
+  the event log + index). `[[wikilinks]]` are for **fibers only** (memories/docs in plain prose).
+  Scope-check first: don't open fibers for bug-hunting / one-PR / pure hyperparameter sweeps.
 - **Conda/env:** `conda run -n jaxili ...` OR directly `/home/tersenov/anaconda3/envs/jaxili/bin/python`
   (the latter is more reliable; `conda run` buffers stdout — add `--no-capture-output`/`PYTHONUNBUFFERED=1`).
   **Never install packages** (e.g. apache_beam) — breaks the TF/protobuf stack.
@@ -152,9 +158,29 @@ obs at perm p with a trained compressor, **omit `--train-compressor`** and pass
 
 ---
 
-## 6. Felt fiber
+## 6. Felt — current tree + how to use it (read before touching felt)
 
-`.felt/definitive-l1-vs-cnn-2026-05/definitive-l1-vs-cnn-2026-05.md`. Primary metric: 3-seed
-pooled FoM3 on (Ωm,σ8,w0), σ/2D secondary. I updated its "Loop Status (live)" this session with
-everything above. The Done-condition now includes the TARP coverage gate (added 2026-05-31). The
-campaign is essentially done pending the §3 refinements; treat those as the remaining iterations.
+**Load order:** canonical skill (`~/.claude/plugins/marketplaces/cailmdaley-felt/claude-plugin/skills/felt/SKILL.md`)
+→ `FELT_AGENT_GUIDE.md` → `FELT_TUTORIAL.md` → CLAUDE.md §"Felt / Ralph operating conventions" →
+`felt ls` → the constitution. Felt is a research-note substrate; **drive it with the CLI**, don't
+hand-edit `.md` frontmatter (the CLI keeps the append-only event log + FTS index consistent; bodies
+*are* edited with a text editor).
+
+**The campaign's tree is now felt-native** (`felt tree`):
+- Constitution `definitive-l1-vs-cnn-2026-05` (open). Declared primary metric: 3-seed pooled FoM3
+  on (Ωm,σ8,w0); σ/2D secondary. ⚠️ **metric drift this session** — we reasoned in σ/2D while the
+  declared metric is FoM3. Either formally switch the declared metric or stick to it (don't mix).
+- `…/finding-patch-center-confound-g8` (closed) — the G8 result + the "quote cross-gain ~1.8×" caveat.
+- `…/maf-companion-not-bottleneck` (closed) — companion sub-investigation.
+- `…/bug-multiperm-no-train-flag` (closed) — the bug + the fix recipe.
+- **`…/refine-phase-c-perm-matched` (OPEN) — THIS IS YOUR NEXT TASK** (the §3 refinements).
+  Start by reading it: `felt show definitive-l1-vs-cnn-2026-05/refine-phase-c-perm-matched`.
+
+**Work it properly:** as concerns crystallize, `felt add <campaign>/<slug> "name" -t <tags> [-s closed]
+-o "verdict + number + pointer + next"`; close with real outcomes (never "done"); `[[fiber-slug]]`
+to link. When the campaign hits its done-condition, `felt edit <campaign> --status closed --outcome
+"…"` and append an **Exit Interview** to the body (FELT_TUTORIAL §9). Keep `felt check` clean (it is
+now — `[[wikilinks]]` resolve to fibers only; memories/docs go in plain prose).
+
+**Honest note:** this session *under-used* the CLI — work was hand-driven, fibers filed at the end.
+Do better: `felt ls` at the start, file fibers as you go, close them as evidence lands.
