@@ -40,8 +40,11 @@ gcs_utils.gcs_dataset_info_files = lambda *a, **k: None
 gcs_utils.is_dataset_on_gcs = lambda *a, **k: False
 
 _HERE = Path(__file__).resolve().parent
-# Validated .npz cross cache (the build source).
-_NPZ_CACHE = _HERE / "results" / "exploratory" / "cross_maps_campaign" / "full_sphere_cache_grid"
+# Validated .npz cross cache (the build source). Overridable via CROSS_TFDS_CACHE_DIR so the
+# 10deg build can point at its own (transient) cache without touching the 20deg default.
+_NPZ_CACHE = Path(os.environ.get(
+    "CROSS_TFDS_CACHE_DIR",
+    str(_HERE / "results" / "exploratory" / "cross_maps_campaign" / "full_sphere_cache_grid")))
 _REGIME = "nobnt"  # Phase 1 scope: no-BNT only.
 N_AUTO, N_CROSS = 4, 6
 N_CHANNELS = N_AUTO + N_CROSS  # 10
@@ -83,6 +86,9 @@ class NbodyCosmogridDatasetTomoCross(tfds.core.GeneratorBasedBuilder):
     RELEASE_NOTES = {"0.0.1": "10-channel auto+cross harmonic maps (nobnt), 48 non-overlap patches."}
     BUILDER_CONFIGS = [
         CrossDatasetConfig(name="grid_20deg_160px_nonoverlap48", xsize=160, size=20),
+        # 10deg campaign (2026-06): 80px (7.5 arcmin/px, same res), 180 polar-safe non-overlap
+        # patches. Build source = the 10deg transient cache via CROSS_TFDS_CACHE_DIR.
+        CrossDatasetConfig(name="grid_10deg_80px_nonoverlap180", xsize=80, size=10),
     ]
     # Skip TFDS's build-time shuffle. The training loader (tfds.load + tf.data .shuffle)
     # reshuffles every epoch, so the build-time shuffle is wasted I/O. Skipping it also
@@ -113,10 +119,16 @@ class NbodyCosmogridDatasetTomoCross(tfds.core.GeneratorBasedBuilder):
         )
 
     def _split_generators(self, dl_manager: tfds.download.DownloadManager):
-        return [
-            tfds.core.SplitGenerator(name=split, gen_kwargs={"split_subdir": subdir})
-            for split, subdir in _SPLIT_SUBDIR.items()
-        ]
+        # Only emit splits whose cache subdir actually has .npz files. The grid build writes
+        # train/ + val/ but no obs/ (the fiducial is a separate cache), so the 10deg grid TFDS
+        # is train+val only; the 20deg cache has obs/ too -> 3 splits. (An empty split makes
+        # TFDS finalize fail with "No examples were yielded".)
+        gens = []
+        for split, subdir in _SPLIT_SUBDIR.items():
+            d = _NPZ_CACHE / _REGIME / subdir
+            if d.is_dir() and any(d.glob("*.npz")):
+                gens.append(tfds.core.SplitGenerator(name=split, gen_kwargs={"split_subdir": subdir}))
+        return gens
 
     def _generate_examples(self, split_subdir):
         cache_dir = _NPZ_CACHE / _REGIME / split_subdir

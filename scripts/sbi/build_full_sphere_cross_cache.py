@@ -85,7 +85,7 @@ class CosmoEntry:
     split: str            # "train" or "val" (matches flat-sky TFDS split)
 
     def perm_dir(self, perm: int, root: Path) -> Path:
-        return self.realization_dir / f"perm_000{perm}"
+        return self.realization_dir / f"perm_{perm:04d}"
 
 
 def _remap_path_par(path_par: str) -> Path:
@@ -162,6 +162,7 @@ class BuildConfig:
     regimes: tuple[str, ...]
     snapshot_cosmo_id: str
     snapshot_perm: int
+    max_abs_lat: float | None = None
 
 
 def _per_pixel_noise_std(sigma_e: float, galaxy_density: float, nside: int) -> float:
@@ -281,7 +282,7 @@ def _worker(job: tuple[CosmoEntry, int], cfg: BuildConfig) -> tuple[str, dict]:
     os.environ.setdefault("MKL_NUM_THREADS", "1")
 
     entry, perm = job
-    perm_dir = entry.realization_dir / f"perm_000{perm}"
+    perm_dir = entry.realization_dir / f"perm_{perm:04d}"
     h5_path = perm_dir / f"projected_probes_maps_{cfg.map_label}512.h5"
     if not h5_path.exists():
         return ("missing", {"cosmo_id": entry.cosmo_id, "perm": perm,
@@ -291,6 +292,7 @@ def _worker(job: tuple[CosmoEntry, int], cfg: BuildConfig) -> tuple[str, dict]:
         n_centers=cfg.n_centers,
         min_separation_deg=cfg.min_separation_deg,
         center_nside=cfg.center_nside,
+        max_abs_lat=cfg.max_abs_lat,
     )
     info: dict = {
         "cosmo_id": entry.cosmo_id,
@@ -397,6 +399,9 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--cosmo-subset", type=str, default="fiducial",
                    choices=["fiducial", "grid", "all"])
     p.add_argument("--cosmo-limit", type=int, default=None)
+    p.add_argument("--cosmo-id", type=str, default=None,
+                   help="If set, build ONLY the cosmology with this id (e.g. "
+                        "cosmo_fiducial). Filters the enumerated subset.")
     p.add_argument("--realizations", type=str, default="0,1,2,3,4,5,6")
     p.add_argument("--regime", type=str, default="both",
                    choices=["bnt", "nobnt", "both"])
@@ -413,6 +418,9 @@ def parse_args() -> argparse.Namespace:
                    help="Defaults to field_size*60/field_npix (matches flat-sky baseline).")
     p.add_argument("--n-centers", type=int, default=48)
     p.add_argument("--min-separation-deg", type=float, default=28.5)
+    p.add_argument("--max-abs-lat", type=float, default=None,
+                   help="Exclude patch centers with |lat|>=this (deg) BEFORE selection "
+                        "(10deg campaign: 75 -> no near-pole patches). None = 20deg behavior.")
     p.add_argument("--center-nside", type=int, default=32)
     p.add_argument("--out-dir", type=Path, required=True)
     p.add_argument("--num-workers", type=int, default=50)
@@ -453,6 +461,7 @@ def main() -> None:
         regimes=regimes,
         snapshot_cosmo_id=args.snapshot_cosmo_id,
         snapshot_perm=args.snapshot_perm,
+        max_abs_lat=args.max_abs_lat,
     )
 
     cosmologies = enumerate_cosmologies(
@@ -461,6 +470,11 @@ def main() -> None:
         subset=args.cosmo_subset,
         cosmo_limit=args.cosmo_limit,
     )
+    if args.cosmo_id is not None:
+        cosmologies = [c for c in cosmologies if c.cosmo_id == args.cosmo_id]
+        if not cosmologies:
+            raise SystemExit(f"--cosmo-id={args.cosmo_id} matched no cosmology in "
+                             f"subset={args.cosmo_subset}.")
     jobs: list[tuple[CosmoEntry, int]] = [
         (entry, perm) for entry in cosmologies for perm in realizations
     ]

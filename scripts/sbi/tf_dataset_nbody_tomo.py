@@ -44,18 +44,29 @@ def _build_non_overlapping_centers(
     n_centers: int,
     min_separation_deg: float,
     center_nside: int,
+    max_abs_lat: float | None = None,
 ) -> np.ndarray:
-    """Build deterministic patch centers separated by at least min_separation_deg."""
+    """Build deterministic patch centers separated by at least min_separation_deg.
+
+    `max_abs_lat` (deg), if set, EXCLUDES candidate centers with |lat| >= max_abs_lat BEFORE
+    selection — so even the `np.arange` (HEALPix-order) fallback cannot grab a near-pole pixel.
+    This fixes the 20° tiling's polar patch (which straddled the pole because the equatorial-first
+    order could not pack enough centers and fell back to HEALPix order, starting at the pole).
+    """
     npix = hp.nside2npix(center_nside)
     theta, phi = hp.pix2ang(center_nside, np.arange(npix))
     lon = np.degrees(phi) - 180.0
     lat = 90.0 - np.degrees(theta)
 
-    # Deterministic candidate orders; keep best if requested count is too high.
+    # Restrict the candidate pool by latitude if requested (applied to ALL candidate orders).
+    valid = np.ones(npix, dtype=bool) if max_abs_lat is None else (np.abs(lat) < float(max_abs_lat))
+    valid_idx = np.where(valid)[0]
+
+    # Deterministic candidate orders (over the valid pool); keep best if requested count is too high.
     candidate_orders = [
-        np.argsort(np.abs(lat)),  # favor moderate latitudes first
-        np.arange(npix),
-        np.argsort(lon),
+        valid_idx[np.argsort(np.abs(lat[valid_idx]))],  # favor moderate latitudes first
+        valid_idx,                                       # HEALPix order (pole-excluded by `valid`)
+        valid_idx[np.argsort(lon[valid_idx])],
     ]
 
     best_selected: list[tuple[float, float]] = []
