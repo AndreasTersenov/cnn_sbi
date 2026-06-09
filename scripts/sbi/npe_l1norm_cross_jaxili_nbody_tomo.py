@@ -59,6 +59,15 @@ from bnt_utils import (
     validate_bnt_configuration,
 )
 
+# Flat-sky (patch-local) cross-maps + frozen-sigma L1 (the de-leaked route).
+import flatsky_cross as fx
+import flatsky_cross_l1 as fxl
+
+_DEFAULT_FLATSKY_SIGMA = str(
+    (Path(__file__).resolve().parent
+     / "results/exploratory/flatsky_cross_2026_06/flatsky_cross_noise_sigma.npz")
+)
+
 
 def _ensure_tfds_builder_registered() -> None:
     """Import the local TFDS builder lazily to avoid hard dependency at --help time."""
@@ -1880,13 +1889,54 @@ def parse_args() -> argparse.Namespace:
         "--cross-maps-route",
         type=str,
         default=None,
-        choices=["flat", "harmonic", "tfds_cross"],
+        choices=["flat", "harmonic", "tfds_cross", "flat_local"],
         help=(
             "Override how cross-maps are computed. Default behavior auto-"
             "selects 'harmonic' when --full-sphere-cross-cache is set, "
             "'flat' otherwise. 'tfds_cross' reads the unified 10-channel cross "
             "TFDS directly (no grid .npz cache) with channel_empirical_global "
-            "noise; obs from --fiducial-obs-cache-dir; NDE-train perms via --nde-perm-split."
+            "noise; obs from --fiducial-obs-cache-dir; NDE-train perms via --nde-perm-split. "
+            "'flat_local' (the de-leaked route): reads ONLY the 4 auto channels (ch 0-3) of "
+            "the cross TFDS, builds PATCH-LOCAL flat-sky cross on-device (--cross-op), and uses "
+            "the FROZEN per-(channel,scale) noise sigma + per-channel percentile binning."
+        ),
+    )
+    p.add_argument(
+        "--cross-op",
+        type=str,
+        default="conv",
+        choices=list(fx.CROSS_OPS),
+        help=(
+            "Flat-local cross operator (--cross-maps-route flat_local): 'none' (auto-only "
+            "baseline, 4 ch), 'conv' (apodized Zürcher flat-sky analog, 10 ch), 'product' "
+            "(pointwise kappa_i*kappa_j, 10 ch), 'both' (conv+product, 16 ch)."
+        ),
+    )
+    p.add_argument(
+        "--flatsky-cross-sigma",
+        type=str,
+        default=_DEFAULT_FLATSKY_SIGMA,
+        help=(
+            "Path to the frozen per-(channel,scale) noise sigma .npz "
+            "(freeze_flatsky_cross_noise.py) used as the SNR denominator for flat_local."
+        ),
+    )
+    p.add_argument(
+        "--flatsky-snr-percentiles",
+        type=str,
+        default="0.5,99.5",
+        help="Per-channel SNR-range percentiles (lo,hi) for flat_local binning.",
+    )
+    p.add_argument(
+        "--flatsky-both-cache",
+        type=str,
+        default=None,
+        help=(
+            "Path to a 'both' (16-channel) flat_local datavector cache dir (holds l1_train.npz, "
+            "l1_val.npz, flat_local_ranges.npy). When set, the arm's train/val datavector is "
+            "COLUMN-SLICED from the 'both' datavector and the per-channel SNR ranges are sliced "
+            "from flat_local_ranges.npy — NO loader pass (build the expensive datavector ONCE for "
+            "'both', reuse for none/conv/product). obs L1 is still computed per-op (single map)."
         ),
     )
     p.add_argument(
@@ -2486,7 +2536,54 @@ def main() -> None:
     nde_perm_hi: int | None = None
     nde_val_perm_lo: int | None = None
     nde_val_perm_hi: int | None = None
-    if args.cross_maps_route == "tfds_cross":
+    flat_local_sigma = None          # torch (C, n_scales) frozen noise sigma
+    flat_local_names: list | None = None
+    flat_local_ranges = None         # numpy (C, 2) frozen per-channel SNR ranges
+    if args.cross_maps_route == "flat_local":
+        cross_maps_route = "flat_local"
+        if args.full_sphere_cross_cache:
+            raise ValueError(
+                "--cross-maps-route flat_local is incompatible with --full-sphere-cross-cache "
+                "(it reads ch 0-3 of the cross TFDS and builds patch-local cross on-device)."
+            )
+        if args.apply_bnt:
+            raise ValueError("--cross-maps-route flat_local does not support --apply-bnt yet (nobnt only).")
+        if args.fiducial_obs_cache_dir is None:
+            raise ValueError(
+                "--cross-maps-route flat_local requires --fiducial-obs-cache-dir "
+                "(fiducial cache; obs autos ch 0-3, SHT-roundtripped to match training)."
+            )
+        if int(args.pca_components) != 0:
+            raise ValueError(
+                f"--cross-maps-route flat_local requires --pca-components 0 (got "
+                f"{args.pca_components}); PCA on L1 craters FoM (feedback_never_pca_l1)."
+            )
+        fiducial_obs_cache_dir = Path(args.fiducial_obs_cache_dir).resolve()
+        if not fiducial_obs_cache_dir.is_dir():
+            raise FileNotFoundError(f"--fiducial-obs-cache-dir not found: {fiducial_obs_cache_dir}")
+        nde_perm_lo, nde_perm_hi = _parse_perm_range(args.nde_perm_split)
+        nde_val_perm_lo, nde_val_perm_hi = _parse_perm_range(args.nde_val_perm_split)
+        args.cross_maps = (args.cross_op != "none")
+        args.zero_mean_maps = True
+        full_sphere_cache_dir = None
+        full_sphere_cache_manifest_sha = ""
+        harmonic_regime = "nobnt"
+        flat_local_sigma, flat_local_names, _frozen_nscales = fxl.select_frozen_sigma(
+            args.flatsky_cross_sigma, args.cross_op, args.nbins, torch_device)
+        if int(_frozen_nscales) != int(args.n_scales):
+            raise ValueError(
+                f"frozen sigma n_scales={_frozen_nscales} != --n-scales={args.n_scales}; "
+                f"refreeze with matching n_scales (freeze_flatsky_cross_noise.py)."
+            )
+        print("  cross_maps_route = flat_local")
+        print(f"  cross_op          = {args.cross_op}  "
+              f"({fx.n_output_channels(args.nbins, args.cross_op)} channels)")
+        print(f"  frozen sigma      = {args.flatsky_cross_sigma}")
+        print(f"  cross TFDS (autos)= {args.cross_tfds_name} @ {args.cross_tfds_data_dir}")
+        print(f"  fiducial obs cache= {fiducial_obs_cache_dir}")
+        print(f"  NDE-train perms   = {nde_perm_lo}-{nde_perm_hi} (val=test split)")
+        print(f"  apod roll_frac    = 0.10  (LOCKED)")
+    elif args.cross_maps_route == "tfds_cross":
         cross_maps_route = "tfds_cross"
         if args.full_sphere_cross_cache:
             raise ValueError(
@@ -2617,6 +2714,13 @@ def main() -> None:
         l1_auto_boundary = args.nbins
         print(f"  channel_mode    = auto_cross (full 10-channel layout)")
 
+    if cross_maps_route == "flat_local":
+        # op-dependent channel count: none=4, conv/product=10, both=16. autos first.
+        n_l1_channels = fx.n_output_channels(args.nbins, args.cross_op)
+        n_cross_pairs = n_l1_channels - args.nbins
+        l1_auto_boundary = args.nbins
+        l1_channel_slice = None
+
     # --- Channel-aware noise model (optional) ---------------------------
     # When 'channel_empirical_global', estimate σ_c per channel from the cache
     # and pre-scale the maps so that wavelet-SNR ranges are comparable across
@@ -2683,7 +2787,20 @@ def main() -> None:
     checkpoint_path = (save_path / args.checkpoint_name).resolve()
 
     # 1) Observed map
-    if cross_maps_route in ("harmonic", "tfds_cross"):
+    if cross_maps_route == "flat_local":
+        # obs autos (ch 0-3) from the fiducial cache (SHT-roundtripped => matches the
+        # training TFDS autos). Cross is built on-device at the obs-L1 step below.
+        m_data, _, truth = load_observed_from_harmonic_cache(
+            cache_dir=fiducial_obs_cache_dir,
+            regime=harmonic_regime,
+            cosmo_id=args.harmonic_obs_cosmo_id,
+            perm=args.harmonic_obs_perm,
+            patch_idx=args.harmonic_obs_patch_idx,
+            meta_path=args.cosmogrid_meta,
+            channel_slice=slice(0, args.nbins),
+            channel_scale=None,
+        )
+    elif cross_maps_route in ("harmonic", "tfds_cross"):
         obs_cache_dir = (
             full_sphere_cache_dir if cross_maps_route == "harmonic"
             else fiducial_obs_cache_dir
@@ -2754,10 +2871,14 @@ def main() -> None:
         augmentation = None  # not used by the harmonic-cache path
 
     cache_dir = Path(args.cache_dir) if args.cache_dir else None
+    if cache_dir is not None and cross_maps_route == "flat_local":
+        # disambiguate by op: conv & product both have n_l1_channels=10 and would
+        # otherwise collide on the same L1-datavector cache.
+        cache_dir = cache_dir / f"flat_local_{args.cross_op}"
     cache_meta_expected: Optional[Dict[str, object]] = None
 
-    do_calibrate = args.auto_calibrate_snr or (
-        args.cross_maps and args.cross_map_auto_calibrate_snr
+    do_calibrate = (cross_maps_route != "flat_local") and (
+        args.auto_calibrate_snr or (args.cross_maps and args.cross_map_auto_calibrate_snr)
     )
     if not do_calibrate:
         l1_min_snr = args.l1_min_snr
@@ -2894,6 +3015,45 @@ def main() -> None:
                 )
                 print(f"  Cached SNR calibration to {calib_cache}")
 
+    if cross_maps_route == "flat_local":
+        # PER-CHANNEL frozen percentile SNR ranges (heavy-tailed product vs well-behaved
+        # auto/conv => a single range would handicap the product operator and bias the
+        # conv-vs-product comparison; per-channel keeps the methods test honest). Calibrated
+        # ONCE on the NDE-train pool under the frozen sigma; applied identically to
+        # train/val/obs (NOT recomputed per-obs).
+        if args.flatsky_both_cache:
+            # Slice the per-channel ranges from the 'both' build (avoids a loader pass).
+            both_ranges = np.load(Path(args.flatsky_both_cache) / "flat_local_ranges.npy")
+            rows = fxl.op_channel_rows(args.cross_op, args.nbins)
+            flat_local_ranges = both_ranges[rows]
+            print(f"  [flat_local] SNR ranges sliced from both-cache "
+                  f"({flat_local_ranges.shape[0]} of {both_ranges.shape[0]} channels)")
+        else:
+            q_lo, q_hi = (float(v) for v in args.flatsky_snr_percentiles.split(","))
+            flat_local_ranges = fxl.calibrate_snr_range_flat_local(
+                tfds_name=args.cross_tfds_name, data_dir=args.cross_tfds_data_dir,
+                op=args.cross_op, frozen_sigma=flat_local_sigma, stats=stats,
+                nbins=args.nbins, channel_names=flat_local_names,
+                n_calibration_examples=int(args.harmonic_calibration_realizations) * 180,
+                perm_lo=nde_perm_lo, perm_hi=nde_perm_hi,
+                subtract_coarse_mean=effective_subtract_coarse_mean,
+                margin=args.calibration_margin, q_lo=q_lo, q_hi=q_hi,
+                seed=0,  # SEED-INDEPENDENT ranges: shared across NDE seeds so the per-arm
+                         # datavector cache dedups and obs<->train normalization stays consistent.
+            )
+            if cache_dir is not None:   # persist so other arms can slice this build's ranges
+                cache_dir.mkdir(parents=True, exist_ok=True)
+                np.save(cache_dir / "flat_local_ranges.npy", flat_local_ranges)
+        # Representative scalars purely for cache/meta compatibility (the real binning is
+        # per-channel in flat_local_ranges).
+        auto_r = flat_local_ranges[:l1_auto_boundary]
+        l1_min_snr = float(auto_r[:, 0].min()); l1_max_snr = float(auto_r[:, 1].max())
+        if n_l1_channels > l1_auto_boundary:
+            cross_r = flat_local_ranges[l1_auto_boundary:]
+            l1_min_snr_cross = float(cross_r[:, 0].min()); l1_max_snr_cross = float(cross_r[:, 1].max())
+        else:
+            l1_min_snr_cross, l1_max_snr_cross = l1_min_snr, l1_max_snr
+
     cache_meta_expected = build_l1_cache_metadata(
         args=args,
         tomo_bin_indices=tomo_bin_indices,
@@ -2913,21 +3073,28 @@ def main() -> None:
     )
 
     print("######## L1-NORM: OBSERVED MAP ########")
-    obs_l1 = compute_l1_single_map(
-        m_data,
-        noise_sigma,
-        stats,
-        args.l1_nbins,
-        l1_auto_boundary,
-        l1_min_snr=l1_min_snr,
-        l1_max_snr=l1_max_snr,
-        clamp_overflow=effective_l1_clamp,
-        subtract_coarse_mean=effective_subtract_coarse_mean,
-        l1_implementation=args.l1_implementation,
-        n_l1_channels=n_l1_channels,
-        l1_min_snr_cross=l1_min_snr_cross,
-        l1_max_snr_cross=l1_max_snr_cross,
-    )
+    if cross_maps_route == "flat_local":
+        # build cross on-device from obs autos + frozen-sigma L1 (clamp overflow -> edge bins).
+        obs_l1 = fxl.compute_l1_single_map_flat_local(
+            m_data, args.cross_op, flat_local_sigma, stats, args.l1_nbins, flat_local_ranges,
+            subtract_coarse_mean=effective_subtract_coarse_mean, clamp_overflow=True,
+        )
+    else:
+        obs_l1 = compute_l1_single_map(
+            m_data,
+            noise_sigma,
+            stats,
+            args.l1_nbins,
+            l1_auto_boundary,
+            l1_min_snr=l1_min_snr,
+            l1_max_snr=l1_max_snr,
+            clamp_overflow=effective_l1_clamp,
+            subtract_coarse_mean=effective_subtract_coarse_mean,
+            l1_implementation=args.l1_implementation,
+            n_l1_channels=n_l1_channels,
+            l1_min_snr_cross=l1_min_snr_cross,
+            l1_max_snr_cross=l1_max_snr_cross,
+        )
     print(f"  Observed L1 shape = {obs_l1.shape}")
 
     # --- Full-200 fiducial summaries hook (reuses the in-scope calibration) ---
@@ -3054,7 +3221,38 @@ def main() -> None:
                     )
 
         if not cache_ok:
-            if cross_maps_route == "harmonic":
+            if cross_maps_route == "flat_local" and args.flatsky_both_cache:
+                # COLUMN-SLICE the arm's train/val from the 'both' (16-ch) datavector — no
+                # loader pass. obs L1 was already computed per-op above (single map).
+                bc = Path(args.flatsky_both_cache)
+                cols = fxl.op_feature_columns(args.cross_op, args.nbins, args.n_scales * args.l1_nbins)
+                dtr = np.load(bc / "l1_train.npz")
+                dataset_train = {"theta": dtr["theta"], "x": dtr["x"][:, cols]}
+                dva = np.load(bc / "l1_val.npz")
+                dataset_val = {"theta": dva["theta"], "x": dva["x"][:, cols]}
+                print(f"  [flat_local] train/val SLICED from both-cache "
+                      f"({args.cross_op}: {len(cols)} cols): train {dataset_train['x'].shape}, "
+                      f"val {dataset_val['x'].shape}")
+            elif cross_maps_route == "flat_local":
+                dataset_train = fxl.compute_l1_dataset_flat_local(
+                    tfds_name=args.cross_tfds_name, data_dir=args.cross_tfds_data_dir,
+                    split="train", op=args.cross_op, frozen_sigma=flat_local_sigma,
+                    stats=stats, l1_nbins=args.l1_nbins, snr_ranges=flat_local_ranges,
+                    perm_lo=nde_perm_lo, perm_hi=nde_perm_hi,
+                    flip=bool(args.l1_train_flip), seed=1001,  # seed-independent datavector
+                    batch_size=args.ds_batch_size,
+                    subtract_coarse_mean=effective_subtract_coarse_mean, clamp_overflow=True,
+                )
+                dataset_val = fxl.compute_l1_dataset_flat_local(
+                    tfds_name=args.cross_tfds_name, data_dir=args.cross_tfds_data_dir,
+                    split="test", op=args.cross_op, frozen_sigma=flat_local_sigma,
+                    stats=stats, l1_nbins=args.l1_nbins, snr_ranges=flat_local_ranges,
+                    perm_lo=nde_val_perm_lo, perm_hi=nde_val_perm_hi,
+                    flip=False, seed=2001,  # seed-independent
+                    batch_size=args.ds_batch_size,
+                    subtract_coarse_mean=effective_subtract_coarse_mean, clamp_overflow=True,
+                )
+            elif cross_maps_route == "harmonic":
                 dataset_train = compute_l1_dataset_from_harmonic_cache(
                     cache_dir=full_sphere_cache_dir,
                     regime=harmonic_regime,
@@ -3514,6 +3712,26 @@ def main() -> None:
         "l1_max_snr": float(l1_max_snr),
         "l1_min_snr_cross": float(l1_min_snr_cross),
         "l1_max_snr_cross": float(l1_max_snr_cross),
+        "cross_maps_route": cross_maps_route,
+        "cross_op": args.cross_op if cross_maps_route == "flat_local" else None,
+        "flat_local": ({
+            "apod_roll_frac": 0.10,
+            "channel_source": "ch 0-3 (autos) of cross TFDS, SHT-roundtripped lmax 1024 (slice)",
+            "frozen_sigma_table": str(args.flatsky_cross_sigma),
+            "frozen_sigma_provenance": (
+                "frozen at fiducial; fixed deterministic normalization (does not bias SBI); "
+                "cross-noise mildly signal-dependent via S(x)N so most exact near fiducial"),
+            "snr_binning": (
+                f"per-channel frozen percentile ({args.flatsky_snr_percentiles}) + "
+                f"margin {args.calibration_margin}, clamp_overflow=True"),
+            "snr_binning_rationale": (
+                "product channel is heavy-tailed (kappa_i*kappa_j of peaky convergence); "
+                "a single/fixed range would handicap the product and bias the conv-vs-product "
+                "comparison, so per-channel frozen percentile ranges under the correct per-scale "
+                "sigma; conclusions to be verified binning-robust vs fixed [-4,4] (backlog)"),
+            "channel_names": flat_local_names,
+            "snr_ranges": (flat_local_ranges.tolist() if flat_local_ranges is not None else None),
+        } if cross_maps_route == "flat_local" else None),
         "fom3": fom3,
     }
     out.with_suffix(".meta.json").write_text(

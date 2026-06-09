@@ -1,0 +1,201 @@
+"""Patch-local (flat-sky) tomographic cross-maps — single source of truth.
+
+Replaces the LEAKY full-sphere harmonic construction (every full-sphere cross-patch
+pixel is a global functional of the whole sky; see CROSS_MAP_LEAKAGE_FINDING.md).
+These operators are strictly patch-local: each cross channel is a function of the
+patch's own auto maps only.
+
+Two operators (LOCKED with Andreas 2026-06-08; FLATSKY_CROSS_BUILD_PLAN.md §1):
+  - convolution  C_ij = irfft2( rfft2(k_i * W) * rfft2(k_j * W) )
+      The faithful flat-sky analog of Zürcher Eq. 12 (alm-product); apodized-circular,
+      smooth/large-scale, carries cross-info in morphology/phase. ONE definition only
+      (the zero-pad+crop variant is dropped — it differs by a 39-px lag-registration
+      shift + a small edge wrap; REDESIGN_NOTES §12-13).
+  - product      P_ij = k_i * k_j
+      Raw pointwise (NO apodization, NO FFT); strictly local; its spatial mean = xi_ij
+      (validated, REDESIGN_NOTES §14). Per Andreas: do NOT multiply by W^2 — that would
+      break the mean=xi_ij property and the consistency with the raw autos.
+
+Channel conventions:
+  - convolution inputs are APODIZED (k_i * W); product inputs are RAW (k_i).
+  - the auto channels appended to the output are RAW (un-apodized) — matches what the
+    autos get downstream (autos are fed raw to the wavelet / per-channel RMS).
+  - op='conv'    -> [auto(4), conv(6)]            = 10 channels
+    op='product' -> [auto(4), product(6)]         = 10 channels
+    op='both'    -> [auto(4), conv(6), product(6)] = 16 channels
+
+Three numerically-identical backends:
+  - numpy  : CPU reference (correctness oracle, GATE A bit-match anchor)
+  - torch  : GPU, for the L1 wavelet-l1 pipeline (computed right before WLStatistics)
+  - jax    : GPU, for the CNN compressor input step
+
+All three must agree to FFT float32 roundoff (GATE A). FFT normalization is the
+numpy/"backward" convention in all three (no forward scaling, 1/N on inverse), so a
+common `s=(H, W)` on the inverse keeps them aligned.
+
+Apodization window = separable cosine taper, roll_frac default 0.10 (LOCKED).
+"""
+from __future__ import annotations
+
+import numpy as np
+
+CROSS_OPS = ("none", "conv", "product", "both")
+
+
+def cross_pairs(nbins: int) -> list[tuple[int, int]]:
+    """Ordered upper-triangular bin pairs (i<j). For nbins=4 -> 6 pairs."""
+    return [(i, j) for i in range(nbins) for j in range(i + 1, nbins)]
+
+
+def n_output_channels(nbins: int, op: str) -> int:
+    npairs = len(cross_pairs(nbins))
+    if op == "none":          # autos only (the auto-only baseline arm)
+        return nbins
+    if op == "conv" or op == "product":
+        return nbins + npairs
+    if op == "both":
+        return nbins + 2 * npairs
+    raise ValueError(f"Unknown cross op={op!r}; expected one of {CROSS_OPS}")
+
+
+# ---------------------------------------------------------------------------
+# Apodization window (shared across backends; built in numpy, cast per backend)
+# ---------------------------------------------------------------------------
+def apod_window_np(npix: int, roll_frac: float = 0.10) -> np.ndarray:
+    """Separable cosine (Hann-ramp) taper. roll_frac fraction of each edge ramps
+    0->1 by a raised cosine; the interior is flat 1. Matches _apod_window_np in the
+    L1 script but with the LOCKED 10% roll."""
+    ramp = np.ones(npix, dtype=np.float32)
+    n_roll = max(1, int(roll_frac * npix))
+    cos_ramp = (0.5 * (1.0 - np.cos(np.pi * np.arange(n_roll) / n_roll))).astype(np.float32)
+    ramp[:n_roll] = cos_ramp
+    ramp[-n_roll:] = cos_ramp[::-1]
+    return np.outer(ramp, ramp).astype(np.float32)
+
+
+def _as_batched(autos):
+    """Return (autos_b, was_batched) where autos_b is (B, H, W, n)."""
+    if autos.ndim == 3:
+        return autos[None], False
+    if autos.ndim == 4:
+        return autos, True
+    raise ValueError(f"autos must be (H,W,n) or (B,H,W,n); got shape {tuple(autos.shape)}")
+
+
+# ---------------------------------------------------------------------------
+# numpy backend (reference)
+# ---------------------------------------------------------------------------
+def _conv_np(autos_b: np.ndarray, W: np.ndarray) -> np.ndarray:
+    B, H, Wd, n = autos_b.shape
+    pairs = cross_pairs(n)
+    xa = (autos_b * W[None, :, :, None]).astype(np.float32)
+    F = np.fft.rfft2(np.transpose(xa, (0, 3, 1, 2)), axes=(-2, -1))  # (B, n, H, W//2+1)
+    cross = np.stack([F[:, i] * F[:, j] for i, j in pairs], axis=1)   # (B, npairs, ...)
+    xc = np.fft.irfft2(cross, s=(H, Wd), axes=(-2, -1)).astype(np.float32)
+    return np.transpose(xc, (0, 2, 3, 1))                            # (B, H, W, npairs)
+
+
+def _product_np(autos_b: np.ndarray) -> np.ndarray:
+    n = autos_b.shape[-1]
+    pairs = cross_pairs(n)
+    return np.stack([autos_b[..., i] * autos_b[..., j] for i, j in pairs], axis=-1).astype(np.float32)
+
+
+def build_channels_np(autos: np.ndarray, op: str, roll_frac: float = 0.10) -> np.ndarray:
+    """autos: (H,W,n) or (B,H,W,n) RAW auto maps. Returns RAW autos + cross channels."""
+    autos_b, was_batched = _as_batched(np.asarray(autos, dtype=np.float32))
+    npix = autos_b.shape[1]
+    parts = [autos_b]
+    if op in ("conv", "both"):
+        parts.append(_conv_np(autos_b, apod_window_np(npix, roll_frac)))
+    if op in ("product", "both"):
+        parts.append(_product_np(autos_b))
+    if op not in CROSS_OPS:
+        raise ValueError(f"Unknown cross op={op!r}; expected one of {CROSS_OPS}")
+    out = np.concatenate(parts, axis=-1)
+    return out if was_batched else out[0]
+
+
+# ---------------------------------------------------------------------------
+# torch backend (L1, GPU)
+# ---------------------------------------------------------------------------
+def apod_window_torch(npix, roll_frac, device, dtype):
+    import torch
+    return torch.from_numpy(apod_window_np(npix, roll_frac)).to(device=device, dtype=dtype)
+
+
+def _conv_torch(autos_b, W):
+    import torch
+    B, H, Wd, n = autos_b.shape
+    pairs = cross_pairs(n)
+    xa = autos_b * W[None, :, :, None]
+    xa = xa.permute(0, 3, 1, 2)                                  # (B, n, H, W)
+    F = torch.fft.rfft2(xa, dim=(-2, -1))                        # (B, n, H, W//2+1)
+    cross = torch.stack([F[:, i] * F[:, j] for i, j in pairs], dim=1)
+    xc = torch.fft.irfft2(cross, s=(H, Wd), dim=(-2, -1))
+    return xc.permute(0, 2, 3, 1)                                # (B, H, W, npairs)
+
+
+def _product_torch(autos_b):
+    import torch
+    n = autos_b.shape[-1]
+    pairs = cross_pairs(n)
+    return torch.stack([autos_b[..., i] * autos_b[..., j] for i, j in pairs], dim=-1)
+
+
+def build_channels_torch(autos, op, roll_frac: float = 0.10):
+    """autos: torch tensor (H,W,n) or (B,H,W,n) RAW autos on the target device."""
+    import torch
+    was_batched = autos.ndim == 4
+    autos_b = autos if was_batched else autos.unsqueeze(0)
+    npix = autos_b.shape[1]
+    parts = [autos_b]
+    if op in ("conv", "both"):
+        W = apod_window_torch(npix, roll_frac, autos_b.device, autos_b.dtype)
+        parts.append(_conv_torch(autos_b, W))
+    if op in ("product", "both"):
+        parts.append(_product_torch(autos_b))
+    if op not in CROSS_OPS:
+        raise ValueError(f"Unknown cross op={op!r}; expected one of {CROSS_OPS}")
+    out = torch.cat(parts, dim=-1)
+    return out if was_batched else out.squeeze(0)
+
+
+# ---------------------------------------------------------------------------
+# jax backend (CNN, GPU)
+# ---------------------------------------------------------------------------
+def _conv_jax(autos_b, W):
+    import jax.numpy as jnp
+    B, H, Wd, n = autos_b.shape
+    pairs = cross_pairs(n)
+    xa = autos_b * W[None, :, :, None]
+    xa = jnp.transpose(xa, (0, 3, 1, 2))                         # (B, n, H, W)
+    F = jnp.fft.rfft2(xa, axes=(-2, -1))
+    cross = jnp.stack([F[:, i] * F[:, j] for i, j in pairs], axis=1)
+    xc = jnp.fft.irfft2(cross, s=(H, Wd), axes=(-2, -1))
+    return jnp.transpose(xc, (0, 2, 3, 1))
+
+
+def _product_jax(autos_b):
+    import jax.numpy as jnp
+    n = autos_b.shape[-1]
+    pairs = cross_pairs(n)
+    return jnp.stack([autos_b[..., i] * autos_b[..., j] for i, j in pairs], axis=-1)
+
+
+def build_channels_jax(autos, op, roll_frac: float = 0.10):
+    """autos: jax array (H,W,n) or (B,H,W,n) RAW autos."""
+    import jax.numpy as jnp
+    was_batched = autos.ndim == 4
+    autos_b = autos if was_batched else autos[None]
+    npix = autos_b.shape[1]
+    parts = [autos_b]
+    if op in ("conv", "both"):
+        W = jnp.asarray(apod_window_np(npix, roll_frac))
+        parts.append(_conv_jax(autos_b, W))
+    if op in ("product", "both"):
+        parts.append(_product_jax(autos_b))
+    if op not in CROSS_OPS:
+        raise ValueError(f"Unknown cross op={op!r}; expected one of {CROSS_OPS}")
+    out = jnp.concatenate(parts, axis=-1)
+    return out if was_batched else out[0]
