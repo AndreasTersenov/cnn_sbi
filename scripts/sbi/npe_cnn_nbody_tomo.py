@@ -604,8 +604,21 @@ def parse_args() -> argparse.Namespace:
         default="best_val",
         help=(
             "Which compressor checkpoint to hand off downstream: "
-            "'best_val' (argmin of single-batch val loss across save points) "
+            "'best_val' (argmin of val loss across save points; see "
+            "--compressor-val-batches for the estimator) "
             "or 'last_step' (legacy behavior; reproduces pre-fix campaign numbers)."
+        ),
+    )
+    p.add_argument(
+        "--compressor-val-batches",
+        type=int,
+        default=1,
+        help=(
+            "Number of val batches averaged per save-point val-loss evaluation. "
+            "Default 1 = the legacy single-random-batch criterion (high-variance "
+            "best_val checkpoint selection; reproduces all pre-2026-06-10 campaigns). "
+            "Set >1 (e.g. 16 -> 2048 examples at batch 128) to de-noise best_val "
+            "selection for new campaigns."
         ),
     )
     p.add_argument(
@@ -2633,6 +2646,7 @@ def train_compressor_vmim(
     ] = None,
     checkpoint_policy: str = "best_val",
     grad_clip: float = 0.0,
+    val_batches: int = 1,
 ) -> Tuple[hk.Params, hk.State, Path, Path]:
     """Train the CNN compressor from scratch using VMIM loss.
 
@@ -3103,35 +3117,40 @@ def train_compressor_vmim(
                     pickle.dump(state_cnn, f)
                 last_saved_step = step
 
-                # Test loss
-                ex_test = next(ds_test_iter)
-                if paired_training:
-                    (
-                        b_loss_test,
-                        vmim_test_loss,
-                        consistency_test_loss,
-                        domain_ce_test,
-                        domain_acc_test,
-                    ) = _eval_paired(
-                        params_merged,
-                        state_cnn,
-                        ex_test["theta"],
-                        ex_test["maps_nobnt"],
-                        ex_test["maps_bnt"],
-                        domain_params,
-                    )
-                else:
-                    b_loss_test, _, _, _ = update(
-                        model_params=params_merged,
-                        opt_state=opt_state,
-                        theta=ex_test["theta"],
-                        x=ex_test["maps"],
-                        state_resnet=state_cnn,
-                    )
-                    vmim_test_loss = b_loss_test
-                    consistency_test_loss = jnp.asarray(0.0, dtype=b_loss_test.dtype)
-                    domain_ce_test = jnp.asarray(0.0, dtype=b_loss_test.dtype)
-                    domain_acc_test = jnp.asarray(0.0, dtype=b_loss_test.dtype)
+                # Test loss — averaged over `val_batches` batches (1 = the legacy
+                # single-random-batch criterion; >1 de-noises best_val selection).
+                _val_losses = []
+                for _ in range(max(1, int(val_batches))):
+                    ex_test = next(ds_test_iter)
+                    if paired_training:
+                        (
+                            b_loss_test,
+                            vmim_test_loss,
+                            consistency_test_loss,
+                            domain_ce_test,
+                            domain_acc_test,
+                        ) = _eval_paired(
+                            params_merged,
+                            state_cnn,
+                            ex_test["theta"],
+                            ex_test["maps_nobnt"],
+                            ex_test["maps_bnt"],
+                            domain_params,
+                        )
+                    else:
+                        b_loss_test, _, _, _ = update(
+                            model_params=params_merged,
+                            opt_state=opt_state,
+                            theta=ex_test["theta"],
+                            x=ex_test["maps"],
+                            state_resnet=state_cnn,
+                        )
+                        vmim_test_loss = b_loss_test
+                        consistency_test_loss = jnp.asarray(0.0, dtype=b_loss_test.dtype)
+                        domain_ce_test = jnp.asarray(0.0, dtype=b_loss_test.dtype)
+                        domain_acc_test = jnp.asarray(0.0, dtype=b_loss_test.dtype)
+                    _val_losses.append(float(b_loss_test))
+                b_loss_test = float(np.mean(_val_losses))
                 loss_train_hist.append(float(b_loss))
                 loss_test_hist.append(float(b_loss_test))
 
@@ -3221,6 +3240,13 @@ def train_compressor_vmim(
         print(f"  Compressor returning policy=last_step step={last_step}.")
 
     wandb.run.summary["compressor/checkpoint_policy"] = checkpoint_policy
+    # Record the EFFECTIVE policy too — best_val can silently fall back to
+    # last_step (e.g. save_every > total steps); the requested policy alone
+    # cannot disambiguate that from artifacts.
+    wandb.run.summary["compressor/checkpoint_policy_effective"] = (
+        "best_val" if chosen_params_path == best_val_params_path else "last_step"
+    )
+    wandb.run.summary["compressor/val_batches"] = int(max(1, int(val_batches)))
     wandb.run.summary["compressor/best_val_step"] = int(best_val_step)
     wandb.run.summary["compressor/best_val_loss"] = float(best_val_loss)
     wandb.run.summary["compressor/last_step"] = int(last_step)
@@ -4787,6 +4813,7 @@ def main():
             dataset_iter_factory=compressor_dataset_iter_factory,
             checkpoint_policy=args.compressor_checkpoint_policy,
             grad_clip=args.compressor_grad_clip,
+            val_batches=int(args.compressor_val_batches),
         )
         # Stamp the cache fingerprint with the canonical on-disk checkpoint
         # for the chosen policy, so a downstream Stage B run invoked with
@@ -4998,7 +5025,33 @@ def main():
                 cache_dir / "cnn_val.npz",
                 theta=dataset_val["theta"], x=dataset_val["x"],
             )
-            np.savez(cache_dir / "cnn_cache_meta.npz", **cache_meta_expected)
+            # Informational keys (NOT part of the fingerprint: compare_cache_metadata
+            # iterates over the expected dict only, so extra npz keys are ignored and
+            # pre-existing caches stay valid). Persist the frozen per-channel RMS —
+            # previously it lived only in stdout logs — and the effective checkpoint
+            # policy (best_val can silently fall back to last_step; only the
+            # checkpoint filename disambiguated before).
+            cache_meta_info = {
+                "info_channel_scale": (
+                    np.asarray(harmonic_channel_scale)
+                    if "harmonic_channel_scale" in dir() else np.zeros(0)
+                ),
+                "info_checkpoint_policy_requested": str(
+                    args.compressor_checkpoint_policy
+                ),
+                "info_checkpoint_policy_effective": (
+                    "best_val"
+                    if str(compressor_params_ref).endswith("best_val.pkl")
+                    else "last_step"
+                ),
+                "info_compressor_val_batches": int(
+                    getattr(args, "compressor_val_batches", 1)
+                ),
+            }
+            np.savez(
+                cache_dir / "cnn_cache_meta.npz",
+                **cache_meta_expected, **cache_meta_info,
+            )
             print(f"  Cached datasets to {cache_dir}")
 
     print(f"  Train x shape = {dataset_train['x'].shape}")

@@ -57,7 +57,8 @@ def main():
         Sa, pa, pj = arm_S(sname)
         g = int(np.where((pa == P) & (pj == J))[0][0])
         clipv = clip if clip > 0 else None
-        trp, obsp, _, m, s = preprocess_summaries(xtr, xtr[:1], Sa[g:g+1],
+        # preprocess_summaries returns (train, val, obs, mean, std) — the obs is the THIRD slot
+        trp, _, obsp, m, s = preprocess_summaries(xtr, xtr[:1], Sa[g:g+1],
                                                   summary_transform=transform, clip_value=clipv)
         mask, _ = filter_zero_variance_bins(trp, min_variance=minvar, verbose=False)
         xt = trp[:, mask].astype(np.float32); obs = obsp[:, mask][0].astype(np.float32)

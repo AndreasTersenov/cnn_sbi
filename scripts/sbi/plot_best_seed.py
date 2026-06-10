@@ -43,7 +43,10 @@ def main():
     ax.axhline(best["none"], color=C_BEST, ls=":", lw=0.9)   # CNN best auto-only reference
     ax.set_xticks(x); ax.set_xticklabels([l for _, l in ARMS])
     ax.set_ylabel("FoM$_3$"); ax.legend(fontsize=8, frameon=False, loc="upper left")
-    ax.set_title("CNN best single seed still shows no cross gain (cross arms $\\leq$ auto-only)", fontsize=10)
+    no_gain = all(best[o] <= best["none"] for o, _ in ARMS if o != "none")
+    ax.set_title("CNN best single seed still shows no cross gain (cross arms $\\leq$ auto-only)"
+                 if no_gain else
+                 "CNN best single seed: at least one cross arm EXCEEDS auto-only", fontsize=10)
     fig.tight_layout(); fig.savefig(OUT / "fom3_best_seed.png", dpi=200); fig.savefig(OUT / "fom3_best_seed.pdf")
     print(f"wrote {OUT}/fom3_best_seed.{{png,pdf}}")
 

@@ -39,7 +39,7 @@ def main():
     lines = ["# Flat-sky (patch-local) cross — de-leaked L1-vs-CNN (2026-06-09)\n",
              "**Pooled 3-seed 9000-obs median, common jaxili MAF (NDE confound removed).** "
              "CNN-VMIM compressor on the same de-leaked patch-local cross as the L1 side "
-             "(`FLATSKY_CROSS_RESULT.md`). Calibrated: TARP ✓ / SBC / L-C2ST (see cnn_phase/gate_c).\n",
+             "(`FLATSKY_CROSS_RESULT.md`). Calibration: GATE C section below + cnn_phase/gate_c.\n",
              "## FoM3 (pooled median)\n",
              "| arm | CNN FoM3 | CNN vs auto | L1 FoM3 | L1 vs auto | CNN/L1 |",
              "|---|---|---|---|---|---|"]
@@ -70,13 +70,21 @@ def main():
     bs_f = CNNP / "best_seed" / "per_seed.json"
     if bs_f.exists():
         bs = json.load(open(bs_f))
+        auto_best = bs["none"]["best_fom3"]
+        # Derive the un-pooling verdict from the data (do not assert it).
+        no_gain_unpooled = all(bs[op]["best_fom3"] <= auto_best for op in ARMS
+                               if op != "none" and op in bs)
+        unpool_claim = ("**The no-cross-gain survives un-pooling** — every cross arm stays ≤ "
+                        "auto-only, so it is not a pool-haircut artifact."
+                        if no_gain_unpooled else
+                        "**Un-pooling CHANGES the picture** — at least one cross arm exceeds "
+                        "auto-only at its best seed, so part of the pooled no-gain is a "
+                        "pool-haircut artifact; interpret per-seed.")
         lines += ["", "## Robustness — best single (MAF) seed, un-pooled",
                   "Pooling 3 MAF seeds applies a haircut, so the best single seed is the CNN at its "
                   "most favorable. Reloaded the trained MAF checkpoints, sampled each seed at the typical "
-                  "obs. **The no-cross-gain survives un-pooling** — every cross arm stays ≤ auto-only, so "
-                  "it is not a pool-haircut artifact. (MAF seeds, not compressor seeds; one compressor.)",
+                  f"obs. {unpool_claim} (MAF seeds, not compressor seeds; one compressor.)",
                   "", "| arm | s41 | s42 | s43 | best | best vs-auto |", "|---|---|---|---|---|---|"]
-        auto_best = bs["none"]["best_fom3"]
         for op in ARMS:
             if op not in bs:
                 continue
@@ -93,9 +101,9 @@ def main():
         f = CNNP / "gate_c/lc2st" / f"flat_{op}" / f"flat_{op}" / "lc2st_summary.json"
         return json.load(open(f)) if f.exists() else None
     lines += ["", "## GATE C — calibration",
-              "Full interpretation: **`cnn_phase/gate_c/GATE_C_INTERPRETATION.md`**. The two "
-              "load-bearing arms (auto-only, +product) pass all three tests (TARP global-joint, "
-              "SBC global-marginal, L-C2ST local-at-fiducial); the result is calibration-trustworthy.",
+              "Full interpretation: **`cnn_phase/gate_c/GATE_C_INTERPRETATION.md`** (TARP/SBC "
+              "verdicts documented there from `gate_c/{tarp_drp,sbc}/`). The L-C2ST verdicts below "
+              "are derived from the per-arm summaries.",
               "", "| arm | L-C2ST reject@p<0.05 | median p | verdict |", "|---|---|---|---|"]
     for op in ARMS:
         d = lc2st(op)
@@ -106,9 +114,16 @@ def main():
         lines.append(f"| {ARMLAB[op]} | {fr*100:.0f}% | {d['median_p']:.2f} | {v} |")
     lc_p = lc2st("product")
     if lc_p:
-        lines += ["", f"L-C2ST self-test (power gate): ST_H0 p={lc_p['gate']['st_h0_median_p']:.2f} "
-                  f"(no false alarm), ST_H1 p={lc_p['gate']['st_h1_median_p']:.2f} (planted 0.5σ w0 "
-                  "DETECTED) ⇒ the test has power, so the calibrated verdicts are real (unlike high-dim L1).",
+        h0_p = lc_p["gate"]["st_h0_median_p"]; h1_p = lc_p["gate"]["st_h1_median_p"]
+        h0_ok = h0_p >= 0.05   # no false alarm on the null self-test
+        h1_ok = h1_p < 0.05    # planted 0.5σ w0 error detected
+        power_claim = ("⇒ the test has power, so the calibrated verdicts are real (unlike high-dim L1)."
+                       if (h0_ok and h1_ok) else
+                       "⇒ ⚠ the self-test power gate FAILED — treat the L-C2ST verdicts above as "
+                       "inconclusive (cf. the high-dim L1 case).")
+        lines += ["", f"L-C2ST self-test (power gate): ST_H0 p={h0_p:.2f} "
+                  f"({'no false alarm' if h0_ok else '⚠ FALSE ALARM'}), ST_H1 p={h1_p:.2f} "
+                  f"(planted 0.5σ w0 {'DETECTED' if h1_ok else '⚠ NOT detected'}) {power_claim}",
                   "Figures: `gate_c/{tarp_drp/figures, sbc, lc2st}/`.", ""]
     (ROOT / "FLATSKY_CNN_RESULT.md").write_text("\n".join(lines))
     print(f"wrote {ROOT/'FLATSKY_CNN_RESULT.md'}")

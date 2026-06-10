@@ -208,7 +208,9 @@ def main():
               f"deterministic channel_scale (verify --expect-params-sha was passed).", flush=True)
 
     Path(a.out).parent.mkdir(parents=True, exist_ok=True)
-    np.savez(a.out, S=S, perm=P, patch=PA, theta=TH,
+    # `truth` is an alias of `theta`: population_sweep_flatsky.py reads fz["truth"]
+    # (it silently stored an empty truth array for every pre-2026-06-10 output).
+    np.savez(a.out, S=S, perm=P, patch=PA, theta=TH, truth=TH,
              channel_scale=channel_scale, g1_maxdev=np.float64(maxdev))
     print(f"[{a.arm_label}] wrote {a.out}", flush=True)
 

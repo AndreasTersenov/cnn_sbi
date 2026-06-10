@@ -137,14 +137,28 @@ def main():
     L = ["# Multi-compressor-seed check — does the product no-gain survive the compressor draw?\n",
          "Pooled 9000-obs median FoM3 per compressor seed (each = own compressor + 3-MAF-seed pooled sweep).\n",
          "| compressor seed | auto-only | +product | product/auto |", "|---|---|---|---|"]
+    ratios = {}
     for seed in (41, 42, 43):
         a = s41["none"] if seed == 41 else med("none", seed)
         p = s41["product"] if seed == 41 else med("product", seed)
+        if a and p:
+            ratios[seed] = p / a
         r = f"{p/a:.2f}×" if (a and p) else "—"
         L.append(f"| {seed}{' (orig)' if seed==41 else ''} | {a:.0f} | {p:.0f} | {r} |"
                  if (a and p) else f"| {seed} | {a or '—'} | {p or '—'} | — |")
-    L += ["", "**Verdict:** product/auto ≤ 1 across all compressor seeds ⇒ the no-cross-gain is robust "
-          "to the compressor draw (not just the MAF seed).",
+    # Verdict derived from the computed ratios — never asserted unconditionally.
+    if len(ratios) < 3:
+        verdict = (f"**Verdict:** INCOMPLETE — only {sorted(ratios)} of (41, 42, 43) have sweep "
+                   "summaries; no robustness conclusion.")
+    elif all(r <= 1.0 for r in ratios.values()):
+        verdict = ("**Verdict:** product/auto ≤ 1 across all compressor seeds ⇒ the no-cross-gain is "
+                   "robust to the compressor draw (not just the MAF seed).")
+    else:
+        gain = ", ".join(f"s{s} {r:.2f}×" for s, r in sorted(ratios.items()) if r > 1.0)
+        verdict = (f"**Verdict:** product/auto > 1 for {gain} ⇒ the no-cross-gain is NOT robust to "
+                   "the compressor draw — consistent with optimization-limited cross extraction; "
+                   "interpret per-seed before reframing the headline.")
+    L += ["", verdict,
           "" if not (f1 or f2 or f3) else f"\n⚠ FAILURES: compressor={f1} fidsumm={f2} sweep={f3}"]
     Path(MS, "MULTISEED_COMPRESSOR_CHECK.md").write_text("\n".join(L))
     print(f"\n=== multiseed check done in {(time.time()-t0)/60:.1f} min -> {MS}/MULTISEED_COMPRESSOR_CHECK.md ===")

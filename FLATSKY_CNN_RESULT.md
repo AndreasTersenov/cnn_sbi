@@ -1,6 +1,6 @@
 # Flat-sky (patch-local) cross — de-leaked L1-vs-CNN (2026-06-09)
 
-**Pooled 3-seed 9000-obs median, common jaxili MAF (NDE confound removed).** CNN-VMIM compressor on the same de-leaked patch-local cross as the L1 side (`FLATSKY_CROSS_RESULT.md`). Calibrated: TARP ✓ / SBC / L-C2ST (see cnn_phase/gate_c).
+**Pooled 3-seed 9000-obs median, common jaxili MAF (NDE confound removed).** CNN-VMIM compressor on the same de-leaked patch-local cross as the L1 side (`FLATSKY_CROSS_RESULT.md`). Calibration: GATE C section below + cnn_phase/gate_c.
 
 ## FoM3 (pooled median)
 
@@ -36,7 +36,7 @@ Figures: `cnn_phase/best_seed/` (FoM3 bars, per-arm CNN-best-seed vs L1-pooled o
 
 
 ## GATE C — calibration
-Full interpretation: **`cnn_phase/gate_c/GATE_C_INTERPRETATION.md`**. The two load-bearing arms (auto-only, +product) pass all three tests (TARP global-joint, SBC global-marginal, L-C2ST local-at-fiducial); the result is calibration-trustworthy.
+Full interpretation: **`cnn_phase/gate_c/GATE_C_INTERPRETATION.md`** (TARP/SBC verdicts documented there from `gate_c/{tarp_drp,sbc}/`). The L-C2ST verdicts below are derived from the per-arm summaries.
 
 | arm | L-C2ST reject@p<0.05 | median p | verdict |
 |---|---|---|---|
