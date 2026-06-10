@@ -22,6 +22,22 @@ Each arm cross-gain over auto-only is measured AND calibration-validated (TARP/S
 ## Guardrails
 patch-local cross ONLY (never full-sphere = leakage); per-channel noise (not shared auto-sigma); never PCA L1; GPU 1 only; example-disjoint compressor/NDE split by perm; calibrate BEFORE contours; SAME auto channels across all arms; one apodized-circular convolution definition; do not relitigate the operator choice (notes S8-12).
 
+## Loop status (fable5-handoff 2026-06-10)
+SESSION HANDOFF to Fable 5 written: HANDOFF_FABLE5_2026-06-10.md (repo root, the new entry point) +
+FABLE5_FIRST_PROMPT.md (copy-paste first prompt). ★ LIVE QUESTION (Andreas 2026-06-10): is the CNN
+no-cross-gain OPTIMIZATION-LIMITED, not a real method difference? His point: CNN gets bins as channels
+⇒ can learn cross-correlations implicitly ⇒ explicit cross redundant for CNN; cross-map trick is for
+per-channel methods (L1). NOT a 10-d bottleneck (10-d enough for 6 params) — he reads it as compressor
+TRAINING INEFFICIENCY, and notes BEST seed (2620) > L1 auto (2405). Data nuance: CNN auto TIES L1 auto
+(not beats), big per-seed scatter (auto 2620/2364/2387, product 2225/2331/2017) ⇒ optimizer-into-
+optima not capacity wall; but that scatter is MAF-seed (1 compressor), best-vs-L1 is best-vs-pooled
+single-obs (suggestive not clean). RUNNING NOW: run_multiseed_compressor_check.py (compressor seeds
+42,43 × {product,none}, GPU 1+2, ~4h) → does a well-trained COMPRESSOR lift product toward/over L1?
+→ cnn_phase/multiseed/MULTISEED_COMPRESSOR_CHECK.md. NEXT-SESSION TODO: (1) interpret it + reframe
+FLATSKY_CNN_RESULT.md/memory IF supported; (2) principled best-seed (val-loss, not post-hoc FoM3;
+L1 per-seed needs retrain — 2000-d reload truncates); (3) BNT for flat-sky cross (scope first); (4)
+bug/inefficiency audit (fan out subagents). Commits through cf96f25→(this). Branch pushed.
+
 ## Loop status (cnn-best-seed 2026-06-10)
 ★ CNN BEST-SINGLE-SEED (un-pooled) CHECK DONE 2026-06-10. The no-cross-gain is NOT a pool-haircut
 artifact: reloaded the per-seed MAF checkpoints (CNN 10-d reloads bit-exact; L1 2000-d truncates →
