@@ -124,6 +124,10 @@ grad-clip — product/none train clean without it).
 
 - **Status:** `…/cnn_phase/multiseed/driver.out` (phase log) and `…/multiseed/logs/`. Phases run
   compressor → fidsumm → sweep; the **sweeps are the long pole (~2 h each, 2 GPUs → ~4 h)**.
+  **Reading `driver.out`:** it resets its elapsed-time counter at the *start of each phase*, so you'll
+  see three `[0s] LAUNCH …` blocks and the same job names (`none_s42`, `product_s42`, …) repeated under
+  `PHASE compressor`, `PHASE fidsumm`, `PHASE sweep`. That is **one continuous run** moving through its
+  three stages, **not** a relaunch — each stage processes all four (arm,seed) jobs.
 - **When done:** `…/cnn_phase/multiseed/MULTISEED_COMPRESSOR_CHECK.md` (auto-written: product/auto FoM3
   per compressor seed + verdict). If the file is missing, the run failed or is mid-phase — read
   `driver.out`.
@@ -200,6 +204,40 @@ All live code is in `scripts/sbi/`. Results under `…/results/exploratory/flats
   `train_jaxili_from_compressed.py` (has `compute_fom3`, `fom2d`, `marginal_stats`, `setup_env`),
   `npe_l1norm_cross_jaxili_nbody_tomo.py` (has `preprocess_summaries`, `filter_zero_variance_bins`,
   `train_with_nan_retry`, the jaxili checkpoint-reload helpers).
+
+## 7b. Environment, data inputs & key conventions (needed to run/reproduce anything)
+
+**The project `CLAUDE.md` is auto-loaded by Claude Code and is authoritative** for the environment,
+data layout, and three-layer pipeline architecture (summary extraction → preprocessing → density
+estimator). Lean on it; the items below are the load-bearing subset for *this* campaign.
+
+- **Conda env `jaxili`** for everything. The L1 pipeline also needs the local PyTorch extension
+  **`wl_stats_torch`** at `/home/tersenov/software/wl_stats_torch` (wavelet ℓ₁ on GPU; the L1 scripts
+  hard-code `_WL_STATS_PATH`). The CNN path does not need it; the L1-retrain follow-up (§6.2) does.
+- **Data inputs** (hard-coded as defaults in the orchestrators; verify with `--dry-run`):
+  - Cross-map TFDS: **`nbody_cosmogrid_dataset_tomo_cross/grid_10deg_80px_nonoverlap180`** at
+    `data_dir=/home/tersenov/tensorflow_datasets` (autos = channels 0–3; we build the cross from these,
+    never the leaky channels 4–9).
+  - Fiducial obs cache: **`…/results/exploratory/cross_maps_campaign/full_sphere_cache_fiducial_10deg`**
+    (200 perms × 180 patches; autos ch 0–3 reusable; the obs source for all sweeps).
+  - Underlying sims: CosmoGridV1 at `/home/tersenov/CosmoGridV1/`.
+- **Parameter vector (fixed order):** `theta = [Ωm, σ8, w0, h0, ns, Ωb]`, with `h0 = H0/100` applied in
+  preprocessing. The science triad is (Ωm, σ8, w0) = indices 0,1,2.
+- **FoM3** = `1 / sqrt(det(C₃))` where C₃ is the 3×3 covariance of (Ωm, σ8, w0) from the posterior
+  samples (`compute_fom3` in `train_jaxili_from_compressed.py`). Headline metric; report σ and the 2D
+  (Ωm,σ8) area alongside (FoM3 is correlation-sensitive — a 1–2% covariance change can swing it ~50%).
+- **Common-MAF methodology (why the comparison is fair):** the CNN compressor's 10-d summary and the L1
+  datavector are both fed into the **same `jaxili` MAF** for the production posteriors (the population
+  sweep / repr-corners retrain it), which removes the NDE-architecture confound
+  (`project_nde_architecture_mismatch`). The CNN's in-repo sbi_lens RealNVP is only the *VMIM training
+  companion*, not the production NDE.
+- **Obs conventions:** representative obs are `typical` = perm16/patch23 and `favorable` = perm0/patch90;
+  the population set is perm<50 × 180 = 9000 obs.
+
+**Branch note:** the branch name `autoresearch/cnn-auto-push-18-20-2026` is historical (it predates this
+flatsky work) but it is where the whole flatsky-cross series lives — continue on it. The repo's
+`main` is the eventual PR target; CLAUDE.md still calls `l1-cross-maps` the "active branch", which is
+stale — don't be confused by that.
 
 ## 8. Hard guardrails (non-negotiable; from CLAUDE.md + memory)
 
