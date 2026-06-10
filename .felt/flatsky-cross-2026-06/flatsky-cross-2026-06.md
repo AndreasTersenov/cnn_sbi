@@ -22,6 +22,24 @@ Each arm cross-gain over auto-only is measured AND calibration-validated (TARP/S
 ## Guardrails
 patch-local cross ONLY (never full-sphere = leakage); per-channel noise (not shared auto-sigma); never PCA L1; GPU 1 only; example-disjoint compressor/NDE split by perm; calibrate BEFORE contours; SAME auto channels across all arms; one apodized-circular convolution definition; do not relitigate the operator choice (notes S8-12).
 
+## Loop status (recipe-check-launched + BNT-scoped 2026-06-10 ~15:00)
+Andreas: START recipe test, SKIP L1 per-seed retrain, BNT = PAPER PILLAR 2. ★ LAUNCHED
+run_recipe_160k_check.py (pid 3977580, GPUs 1+2, idle co-tenants): {none,product} × s{42,43} at
+160k steps + --compressor-val-batches 16, paired vs the 80k multiseed numbers → multiseed_160k/
+RECIPE_160K_CHECK.md (~2 h; monitor armed). Tests the RECIPE-level optimization-limited
+hypothesis AND calibrates the BNT contingency ladder. ★ BNT PLAN REWRITTEN with Andreas's
+framing (NEXT_THREADS_PLAN §B): prediction ladder = L1-auto inflates / L1+product inflates less /
+CNN ~no inflation ⇒ BNT lossless for channel-mixing compressors. Inflation ratio FoM3_BNT/
+FoM3_noBNT vs existing arms. Grounding: prior 20° campaign (advanced arch, 120k, 5 seeds)
+recovered 0.85× FoM3 (+3.7% std_sum) — near-lossless but needed the BIGGER compressor; plain CNN
+may inflate here without falsifying losslessness → contingency ladder (160k recipe → advanced
+arch → discuss). Implementation: tomo4_bnt_v1 matrix from bnt_utils (bin-dependent only, carries
+to 10°), JAX applier behind --flatsky-bnt in make_flat_cross_transform + np oracle + L1 torch
+twin, GATE A extended, L1 noise σ RE-FROZEN through BNT (noise-only realizations must be BNT'd —
+correlated post-BNT noise is the point). 4 arms (L1/CNN × auto/auto+product, BNT) + 2 extra CNN
+compressor seeds for the headline ratio (multiseed lesson). AWAITING Andreas sign-off on §B
+before building.
+
 ## Loop status (jit-sampling-adopted 2026-06-10 ~14:00)
 ★ SAMPLING JIT MEASURED + ADOPTED. bench_sample_jit.py (GPU 2): eager 183 ms/obs → jit 1.05 ms/obs
 (174×); vmap unnecessary. Bit-identity fails at TF32 kernel level (max|Δ| 3.4e-3, same keys/u-draws)

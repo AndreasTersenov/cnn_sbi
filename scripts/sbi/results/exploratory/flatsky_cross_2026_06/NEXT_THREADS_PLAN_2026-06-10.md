@@ -38,9 +38,35 @@ rerun the two L1 arms with per-seed dumps.**
 Deliverable: a best-to-best table (selection by val loss, evaluation = pooled-median FoM3/σ/2D)
 + a short section in FLATSKY_CNN_RESULT.md replacing the current caveated best-seed section.
 
-## B. BNT for the flat-sky cross (calibrated BNT L1-vs-CNN)
+## B. BNT for the flat-sky cross (calibrated BNT L1-vs-CNN) — PAPER PILLAR 2
 
-**Design questions settled (proposal — confirm before build):**
+**Scientific target (Andreas, 2026-06-10).** BNT is a linear, invertible re-weighting across
+tomographic bins that decorrelates the lensing-kernel overlap. Prior studies (and our own earlier
+campaign) find higher-order stats computed on BNT maps **inflate** the contours — mechanism:
+(i) lower per-map S/N in all but the first BNT bin, (ii) the originally independent white noise
+becomes **correlated across bins** after the transform. Since BNT is invertible, the information
+is still there; the inflation must come from the analysis not capturing the (now-crucial)
+cross-bin correlations. The prediction ladder to test, each as an inflation ratio
+`FoM3_BNT / FoM3_noBNT` (pooled 9000-obs median; σ/2D alongside) against the existing no-BNT
+arms:
+
+1. **L1 auto-only:** inflates significantly (per-channel statistic, blind to the correlated
+   structure BNT creates).
+2. **L1 auto+product:** inflates less (the explicit cross channel restores some cross-bin
+   information) but still inflates.
+3. **CNN:** (almost) no inflation — the bins enter as channels and VMIM should extract the
+   cross-bin information implicitly ⇒ **BNT is lossless for a channel-mixing compressor**.
+
+**Grounding from the prior campaign** (`results/final/paper_sbi_consolidation/…_advanced_cdim10_
+long120k_v1/advanced_arch64_dense256_nostd_long/metrics.json`, 5 seeds, 20°/160px, different
+setup with known bugs): BNT/no-BNT FoM3 = **0.85×** (std_sum +3.7%) — near-lossless, but it took
+the bigger "advanced" compressor + 120k steps; the plain CNN was not enough. Expect the same
+risk here: information in BNT space is less accessible (complex correlated noise), so prediction
+3 may fail at the standard recipe **without falsifying losslessness** — the contingency ladder
+below is part of the design, and the in-flight 160k recipe check tells us beforehand how much
+the heavier recipe moves the plain CNN in no-BNT space.
+
+**Design (proposal — confirm before build):**
 1. **Order: noise → BNT → cross-build → whiten.** Shape noise is already injected at cache build
    (the TFDS autos carry it), matching the project invariant "noise before BNT". BNT is a linear
    per-pixel recombination across bins (κ̃ᵢ = Σⱼ Bᵢⱼ κⱼ) that a survey applies to its *observed*
@@ -58,23 +84,35 @@ Deliverable: a best-to-best table (selection by val loss, evaluation = pooled-me
    comes from `bnt_utils.py` (full tomo4 required; `validate_bnt_configuration`). L1 additionally
    needs its per-(channel,scale) noise σ re-frozen on BNT'd channels
    (`freeze_flatsky_cross_noise.py` rerun with the BNT transform).
-4. **Campaign shape mirrors the no-BNT one** (so results are directly comparable): per probe
-   {auto-only, +product} minimum (add conv/both only if asked — conv was the throwaway arm),
-   1 compressor seed (41) + 3-MAF pooling + 9000-obs median sweep + GATE C (TARP/SBC; L-C2ST for
-   CNN). GPU 1(+2 if granted); detached; phase-barriered orchestrator in the
-   `run_multiseed_compressor_check.py` style with the **derived-verdict pattern** (no hardcoded
-   conclusions) and per-phase failure propagation.
+4. **Implementation surface (concrete):** `bnt_utils.py` already holds the fixed
+   `tomo4_bnt_v1` 4×4 matrix with numpy/TF appliers (channel-last; matrix depends only on the
+   tomographic bins, so it carries to 10° unchanged). Add a JAX applier (one `tensordot`) at the
+   head of `make_flat_cross_transform` behind a `--flatsky-bnt` flag, the numpy twin in
+   `flatsky_cross.py` for the GATE-A oracle, and the same channel-mix in the L1 flat_local torch
+   path. Extend `gate_a_flat_cross_cnn.py` with BNT cases (np-vs-jax bit-match, BNT'd autos
+   preserved, whitening on BNT'd channels). **L1 noise σ must be re-frozen on BNT'd channels**
+   (`freeze_flatsky_cross_noise.py` rerun with the BNT step in the pipeline — the noise-only
+   realizations must pass through BNT too, since correlated post-BNT noise is the whole point).
+   Per-channel RMS whitening needs no special handling (the deterministic estimator runs on the
+   built BNT channels).
+5. **Campaign shape:** 4 new arms — {L1, CNN} × {auto-only, auto+product}, all BNT — compared
+   against the existing no-BNT arms (this campaign) for the inflation ratios. Mirror the no-BNT
+   pipeline exactly: 1 compressor seed (41) + 3-MAF pooling + 9000-obs jit sweep + GATE C
+   (TARP/SBC both probes; L-C2ST for CNN arms). Derived-verdict reporting throughout.
+   **Robustness add-on given the multiseed lesson:** the CNN BNT arms should get the 2 extra
+   compressor seeds (42, 43) for the headline inflation ratio — single-compressor-seed
+   cross-claims are exactly what bit us this morning. (~+4 chains, cheap post-jit.)
+6. **Contingency ladder if CNN-BNT inflates at the plain-CNN recipe** (expected risk — see
+   grounding): (a) 160k + val-batches-16 recipe (informed by the in-flight recipe check);
+   (b) the prior campaign's "advanced" arch (arch64/dense256 — exists in
+   `--compressor-arch` options); (c) only then discuss capacity/objective changes. Each rung is
+   a small set of chains at post-jit cost; decide rung-by-rung with Andreas.
 
-**Open question for Andreas:** the scientific target — is the BNT comparison about (i) whether
-BNT changes the L1-vs-CNN ordering on the cross, or (ii) whether the cross-gain itself survives
-nulling (the product channel is dominated by the same lens planes BNT reorganizes)? The minimal
-4-arm matrix (L1/CNN × auto/product, all BNT) answers both at the headline level; (ii) would
-additionally want the no-BNT product numbers re-quoted alongside.
-
-**Cost estimate (grounded in measured numbers, this campaign):** per arm ≈ compressor 16 min +
-fidsumm ~2 min + sweep ~100 min (current throughput; less with C adopted) for the CNN side; L1
-arms have no compressor stage but pay the wavelet pass. 4 arms ≈ a day on GPU 1 including gates,
-assuming no NaN surprises. Multi-day only if conv/both arms or extra seeds are added.
+**Cost (measured components, post-jit):** CNN chain ≈ 16 min compressor (80k; 32 min at 160k)
++ ~1 min fidsumm + ~30 min sweep ⇒ ~50–65 min/chain; L1 arm ≈ datavector build (~45 min,
+loader-bound) + ~10 min sweep (fast NDE train + jit sampling). Minimal 4-arm matrix + gates ≈
+one day on 2 GPUs; +4 CNN compressor-seed chains ≈ +4 h. Packing (Tier-1 scheduler) would
+roughly halve the wall time once the interference numbers justify defaults.
 
 ## C. Remaining audit fixes (batch B — blocked on the multiseed driver exiting) + throughput
 
@@ -101,12 +139,12 @@ MI extracted from the product channel at this recipe. Consequences for the threa
    packing numbers, with sign-off.
 2. **BNT campaign (B)** — the main remaining scientific deliverable; start once C lands
    (design in §B above needs Andreas's confirmation on the open question).
-3. **Recipe-level CNN test (new, optional)** — the surviving form of the optimization-limited
-   hypothesis: train the product arm harder (e.g. 160k steps + `--compressor-val-batches 16`,
-   2 seeds) and see if CNN/L1(product) moves above 0.85×. ~2 compressor+sweep chains; cheap
-   after C; can ride alongside BNT on packed GPUs. Decision: Andreas.
-4. **Principled best-seed (A) — largely superseded** for the auto-only story: the multiseed
-   check already provides matched-aggregation per-compressor-seed numbers; selection by val
-   loss picks s43 (best val loss AND best auto FoM3 2480 vs L1 2405 = +3%) — the honest claim
-   remains "auto-only tie". The expensive L1 per-NDE-seed retrain would not change any
-   conclusion; recommend SKIP unless the paper needs a formal best-to-best table.
+3. **Recipe-level CNN test — LAUNCHED 2026-06-10 ~15:00** (Andreas: "start with 2"):
+   `run_recipe_160k_check.py`, {none, product} × seeds {42, 43} at 160k steps +
+   `--compressor-val-batches 16`, GPUs 1+2, paired against the 80k multiseed results →
+   `cnn_phase/multiseed_160k/RECIPE_160K_CHECK.md`. Doubles as the recipe calibration for the
+   BNT contingency ladder. NB the recipe bundles two changes (2× steps + de-noised best_val);
+   ablate before attributing any movement.
+4. **Principled best-seed (A) — SKIPPED** (Andreas, 2026-06-10): the multiseed check already
+   provides matched-aggregation per-compressor-seed numbers; auto-only remains a tie under
+   val-loss selection (s43: 2480 vs L1 2405). No L1 per-NDE-seed retrain.
