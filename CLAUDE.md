@@ -23,9 +23,9 @@ The current scientific focus (branch `l1-cross-maps`) is **comparing wavelet-L1 
 - **Pip install:** `pip install -e .` registers `learn2map` and pulls `jax-cosmo`, `numpyro`, `lenstools`, and `sbi_lens` (from git).
 - **TFDS builders** live in `scripts/sbi/tf_dataset_nbody_tomo*.py` and register via `import tf_dataset_nbody_tomo as _tomo_builder` — TFDS names used by the pipeline are `NbodyCosmogridDatasetTomo/grid` (10 deg / 80 px) and `NbodyCosmogridDatasetTomo/grid_20deg_160px[_nonoverlap48]` (20 deg / 160 px).
 
-## GPU allocation (project rule)
+## GPU allocation (project rule — updated 2026-06-10)
 
-**All new GPU jobs in this project must pin to GPU 1 only.** Never use GPU 0, 2, or 3 when launching a new run. Applies to every device-selection surface: `--cuda-visible-devices 1`, `--gpus 1`, `CUDA_VISIBLE_DEVICES=1`. Since we are the sole tenant on GPU 1 by policy, `--xla-mem-fraction` may go up to ~1.0. The titan-host default of "GPUs 0, 1, 2" from `cluster-resources` is **overridden** here. Currently-running jobs on other GPUs are grandfathered — do not cancel or migrate. If GPU 1 is occupied, queue the work and surface the contention to Andreas; do not auto-spill onto another device.
+**Allowed GPU pool: 0, 1, 2 — GPU 3 never.** (Supersedes the 2026-05-19 "GPU 1 only" rule.) Other users share GPUs 0–2: **check `nvidia-smi` for foreign tenants before every launch**, pick devices that won't trample them, and surface contention to Andreas instead of squeezing in beside a busy tenant. Memory caps: up to ~100% when sole tenant on 1–2 GPUs, ~75%/GPU when occupying all three; when packing N of our jobs on one GPU, set per-job `XLA_PYTHON_CLIENT_MEM_FRACTION ≈ 0.9/N`. **CPU budget: ≤50 workers total** across our processes (~120 cores on the host). Orchestration should be written to **maximize GPU utilization** — pack multiple dispatch-bound jobs per GPU rather than defaulting to 1 job/GPU (see `scripts/sbi/results/exploratory/flatsky_cross_2026_06/PIPELINE_AUDIT_2026-06-10.md` §d).
 
 ## Code layout (what is actually live)
 
