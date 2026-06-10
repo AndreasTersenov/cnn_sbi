@@ -44,7 +44,9 @@ What I'd like you to do, in order:
 How I work: plan non-trivial work to a markdown file and get my sign-off before building or launching
 GPU jobs; honor the guardrails in the handoff (GPU 1 only unless I grant more — and re-check nvidia-smi
 for other tenants; stage git by path, never commit the big `.npz/.pkl` artifacts; titan has no
-scheduler so run jobs detached). When I'm thinking out loud or asking a question, give me your
-assessment and stop — don't change code until I ask. Read everything first, confirm back your
+scheduler so run jobs detached). We track campaign state in a **felt fiber** (handoff §0 explains it) —
+read its top loop-status stanzas for the live state, and keep it updated (prepend a short stanza when
+state changes), committing the fiber `.md` alongside your work. When I'm thinking out loud or asking a
+question, give me your assessment and stop — don't change code until I ask. Read everything first, confirm back your
 understanding of the state and the open question, then propose how you'd tackle (1). Interview me if
 anything is ambiguous.

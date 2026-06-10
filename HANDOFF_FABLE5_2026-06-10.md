@@ -8,6 +8,40 @@
 
 ---
 
+## 0. How this project tracks state — the felt fiber (READ it AND keep it UPDATED)
+
+This project runs its long campaigns under a lightweight "felt / Ralph" convention. Each campaign has
+a **fiber** — a single living markdown file that is the campaign's constitution + running log. Ours is
+`.felt/flatsky-cross-2026-06/flatsky-cross-2026-06.md`. **Treat it as the source of truth for live
+state, and update it as you work** — it is how the *next* session (or the next you) picks up cleanly.
+
+Structure of the fiber:
+- **Frontmatter** (`name`, `status: active`, `tags`, `outcome`) — the `outcome` field is a one-paragraph
+  rolling summary of where the campaign stands; keep it current when the headline changes.
+- **`## Primary metric`**, **`## Done condition`**, **`## Guardrails`** — the constitution (don't drift
+  from these without writing down why).
+- **`## Loop status (…)` stanzas** — the running log, **newest at the top**. Each substantive event
+  (a result, a decision, a launched/finished campaign) gets a short prepended stanza. The most recent
+  stanzas (top of the file) are the live state — read those first. I just added a
+  `## Loop status (fable5-handoff 2026-06-10)` stanza summarizing the open question + the running job;
+  start there.
+
+How to use it this session:
+- **Read** the top 2–3 loop-status stanzas for the current state (faster than reconstructing from logs).
+- **Update** it: when you finish interpreting the multi-seed run, reframe the writeup, or launch a new
+  campaign (BNT etc.), prepend a new `## Loop status (…)` stanza (one short paragraph: what happened,
+  the number that matters, what's next) and refresh the frontmatter `outcome` if the headline moved.
+  Commit the fiber `.md` alongside the code/writeup (stage it by path; do **not** commit `.felt/index.db`,
+  the binary felt index — it churns and isn't ours to manage here).
+- The **full felt/Ralph operating conventions** (one primary metric per fiber, a budget + plateau-stop
+  in the Done condition, the `ship-blocker` tag, self-review cadence, the autoresearch drivers) are in
+  the project **`CLAUDE.md` → "Felt / Ralph operating conventions"** and the protocol in
+  **`skills/sbi/SKILL.md`**. They matter most if you start a *new* autonomous loop (e.g. a BNT
+  autoresearch campaign); for a hands-on session like continuing this one, the read-it-and-update-it
+  habit above is the load-bearing part.
+
+---
+
 ## 1. One-paragraph state
 
 We compared two weak-lensing summary statistics — the **wavelet-L1** datavector and a **CNN-VMIM**
