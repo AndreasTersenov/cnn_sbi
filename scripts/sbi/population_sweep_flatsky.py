@@ -29,6 +29,9 @@ def parse_args():
     p.add_argument("--n-obs", type=int, default=9000)
     p.add_argument("--max-perm", type=int, default=50)          # perm<50 x 180 = 9000
     p.add_argument("--m-samples", type=int, default=2000)
+    p.add_argument("--sample-eager", action="store_true",
+                   help="Legacy un-jitted per-obs sampling (reproduces pre-2026-06-10 "
+                        "sweeps bit-for-bit; ~100x slower than the default jitted path).")
     p.add_argument("--epochs", type=int, default=50000)
     p.add_argument("--batch-size", type=int, default=256)
     p.add_argument("--learning-rate", type=float, default=1e-4)
@@ -92,15 +95,33 @@ def main():
         posteriors.append((seed, inf.build_posterior()))
         print(f"  NDE seed {seed} {time.time()-t0:.0f}s", flush=True)
 
+    # Per-posterior samplers. Default: jitted closure — jaxili's eager
+    # DirectPosterior.sample is un-jitted (~600 tiny dispatches/call, ~180 ms/obs
+    # measured); jit collapses it to ~1 ms/obs (~90x sweep-phase speedup). Same
+    # per-obs PRNG keys; samples differ only at the TF32 kernel level (bench:
+    # max|dev|=3.4e-3; full-arm 9000-obs median FoM3 dev -0.39%, see
+    # multiseed/population_sweep/none_s42/jit_validation.json). Adopted 2026-06-10;
+    # --sample-eager reproduces the legacy path bit-for-bit.
+    samplers = []
+    for seed, post in posteriors:
+        if a.sample_eager:
+            samplers.append((seed, lambda x, k, _p=post: _p.sample(x=x, num_samples=M, key=k)))
+        else:
+            _params, _model = post.state.params, post.model
+            samplers.append((seed, jax.jit(
+                lambda x, k, _m=_model, _p=_params: _m.apply(
+                    {"params": _p}, x, M, k, method="sample"))))
+    x_dev = jnp.asarray(x_obs)
+
     # per-patch metrics (3-seed pooled posterior per obs)
     sig = np.full((N, 3), np.nan); pair = np.full((N, 3), np.nan); fom3 = np.full(N, np.nan)
     n_finite = np.zeros(N, dtype=np.int32)   # surviving pooled samples per obs (of 3*M)
     t0 = time.time()
     for i in range(N):
         pooled = []
-        for seed, post in posteriors:
+        for seed, fn in samplers:
             k = jax.random.PRNGKey(seed * 100003 + int(sel[i]))
-            pooled.append(np.asarray(post.sample(x=jnp.asarray(x_obs[i]), num_samples=M, key=k)))
+            pooled.append(np.asarray(fn(x_dev[i], k)))
         ps = np.concatenate(pooled, 0); ps = ps[np.all(np.isfinite(ps), 1)]
         n_finite[i] = ps.shape[0]
         if ps.shape[0] < 100:

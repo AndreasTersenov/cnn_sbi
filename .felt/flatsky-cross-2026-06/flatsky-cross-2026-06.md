@@ -22,6 +22,17 @@ Each arm cross-gain over auto-only is measured AND calibration-validated (TARP/S
 ## Guardrails
 patch-local cross ONLY (never full-sphere = leakage); per-channel noise (not shared auto-sigma); never PCA L1; GPU 1 only; example-disjoint compressor/NDE split by perm; calibrate BEFORE contours; SAME auto channels across all arms; one apodized-circular convolution definition; do not relitigate the operator choice (notes S8-12).
 
+## Loop status (jit-sampling-adopted 2026-06-10 ~14:00)
+★ SAMPLING JIT MEASURED + ADOPTED. bench_sample_jit.py (GPU 2): eager 183 ms/obs → jit 1.05 ms/obs
+(174×); vmap unnecessary. Bit-identity fails at TF32 kernel level (max|Δ| 3.4e-3, same keys/u-draws)
+⇒ adoption gate = full-arm rerun: validate_jit_sweep.py re-derived none_s42's 9000-obs pooled
+median in 49 s (vs ~4100–4800 s eager): FoM3 −0.39%, σ ±0.2% — 10× inside seed scatter
+(jit_validation.json). Wired as DEFAULT into population_sweep_flatsky.py (--sample-eager = legacy
+bit-exact path). Sweeps now NDE-training-bound ~30 min/arm (was ~100). Keys-not-bits is the new
+reproducibility contract for sweeps (flagged to Andreas). Packing benchmarks (NDE-training
+co-residency, the post-jit bottleneck) deferred — GPUs 0/1 have ACTIVE foreign tenants right now;
+run before the BNT campaign launch. Audit fix batches A+B all landed; scheduler Tier-1 next.
+
 ## Loop status (multiseed-verdict 2026-06-10 ~13:30)
 ★★ MULTI-COMPRESSOR-SEED CHECK DONE (277 min, 4 sweeps n=9000 each). Pooled 3-MAF 9000-obs median
 FoM3 — auto: s41 2325 / s42 2170 / s43 2480; product: 2181 / 2393 / 2433 ⇒ product/auto = 0.94 /

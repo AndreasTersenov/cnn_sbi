@@ -73,9 +73,16 @@ packing). Estimated campaign-shape gains (arithmetic from measured per-job times
 packing is the conditional): today's 4-chain shape 4 h 42 m → **~2.5–2.7 h**; a 12-job sweep
 campaign ~11 h → **~4.2 h** on 9 slots.
 
-### Per-process fixes [gain = MEASURE; benchmarks specified, none run yet]
-1. **Jit the sampling loop** (known; `bench_sample_jit.py` ready, blocked until the multiseed
-   driver exits). All sweeps inherit it.
+### Per-process fixes [gain = MEASURE; benchmarks specified]
+1. **Jit the sampling loop — MEASURED + ADOPTED (2026-06-10).** `bench_sample_jit.py` on GPU 2:
+   eager 183 ms/obs → jit **1.05 ms/obs (174×)**, 2.7 s one-time compile; vmap adds nothing
+   worth the complexity. Bit-identity fails at the TF32 kernel level (max|Δ| 3.4e-3 on samples;
+   same keys/u-draws), so the adoption gate was the full-arm rerun: `validate_jit_sweep.py`
+   re-derived none_s42's complete 9000-obs pooled median in **49 s** (vs ~4100–4800 s eager) with
+   median FoM3 −0.39%, σ's within ±0.2% — an order of magnitude inside seed scatter
+   (`multiseed/population_sweep/none_s42/jit_validation.json`). Wired into
+   `population_sweep_flatsky.py` as the default; `--sample-eager` reproduces the legacy path.
+   Sweeps are now NDE-training-dominated (~30 min/arm instead of ~100).
 2. **jaxili NDE training**: the epoch loop is Python-per-batch over a dataset that jax-dataloader
    forces back to *host numpy* (`jax_dataloader/loaders/jax.py:18-66` — `asnumpy()`, host gather,
    fresh H2D per batch, `num_workers` ignored). Measured ~0.8 ms/jitted call vs tens-of-µs
