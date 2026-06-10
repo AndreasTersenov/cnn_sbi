@@ -22,6 +22,22 @@ Each arm cross-gain over auto-only is measured AND calibration-validated (TARP/S
 ## Guardrails
 patch-local cross ONLY (never full-sphere = leakage); per-channel noise (not shared auto-sigma); never PCA L1; GPU 1 only; example-disjoint compressor/NDE split by perm; calibrate BEFORE contours; SAME auto channels across all arms; one apodized-circular convolution definition; do not relitigate the operator choice (notes S8-12).
 
+## Loop status (recipe-verdict 2026-06-10 16:45 UTC)
+★ RECIPE-LEVEL CHECK DONE (160k + val-batches 16, seeds 42/43, paired vs 80k): THE HEAVIER
+RECIPE DOES NOTHING — 160k/80k per seed: auto 1.08/0.97, product 1.00/1.01 (mean auto 1.02×,
+product 1.00×); CNN/L1(product) 0.83–0.85× UNCHANGED from 80k. The optimization-limited
+hypothesis is now falsified at BOTH the seed level (multiseed) and the recipe level; remaining
+untested rung = ARCHITECTURE (prior 20° BNT campaign needed the 'advanced' arch). Bundled-change
+caveat moot (nothing moved ⇒ no ablation needed). METHODOLOGY footnote: 160k honest 16-batch val
+losses are ~0.15–0.2 nats WORSE than the 80k single-batch 'best' values — the old criterion
+selected on noise — yet downstream FoM3 unchanged ⇒ checkpoint-selection noise never decisive.
+Best-val steps 54k/94k/66k/144k (optimum drifts past 80k without FoM3 movement = flat plateau,
+data-limited). Auto-written verdict was DERIVED this time (fixed generator). Writeup: derived
+recipe line added to FLATSKY_CNN_RESULT.md robustness section; memory updated. BNT contingency
+ladder: rung (a) 160k-recipe DEPRIORITIZED (doesn't transfer guaranteed, but adds nothing in
+no-BNT space) → if CNN-BNT inflates, go straight to advanced arch. GPUs 1+2 FREE. BNT campaign
+launch ARMED, awaiting Andreas's go.
+
 ## Loop status (bnt-campaign-ready 2026-06-10 ~16:15)
 ★ BNT CAMPAIGN ORCHESTRATOR READY (run_flatsky_bnt_campaign.py, dry-run validated): P0 sigma
 freeze --bnt (skipped if table exists) → P1 L1 both-BNT build (solo) → P2 L1 {none,product} BNT

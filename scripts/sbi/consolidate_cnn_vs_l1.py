@@ -144,6 +144,27 @@ def main():
                       "product vs auto per seed (Δ≲0.02 nats), i.e. the compressor objective "
                       "registers no extra mutual information in the product channel at this "
                       "recipe. Details: `cnn_phase/multiseed/MULTISEED_COMPRESSOR_CHECK.md`.", ""]
+        # Recipe-level check (160k + de-noised best-val), if its sweeps exist: derived line.
+        ms160_dir = CNNP / "multiseed_160k" / "population_sweep"
+        ms160 = {}
+        for op in ("none", "product"):
+            for s in (42, 43):
+                f160 = ms160_dir / f"{op}_s{s}" / "median_summary.json"
+                if f160.exists() and ms.get((op, s)):
+                    ms160[(op, s)] = json.load(open(f160))["fom3"]
+        if len(ms160) == 4:
+            a_l = np.mean([ms160[("none", s)] / ms[("none", s)] for s in (42, 43)])
+            p_l = np.mean([ms160[("product", s)] / ms[("product", s)] for s in (42, 43)])
+            extra = ""
+            if l1p:
+                rho160 = max(ms160[("product", s)] for s in (42, 43)) / l1p
+                extra = f"; best CNN/L1(product) {rho160:.2f}×"
+            verdict160 = ("the heavier recipe does not change the story"
+                          if abs(a_l - 1) < 0.1 and abs(p_l - 1) < 0.1 else
+                          "the heavier recipe MOVES the numbers — see the check before quoting")
+            lines += [f"Recipe-level check (160k steps + de-noised best-val, seeds 42/43): mean "
+                      f"160k/80k lift auto {a_l:.2f}×, product {p_l:.2f}×{extra} — {verdict160} "
+                      "(`cnn_phase/multiseed_160k/RECIPE_160K_CHECK.md`).", ""]
 
     # GATE C — read the L-C2ST per-arm local-calibration summaries and emit verdicts.
     def lc2st(op):

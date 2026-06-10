@@ -46,6 +46,8 @@ Two extra compressor seeds (42, 43) trained for auto-only and +product, each run
 
 Robust across draws: every CNN product seed stays below the L1 product (0.76–0.85× of L1 2875), while the CNN auto-only seeds (2170–2480) straddle L1 auto (2405) — auto-only is a statistical tie. Compressor VMIM val losses are equal for product vs auto per seed (Δ≲0.02 nats), i.e. the compressor objective registers no extra mutual information in the product channel at this recipe. Details: `cnn_phase/multiseed/MULTISEED_COMPRESSOR_CHECK.md`.
 
+Recipe-level check (160k steps + de-noised best-val, seeds 42/43): mean 160k/80k lift auto 1.02×, product 1.00×; best CNN/L1(product) 0.85× — the heavier recipe does not change the story (`cnn_phase/multiseed_160k/RECIPE_160K_CHECK.md`).
+
 
 ## GATE C — calibration
 Full interpretation: **`cnn_phase/gate_c/GATE_C_INTERPRETATION.md`** (TARP/SBC verdicts documented there from `gate_c/{tarp_drp,sbc}/`). The L-C2ST verdicts below are derived from the per-arm summaries.
