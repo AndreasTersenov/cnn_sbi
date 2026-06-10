@@ -47,6 +47,45 @@ def cross_pairs(nbins: int) -> list[tuple[int, int]]:
     return [(i, j) for i in range(nbins) for j in range(i + 1, nbins)]
 
 
+# ---------------------------------------------------------------------------
+# Optional BNT pre-step (paper pillar 2): apply the nulling transform to the 4
+# RAW autos BEFORE any channel build, so both the auto channels and the cross
+# channels live in BNT space — the "observed maps" a survey would null first.
+# Matrix source of truth: bnt_utils.BNT_MATRIX (tomo4_bnt_v1; channel-last
+# convention out[..., i] = sum_j B[i, j] * autos[..., j]). Lazy import keeps
+# the heavy bnt_utils->tensorflow dependency out of non-BNT consumers.
+# ---------------------------------------------------------------------------
+def bnt_matrix_np() -> np.ndarray:
+    from bnt_utils import BNT_MATRIX
+    return np.asarray(BNT_MATRIX, dtype=np.float32)
+
+
+def _check_bnt_nbins(n: int) -> None:
+    if n != 4:
+        raise ValueError(f"BNT (tomo4_bnt_v1) requires 4 auto channels, got {n}.")
+
+
+def apply_bnt_np(autos_b: np.ndarray) -> np.ndarray:
+    _check_bnt_nbins(autos_b.shape[-1])
+    M = bnt_matrix_np()
+    out = np.tensordot(autos_b.astype(np.float32), M, axes=([autos_b.ndim - 1], [1]))
+    return out.astype(np.float32)
+
+
+def apply_bnt_torch(autos_b):
+    import torch
+    _check_bnt_nbins(autos_b.shape[-1])
+    M = torch.from_numpy(bnt_matrix_np()).to(device=autos_b.device, dtype=autos_b.dtype)
+    return torch.tensordot(autos_b, M, dims=([autos_b.ndim - 1], [1]))
+
+
+def apply_bnt_jax(autos_b):
+    import jax.numpy as jnp
+    _check_bnt_nbins(autos_b.shape[-1])
+    M = jnp.asarray(bnt_matrix_np(), dtype=autos_b.dtype)
+    return jnp.tensordot(autos_b, M, axes=([autos_b.ndim - 1], [1]))
+
+
 def n_output_channels(nbins: int, op: str) -> int:
     npairs = len(cross_pairs(nbins))
     if op == "none":          # autos only (the auto-only baseline arm)
@@ -101,9 +140,14 @@ def _product_np(autos_b: np.ndarray) -> np.ndarray:
     return np.stack([autos_b[..., i] * autos_b[..., j] for i, j in pairs], axis=-1).astype(np.float32)
 
 
-def build_channels_np(autos: np.ndarray, op: str, roll_frac: float = 0.10) -> np.ndarray:
-    """autos: (H,W,n) or (B,H,W,n) RAW auto maps. Returns RAW autos + cross channels."""
+def build_channels_np(autos: np.ndarray, op: str, roll_frac: float = 0.10,
+                      bnt: bool = False) -> np.ndarray:
+    """autos: (H,W,n) or (B,H,W,n) RAW auto maps. Returns RAW autos + cross channels.
+    bnt=True applies the nulling transform to the autos FIRST (auto + cross channels
+    then all live in BNT space)."""
     autos_b, was_batched = _as_batched(np.asarray(autos, dtype=np.float32))
+    if bnt:
+        autos_b = apply_bnt_np(autos_b)
     npix = autos_b.shape[1]
     parts = [autos_b]
     if op in ("conv", "both"):
@@ -143,11 +187,14 @@ def _product_torch(autos_b):
     return torch.stack([autos_b[..., i] * autos_b[..., j] for i, j in pairs], dim=-1)
 
 
-def build_channels_torch(autos, op, roll_frac: float = 0.10):
-    """autos: torch tensor (H,W,n) or (B,H,W,n) RAW autos on the target device."""
+def build_channels_torch(autos, op, roll_frac: float = 0.10, bnt: bool = False):
+    """autos: torch tensor (H,W,n) or (B,H,W,n) RAW autos on the target device.
+    bnt=True applies the nulling transform to the autos first."""
     import torch
     was_batched = autos.ndim == 4
     autos_b = autos if was_batched else autos.unsqueeze(0)
+    if bnt:
+        autos_b = apply_bnt_torch(autos_b)
     npix = autos_b.shape[1]
     parts = [autos_b]
     if op in ("conv", "both"):
@@ -183,11 +230,14 @@ def _product_jax(autos_b):
     return jnp.stack([autos_b[..., i] * autos_b[..., j] for i, j in pairs], axis=-1)
 
 
-def build_channels_jax(autos, op, roll_frac: float = 0.10):
-    """autos: jax array (H,W,n) or (B,H,W,n) RAW autos."""
+def build_channels_jax(autos, op, roll_frac: float = 0.10, bnt: bool = False):
+    """autos: jax array (H,W,n) or (B,H,W,n) RAW autos.
+    bnt=True applies the nulling transform to the autos first."""
     import jax.numpy as jnp
     was_batched = autos.ndim == 4
     autos_b = autos if was_batched else autos[None]
+    if bnt:
+        autos_b = apply_bnt_jax(autos_b)
     npix = autos_b.shape[1]
     parts = [autos_b]
     if op in ("conv", "both"):

@@ -119,6 +119,11 @@ def main():
     ap.add_argument("--workers", type=int, default=32)
     ap.add_argument("--seed-base", type=int, default=987654321)
     ap.add_argument("--out-dir", type=str, default=str(OUT_DIR))
+    ap.add_argument("--bnt", action="store_true",
+                    help="Freeze the sigma table in BNT space: S+N_r is BNT'd before the "
+                         "channel build (BNT(S+N)=BNT(S)+BNT(N), so the estimator logic is "
+                         "unchanged; the table captures the BNT-correlated noise). Output "
+                         "filename gains a _bnt suffix and the npz carries bnt=True.")
     args = ap.parse_args()
 
     import torch
@@ -161,7 +166,7 @@ def main():
     print(f"  wavelet pass over r (device={dev}, accumulators {tuple(acc_sum.shape)})...")
     for r in range(R):
         data_r = S_t + torch.from_numpy(N_list[r]).to(dev, dtype=torch.float64)  # demean(S)+demean(N)
-        chans = fx.build_channels_torch(data_r, "both")      # (180,80,80,16)
+        chans = fx.build_channels_torch(data_r, "both", bnt=args.bnt)  # (180,80,80,16)
         for c in range(n_ch):
             stats.compute_wavelet_transform(chans[..., c], 1.0, subtract_coarse_mean=True)
             wc = stats.wavelet_coeffs                         # (180, S_ns, H, W)
@@ -193,21 +198,32 @@ def main():
     provenance = ("frozen at fiducial; fixed deterministic normalization (does not bias SBI); "
                   "cross-noise is mildly signal-dependent via S(x)N so most exact near fiducial")
     out_dir.mkdir(parents=True, exist_ok=True)
-    npz_path = out_dir / "flatsky_cross_noise_sigma.npz"
+    _stem = "flatsky_cross_noise_sigma" + ("_bnt" if args.bnt else "")
+    npz_path = out_dir / f"{_stem}.npz"
     np.savez(npz_path, sigma=sigma, channel_names=np.array(names), n_scales=S_ns,
              white_per_scale=white_scale, sigma_pix=sig_pix, n_real=R,
              nside=C["nside"], lmax=C["lmax"], sigma_e=C["sigma_e"],
              galaxy_density=C["galaxy_density"], reso_arcmin=C["reso_arcmin"],
-             field_npix=npix, seed_base=args.seed_base, provenance=provenance)
+             field_npix=npix, seed_base=args.seed_base, provenance=provenance,
+             bnt=bool(args.bnt))
     print(f"\nwrote {npz_path}")
 
     # ---- GATE A1b checks ----
     print("\n========== GATE A1b ==========")
-    # (1) auto empirical vs analytic WHITE propagation
+    # (1) auto empirical vs analytic WHITE propagation. Under BNT each auto bin is a
+    # linear mix of INDEPENDENT white noises -> still spatially white per map, with
+    # amplitude sqrt(sum_j B_ij^2); the analytic reference scales per bin accordingly
+    # (the cross-BIN correlation BNT creates does not affect this per-map check).
+    if args.bnt:
+        bnt_amp = np.sqrt((fx.bnt_matrix_np().astype(np.float64) ** 2).sum(axis=1))
+        print(f"  BNT per-bin white-amplitude factors sqrt(sum B_ij^2): "
+              + " ".join(f"{a:.3f}" for a in bnt_amp))
+    else:
+        bnt_amp = np.ones(4)
     print("  AUTO empirical sigma / analytic-white per scale (expect <1 at fine scales = band-limit):")
     auto_ok = True
     for b in range(4):
-        ratios = sigma[b] / white_scale
+        ratios = sigma[b] / (white_scale * bnt_amp[b])
         print(f"    auto_bin{b+1}: " + " ".join(f"s{s}={ratios[s]:.3f}" for s in range(S_ns)))
         # coarse scales (least band-limit-affected) should be within ~30% of white
         if not (0.5 < ratios[-2] < 1.5):
@@ -236,9 +252,10 @@ def main():
     print(f"\nGATE A1b: {'ALL PASS' if gate_ok else 'NEEDS REVIEW'}")
 
     # ---- save human-readable json (npz already saved above) ----
-    json_path = out_dir / "flatsky_cross_noise_sigma.json"
+    json_path = out_dir / f"{_stem}.json"
     json_path.write_text(json.dumps({
         "provenance": provenance,
+        "bnt": bool(args.bnt),
         "channel_names": names,
         "n_scales": S_ns, "n_real": R, "sigma_pix": sig_pix,
         "constants": {k: C[k] for k in ("nside", "lmax", "sigma_e", "galaxy_density",

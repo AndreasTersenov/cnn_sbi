@@ -30,7 +30,7 @@ os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "3")
 
 import numpy as np
 
-from flatsky_cross import build_channels_np, n_output_channels
+from flatsky_cross import apply_bnt_np, bnt_matrix_np, build_channels_np, n_output_channels
 from tfds_cross_tfdata_loader import iter_cross_tfds_batches
 from npe_cnn_nbody_tomo import (
     compute_flat_cross_channel_rms,
@@ -72,12 +72,23 @@ def main() -> int:
     # rfft2/irfft2 round trip (numpy computes in float64, jax in float32).
     REL_TOL = {"none": 1e-6, "product": 1e-5, "conv": 2e-3, "both": 2e-3}
 
-    for op in OPS:
-        print(f"\n--- op = {op} ---")
-        n_exp = n_output_channels(NBINS, op)
+    # BNT sanity (paper pillar 2): matrix invertible; np applier matches a manual mix.
+    M = bnt_matrix_np().astype(np.float64)
+    detM = float(np.linalg.det(M))
+    manual = np.einsum("bhwj,ij->bhwi", autos.astype(np.float64), M).astype(np.float32)
+    rel_bnt = _rel(apply_bnt_np(autos), manual)
+    ok_bnt = abs(detM) > 1e-6 and rel_bnt < 1e-6
+    print(f"  [0] BNT matrix det={detM:.4f} (invertible), applier-vs-einsum rel-diff "
+          f"= {rel_bnt:.2e}  {'OK' if ok_bnt else 'FAIL'}")
+    all_pass = all_pass and ok_bnt
 
-        built_np = build_channels_np(autos, op, ROLL).astype(np.float32)
-        transform_noscale = make_flat_cross_transform(op, None, ROLL)
+    for op, bnt in [(o, False) for o in OPS] + [(o, True) for o in OPS]:
+        print(f"\n--- op = {op}, bnt = {bnt} ---")
+        n_exp = n_output_channels(NBINS, op)
+        ref_autos = apply_bnt_np(autos) if bnt else autos
+
+        built_np = build_channels_np(autos, op, ROLL, bnt=bnt).astype(np.float32)
+        transform_noscale = make_flat_cross_transform(op, None, ROLL, bnt=bnt)
         built_jax = np.asarray(transform_noscale(autos), dtype=np.float32)
 
         # 1. JAX == numpy
@@ -91,18 +102,18 @@ def main() -> int:
         print(f"  [2] channels = {built_jax.shape[-1]} (expected {n_exp})  "
               f"{'OK' if ok2 else 'FAIL'}")
 
-        # 3. raw autos preserved as ch 0..nbins-1
-        rel_auto = _rel(built_jax[..., :NBINS], autos)
+        # 3. autos preserved as ch 0..nbins-1 (raw, or the BNT'd autos under bnt)
+        rel_auto = _rel(built_jax[..., :NBINS], ref_autos)
         ok3 = rel_auto < 1e-6
-        print(f"  [3] autos preserved (ch 0..{NBINS-1}) rel-diff = {rel_auto:.2e}  "
-              f"{'OK' if ok3 else 'FAIL'}")
+        print(f"  [3] {'BNT' if bnt else 'raw'} autos preserved (ch 0..{NBINS-1}) "
+              f"rel-diff = {rel_auto:.2e}  {'OK' if ok3 else 'FAIL'}")
 
         # 4. whitening exactness: transform(scale) == transform(None) / scale
         scale = compute_flat_cross_channel_rms(
             tfds_name=TFDS, data_dir=DDIR, op=op, nbins=NBINS,
-            split="train", n_sample=2000, roll_frac=ROLL,
+            split="train", n_sample=2000, roll_frac=ROLL, bnt=bnt,
         )
-        transform_scaled = make_flat_cross_transform(op, scale, ROLL)
+        transform_scaled = make_flat_cross_transform(op, scale, ROLL, bnt=bnt)
         built_white = np.asarray(transform_scaled(autos), dtype=np.float32)
         expect_white = built_jax / scale.astype(np.float32)
         rel_w = _rel(built_white, expect_white)
@@ -129,7 +140,7 @@ def main() -> int:
 
         op_pass = all([ok1, ok2, ok3, ok4, ok5, ok6])
         all_pass = all_pass and op_pass
-        print(f"  => op {op}: {'PASS' if op_pass else 'FAIL'}")
+        print(f"  => op {op} (bnt={bnt}): {'PASS' if op_pass else 'FAIL'}")
 
     print(f"\n=== GATE A1 {'PASS' if all_pass else 'FAIL'} ===")
     return 0 if all_pass else 1

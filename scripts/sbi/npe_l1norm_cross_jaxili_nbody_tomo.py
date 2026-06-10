@@ -2585,6 +2585,7 @@ def main() -> None:
     flat_local_sigma = None          # torch (C, n_scales) frozen noise sigma
     flat_local_names: list | None = None
     flat_local_ranges = None         # numpy (C, 2) frozen per-channel SNR ranges
+    flat_local_bnt = False           # on-device BNT of the autos (flat_local route)
     if args.cross_maps_route == "flat_local":
         cross_maps_route = "flat_local"
         if args.full_sphere_cross_cache:
@@ -2592,8 +2593,14 @@ def main() -> None:
                 "--cross-maps-route flat_local is incompatible with --full-sphere-cross-cache "
                 "(it reads ch 0-3 of the cross TFDS and builds patch-local cross on-device)."
             )
-        if args.apply_bnt:
-            raise ValueError("--cross-maps-route flat_local does not support --apply-bnt yet (nobnt only).")
+        # --apply-bnt on flat_local = on-device BNT of the 4 cache autos BEFORE the
+        # cross build (order: noise [cache] -> demean [cache] -> BNT -> cross -> L1).
+        # The CACHE regime stays 'nobnt' (BNT is applied on the fly, not baked in).
+        flat_local_bnt = bool(args.apply_bnt)
+        if flat_local_bnt:
+            validate_bnt_configuration(args.nbins, parse_tomo_bin_indices(args.tomo_bin_indices))
+            print("  [flat_local] BNT ENABLED (tomo4_bnt_v1): autos nulled on-device before "
+                  "the cross build; frozen sigma table must be the BNT one.")
         if args.fiducial_obs_cache_dir is None:
             raise ValueError(
                 "--cross-maps-route flat_local requires --fiducial-obs-cache-dir "
@@ -2615,7 +2622,8 @@ def main() -> None:
         full_sphere_cache_manifest_sha = ""
         harmonic_regime = "nobnt"
         flat_local_sigma, flat_local_names, _frozen_nscales = fxl.select_frozen_sigma(
-            args.flatsky_cross_sigma, args.cross_op, args.nbins, torch_device)
+            args.flatsky_cross_sigma, args.cross_op, args.nbins, torch_device,
+            expected_bnt=flat_local_bnt)
         if int(_frozen_nscales) != int(args.n_scales):
             raise ValueError(
                 f"frozen sigma n_scales={_frozen_nscales} != --n-scales={args.n_scales}; "
@@ -2919,8 +2927,10 @@ def main() -> None:
     cache_dir = Path(args.cache_dir) if args.cache_dir else None
     if cache_dir is not None and cross_maps_route == "flat_local":
         # disambiguate by op: conv & product both have n_l1_channels=10 and would
-        # otherwise collide on the same L1-datavector cache.
-        cache_dir = cache_dir / f"flat_local_{args.cross_op}"
+        # otherwise collide on the same L1-datavector cache. (_bnt suffix is
+        # belt-and-braces: the cache meta's apply_bnt field already mismatches.)
+        cache_dir = cache_dir / (f"flat_local_{args.cross_op}"
+                                 + ("_bnt" if flat_local_bnt else ""))
     cache_meta_expected: Optional[Dict[str, object]] = None
 
     do_calibrate = (cross_maps_route != "flat_local") and (
@@ -3069,6 +3079,16 @@ def main() -> None:
         # train/val/obs (NOT recomputed per-obs).
         if args.flatsky_both_cache:
             # Slice the per-channel ranges from the 'both' build (avoids a loader pass).
+            # Tripwire: a no-BNT both-cache must not feed a BNT arm (and vice versa) —
+            # the datavectors/ranges live in different spaces. Convention: BNT both-caches
+            # carry 'bnt' in their dir name (the flat_local_<op>_bnt cache layout).
+            _bc_is_bnt = "bnt" in Path(args.flatsky_both_cache).name.lower()
+            if _bc_is_bnt != flat_local_bnt:
+                raise ValueError(
+                    f"--flatsky-both-cache {args.flatsky_both_cache} looks "
+                    f"{'BNT' if _bc_is_bnt else 'no-BNT'} but this arm has "
+                    f"apply_bnt={flat_local_bnt}; mixing spaces silently corrupts the arm."
+                )
             both_ranges = np.load(Path(args.flatsky_both_cache) / "flat_local_ranges.npy")
             rows = fxl.op_channel_rows(args.cross_op, args.nbins)
             flat_local_ranges = both_ranges[rows]
@@ -3086,6 +3106,7 @@ def main() -> None:
                 margin=args.calibration_margin, q_lo=q_lo, q_hi=q_hi,
                 seed=0,  # SEED-INDEPENDENT ranges: shared across NDE seeds so the per-arm
                          # datavector cache dedups and obs<->train normalization stays consistent.
+                bnt=flat_local_bnt,
             )
             if cache_dir is not None:   # persist so other arms can slice this build's ranges
                 cache_dir.mkdir(parents=True, exist_ok=True)
@@ -3124,6 +3145,7 @@ def main() -> None:
         obs_l1 = fxl.compute_l1_single_map_flat_local(
             m_data, args.cross_op, flat_local_sigma, stats, args.l1_nbins, flat_local_ranges,
             subtract_coarse_mean=effective_subtract_coarse_mean, clamp_overflow=True,
+            bnt=flat_local_bnt,
         )
     else:
         obs_l1 = compute_l1_single_map(
@@ -3288,6 +3310,7 @@ def main() -> None:
                     flip=bool(args.l1_train_flip), seed=1001,  # seed-independent datavector
                     batch_size=args.ds_batch_size,
                     subtract_coarse_mean=effective_subtract_coarse_mean, clamp_overflow=True,
+                    bnt=flat_local_bnt,
                 )
                 dataset_val = fxl.compute_l1_dataset_flat_local(
                     tfds_name=args.cross_tfds_name, data_dir=args.cross_tfds_data_dir,
@@ -3295,6 +3318,7 @@ def main() -> None:
                     stats=stats, l1_nbins=args.l1_nbins, snr_ranges=flat_local_ranges,
                     perm_lo=nde_val_perm_lo, perm_hi=nde_val_perm_hi,
                     flip=False, seed=2001,  # seed-independent
+                    bnt=flat_local_bnt,
                     batch_size=args.ds_batch_size,
                     subtract_coarse_mean=effective_subtract_coarse_mean, clamp_overflow=True,
                 )

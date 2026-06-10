@@ -22,6 +22,21 @@ Each arm cross-gain over auto-only is measured AND calibration-validated (TARP/S
 ## Guardrails
 patch-local cross ONLY (never full-sphere = leakage); per-channel noise (not shared auto-sigma); never PCA L1; GPU 1 only; example-disjoint compressor/NDE split by perm; calibrate BEFORE contours; SAME auto channels across all arms; one apodized-circular convolution definition; do not relitigate the operator choice (notes S8-12).
 
+## Loop status (bnt-wiring-built 2026-06-10 ~15:45)
+★ BNT WIRING BUILT + GATE-A VALIDATED (CPU, all 8 op×bnt combos PASS; matrix det=1.0 exactly —
+unit-determinant lower-triangular). Single source of truth: flatsky_cross.apply_bnt_{np,torch,jax}
++ bnt= switch on all three build_channels_* (BNT'd autos feed BOTH auto and cross channels).
+CNN: --flatsky-bnt (npe_cnn + fidsumm) → RMS estimator + jitted transform, tomo4-validated,
+mutually exclusive with legacy --apply-bnt, save-path _bnt suffix, CONDITIONAL flatsky_bnt cache
+fingerprint key (old caches stay valid; BNT can't hit a no-BNT cache). L1: --apply-bnt now works
+on flat_local (was hard error) → SNR calibration + dataset passes + obs L1; cache dir _bnt;
+both-cache space-mixing tripwire. freeze_flatsky_cross_noise.py --bnt → _bnt.npz with bnt=True
+key; select_frozen_sigma HARD-ERRORS on table/arm BNT mismatch (fences the May wrong-σ failure
+mode). GATE A1b auto-vs-white uses the analytic BNT reference (per-bin sqrt(sum B_ij^2); BNT of
+independent whites stays white PER MAP — correlation is between bins). REMAINING before campaign
+launch: BNT noise-freeze run (1 GPU job when recipe check frees a slot) → campaign orchestrator →
+Andreas's go. Recipe check (160k) still in compressor phase.
+
 ## Loop status (recipe-check-launched + BNT-scoped 2026-06-10 ~15:00)
 Andreas: START recipe test, SKIP L1 per-seed retrain, BNT = PAPER PILLAR 2. ★ LAUNCHED
 run_recipe_160k_check.py (pid 3977580, GPUs 1+2, idle co-tenants): {none,product} × s{42,43} at

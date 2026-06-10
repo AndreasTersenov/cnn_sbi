@@ -53,6 +53,9 @@ def parse_args():
                    help="Number of auto/tomo bins to read for the flat-local route (--cross-op).")
     p.add_argument("--flatsky-roll-frac", type=float, default=0.10,
                    help="Apodization roll fraction for the flat-local conv op (LOCKED 0.10).")
+    p.add_argument("--flatsky-bnt", action="store_true",
+                   help="Flat-local route: BNT the autos on-device before the cross build "
+                        "(must match the compressor's training transform).")
     p.add_argument("--fid-cache-dir", default="",
                    help="Override the fiducial obs cache dir (10deg: full_sphere_cache_fiducial_10deg).")
     p.add_argument("--channel-rms-nsample", type=int, default=8000,
@@ -117,9 +120,12 @@ def main():
             tfds_name=a.cross_tfds_name, data_dir=a.cross_tfds_data_dir,
             op=a.cross_op, nbins=a.nbins, split="train",
             n_sample=a.channel_rms_nsample, roll_frac=a.flatsky_roll_frac,
+            bnt=bool(a.flatsky_bnt),
         )
         channel_scale = np.asarray(channel_scale, dtype=np.float32)
-        flat_transform = make_flat_cross_transform(a.cross_op, channel_scale, a.flatsky_roll_frac)
+        flat_transform = make_flat_cross_transform(a.cross_op, channel_scale,
+                                                   a.flatsky_roll_frac,
+                                                   bnt=bool(a.flatsky_bnt))
     elif a.cross_tfds_name:
         # tfds_cross arm: SAME deterministic estimator as B-1 training (n_sample must
         # match training=8000) -> byte-identical scale; the grid .npz cache is deleted.

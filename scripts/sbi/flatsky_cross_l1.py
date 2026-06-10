@@ -52,13 +52,27 @@ def op_feature_columns(op: str, nbins: int, feat_per_ch: int) -> np.ndarray:
     return np.concatenate([np.arange(c * feat_per_ch, (c + 1) * feat_per_ch) for c in rows]).astype(np.int64)
 
 
-def select_frozen_sigma(npz_path: str, op: str, nbins: int, device, dtype=torch.float64):
+def select_frozen_sigma(npz_path: str, op: str, nbins: int, device, dtype=torch.float64,
+                        expected_bnt: bool | None = None):
     """Load the 16-channel frozen sigma table and select the rows for `op`, in the
     SAME channel order flatsky_cross.build_channels_* emits: auto(nbins) + cross(es).
+
+    expected_bnt: when given, enforce that the table was frozen with the matching
+    BNT setting (tables written before 2026-06-10 lack the key = no-BNT). Using a
+    no-BNT sigma for a BNT arm (or vice versa) is the silent-wrong-noise-model
+    failure mode (cf. feedback_l1_cross_must_use_harmonic_route) — hard error.
 
     Returns (sigma_torch[(C, n_scales)], channel_names[list[str]], n_scales[int]).
     """
     z = np.load(npz_path)
+    if expected_bnt is not None:
+        table_bnt = bool(z["bnt"]) if "bnt" in z.files else False
+        if table_bnt != bool(expected_bnt):
+            raise ValueError(
+                f"frozen sigma table {npz_path} has bnt={table_bnt} but the arm requires "
+                f"bnt={bool(expected_bnt)}; refreeze with freeze_flatsky_cross_noise.py"
+                f"{' --bnt' if expected_bnt else ''}."
+            )
     sigma16 = np.asarray(z["sigma"], dtype=np.float64)          # (16, n_scales)
     names16 = [str(x) for x in z["channel_names"]]
     n_scales = int(z["n_scales"])
@@ -138,9 +152,10 @@ def build_and_l1(
     snr_ranges: np.ndarray,        # (C, 2)
     subtract_coarse_mean: bool = True,
     clamp_overflow: bool = False,
+    bnt: bool = False,
 ) -> np.ndarray:
     autos = torch.from_numpy(np.ascontiguousarray(autos_np, dtype=np.float64)).to(stats.device)
-    channels = fx.build_channels_torch(autos, op)              # (B,H,W,C) float64
+    channels = fx.build_channels_torch(autos, op, bnt=bnt)     # (B,H,W,C) float64
     return _l1_with_frozen_sigma(channels, frozen_sigma, stats, l1_nbins, snr_ranges,
                                  subtract_coarse_mean=subtract_coarse_mean,
                                  clamp_overflow=clamp_overflow)
@@ -149,10 +164,11 @@ def build_and_l1(
 def compute_l1_single_map_flat_local(
     autos_np: np.ndarray,          # (H, W, 4) obs autos
     op: str, frozen_sigma, stats, l1_nbins, snr_ranges,
-    subtract_coarse_mean=True, clamp_overflow=False,
+    subtract_coarse_mean=True, clamp_overflow=False, bnt: bool = False,
 ) -> np.ndarray:
     vec = build_and_l1(autos_np[None], op, frozen_sigma, stats, l1_nbins, snr_ranges,
-                       subtract_coarse_mean=subtract_coarse_mean, clamp_overflow=clamp_overflow)
+                       subtract_coarse_mean=subtract_coarse_mean, clamp_overflow=clamp_overflow,
+                       bnt=bnt)
     return vec[0]
 
 
@@ -163,13 +179,13 @@ def compute_l1_dataset_flat_local(
     perm_lo: Optional[int] = None, perm_hi: Optional[int] = None,
     flip: bool = True, seed: int = 1001, batch_size: int = 480,
     subtract_coarse_mean: bool = True, clamp_overflow: bool = False,
-    log_every_examples: int = 20000,
+    log_every_examples: int = 20000, bnt: bool = False,
 ) -> Dict[str, np.ndarray]:
     """Finite deterministic pass over the cross TFDS (autos only), on-device cross,
     frozen-sigma L1. theta H0->h0 to match the cache builder."""
     from tfds_cross_tfdata_loader import iter_cross_tfds_batches
     print(f"  [flat_local] L1 from cross TFDS [{split} perms {perm_lo}-{perm_hi} "
-          f"op={op} flip={flip}] ...")
+          f"op={op} flip={flip} bnt={bnt}] ...")
     x_list: List[np.ndarray] = []
     theta_list: List[np.ndarray] = []
     n, t0, nxt = 0, time.time(), log_every_examples
@@ -181,7 +197,8 @@ def compute_l1_dataset_flat_local(
         if np.isnan(autos_np).any():
             print("    [!] skipped batch with NaN autos"); continue
         x = build_and_l1(autos_np, op, frozen_sigma, stats, l1_nbins, snr_ranges,
-                         subtract_coarse_mean=subtract_coarse_mean, clamp_overflow=clamp_overflow)
+                         subtract_coarse_mean=subtract_coarse_mean, clamp_overflow=clamp_overflow,
+                         bnt=bnt)
         theta = theta_np.copy(); theta[:, 3] = theta[:, 3] / 100.0
         x_list.append(x); theta_list.append(theta)
         n += autos_np.shape[0]
@@ -202,6 +219,7 @@ def calibrate_snr_range_flat_local(
     subtract_coarse_mean: bool = True, margin: float = 0.05,
     q_lo: float = 0.5, q_hi: float = 99.5,
     seed: int = 0, batch_size: int = 480, reservoir_per_batch: int = 4000,
+    bnt: bool = False,
 ) -> np.ndarray:
     """PER-CHANNEL [min,max] SNR range under the frozen sigma, from robust percentiles
     (q_lo/q_hi) + margin. Per-channel (not a single auto/cross pair) because the pointwise
@@ -225,7 +243,7 @@ def calibrate_snr_range_flat_local(
         if np.isnan(autos_np).any():
             continue
         autos = torch.from_numpy(np.ascontiguousarray(autos_np, dtype=np.float64)).to(stats.device)
-        ch = fx.build_channels_torch(autos, op)
+        ch = fx.build_channels_torch(autos, op, bnt=bnt)
         for c in range(C):
             stats.compute_wavelet_transform(ch[..., c], 1.0, subtract_coarse_mean=subtract_coarse_mean)
             snr = (stats.wavelet_coeffs / frozen_sigma[c].view(1, n_scales, 1, 1)).reshape(-1)

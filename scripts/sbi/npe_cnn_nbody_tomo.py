@@ -458,6 +458,16 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     p.add_argument(
+        "--flatsky-bnt",
+        action="store_true",
+        help=(
+            "flat_local route only: apply the BNT nulling transform (tomo4_bnt_v1) to "
+            "the 4 auto channels ON-DEVICE before the cross build and whitening "
+            "(order: noise [cache] -> demean [cache] -> BNT -> cross -> whiten). "
+            "Requires full tomo4. Distinct from the legacy --apply-bnt TFDS path."
+        ),
+    )
+    p.add_argument(
         "--cross-tfds-name",
         type=str,
         default="nbody_cosmogrid_dataset_tomo_cross/grid_10deg_80px_nonoverlap180",
@@ -1884,6 +1894,7 @@ def compute_flat_cross_channel_rms(
     perm_lo: int | None = None,
     perm_hi: int | None = None,
     batch_size: int = 256,
+    bnt: bool = False,
 ) -> np.ndarray:
     """Per-channel RMS (sqrt(mean(x^2))) over the BUILT flat-local channels.
 
@@ -1910,7 +1921,7 @@ def compute_flat_cross_channel_rms(
         perm_lo=perm_lo,
         perm_hi=perm_hi,
     ):
-        built = build_channels_np(maps_np, op, roll_frac).astype(np.float64)  # (B,H,W,C)
+        built = build_channels_np(maps_np, op, roll_frac, bnt=bnt).astype(np.float64)  # (B,H,W,C)
         c = built.shape[-1]
         flat = built.reshape(-1, c)
         if sum_sq is None:
@@ -1939,12 +1950,15 @@ def make_flat_cross_transform(
     op: str,
     channel_scale: np.ndarray | None,
     roll_frac: float = 0.10,
+    bnt: bool = False,
 ) -> Callable:
     """Return a jitted JAX transform: RAW autos (B,H,W,nbins) -> built+whitened
     channels (B,H,W,n_output_channels). Builds the patch-local cross on-device
     (flatsky_cross.build_channels_jax) then divides by the frozen per-channel RMS.
-    The SAME callable is used for training batches, the NDE compress passes, and
-    the observed map so the three are byte-identical by construction."""
+    With bnt=True the autos are BNT'd first (order: noise [in cache] -> demean
+    [in cache] -> BNT -> cross-build -> whiten). The SAME callable is used for
+    training batches, the NDE compress passes, and the observed map so the three
+    are byte-identical by construction."""
     cs = (
         None if channel_scale is None
         else jnp.asarray(np.asarray(channel_scale, dtype=np.float32))
@@ -1952,7 +1966,8 @@ def make_flat_cross_transform(
 
     @jax.jit
     def _transform(autos):
-        built = build_channels_jax(jnp.asarray(autos, dtype=jnp.float32), op, roll_frac)
+        built = build_channels_jax(jnp.asarray(autos, dtype=jnp.float32), op, roll_frac,
+                                   bnt=bnt)
         if cs is not None:
             built = built / cs
         return built
@@ -2479,6 +2494,12 @@ def build_cnn_cache_metadata(
             file_sha256(state_path) if state_path and state_path.exists() else ""
         ),
     }
+    # Conditional fingerprint key: only stamped when BNT is ON, so pre-existing
+    # no-BNT caches (which lack the key) stay valid for no-BNT runs, while a BNT
+    # run pointed at a no-BNT cache mismatches via missing:flatsky_bnt (and via
+    # the compressor sha in any realistic case).
+    if bool(getattr(args, "flatsky_bnt", False)):
+        meta["flatsky_bnt"] = 1
     return meta
 
 
@@ -4280,9 +4301,18 @@ def main():
                 "  [flat_local] --harmonic-normalize-input-channels not set, but "
                 "per-channel RMS whitening is mandatory for flat_local; enabling it."
             )
+        if args.flatsky_bnt:
+            if args.apply_bnt:
+                raise ValueError(
+                    "--flatsky-bnt and the legacy --apply-bnt are mutually exclusive "
+                    "(they would BNT twice)."
+                )
+            validate_bnt_configuration(args.nbins, tomo_bin_indices)
+            print("  [flat_local] BNT ENABLED (tomo4_bnt_v1): autos are nulled on-device "
+                  "before the cross build; RMS whitening computed on BNT'd channels.")
         print(
             f"  [flat_local] Computing per-channel RMS over BUILT channels "
-            f"(op={args.cross_op}) from a cross-TFDS train sample ..."
+            f"(op={args.cross_op}, bnt={bool(args.flatsky_bnt)}) from a cross-TFDS train sample ..."
         )
         harmonic_channel_scale = compute_flat_cross_channel_rms(
             tfds_name=args.cross_tfds_name,
@@ -4292,6 +4322,7 @@ def main():
             split="train",
             n_sample=8000,
             roll_frac=args.flatsky_roll_frac,
+            bnt=bool(args.flatsky_bnt),
         )
         print(f"  Per-channel RMS (auto first, then cross): {harmonic_channel_scale}")
         print(
@@ -4310,7 +4341,8 @@ def main():
     flat_cross_transform: Optional[Callable] = None
     if cnn_map_route == "flat_local":
         flat_cross_transform = make_flat_cross_transform(
-            args.cross_op, harmonic_channel_scale, args.flatsky_roll_frac
+            args.cross_op, harmonic_channel_scale, args.flatsky_roll_frac,
+            bnt=bool(args.flatsky_bnt),
         )
 
     # Derived quantities
@@ -4322,7 +4354,10 @@ def main():
     elif cnn_map_route == "tfds_cross":
         save_path = save_path / f"tfds_cross_{harmonic_regime}"
     elif cnn_map_route == "flat_local":
-        save_path = save_path / f"flat_local_{harmonic_regime}_{args.cross_op}"
+        save_path = save_path / (
+            f"flat_local_{harmonic_regime}_{args.cross_op}"
+            + ("_bnt" if args.flatsky_bnt else "")
+        )
     summary_stats_path = save_path / "cnn_summary_standardization.npz"
 
     param_names = [
