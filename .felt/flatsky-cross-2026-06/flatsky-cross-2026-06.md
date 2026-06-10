@@ -22,6 +22,27 @@ Each arm cross-gain over auto-only is measured AND calibration-validated (TARP/S
 ## Guardrails
 patch-local cross ONLY (never full-sphere = leakage); per-channel noise (not shared auto-sigma); never PCA L1; GPU 1 only; example-disjoint compressor/NDE split by perm; calibrate BEFORE contours; SAME auto channels across all arms; one apodized-circular convolution definition; do not relitigate the operator choice (notes S8-12).
 
+## Loop status (audit+fixes 2026-06-10 ~12:15)
+★ PIPELINE AUDIT DONE (4 parallel subagents, read-only): PUBLISHED NUMBERS STAND — disjointness
+CLEAN (metadata perm-filter + runtime audit; artifact row counts verified), RMS-whitening CLEAN
+(bit-identical via deterministic recomputation + G1 ≤1.9e-4), aggregation CLEAN (n=9000/9000 all 8
+arms, best_val genuine, preprocessing consistent). All findings forward-looking: dead NaN guard in
+train_with_nan_retry (hasattr on dict — never fires); make_headline_corner.py conditioned on train
+row 0 not the obs (latent, never produced output); HARDCODED VERDICTS in run_multiseed_compressor_
+check.py + consolidate_cnn_vs_l1.py + plot_best_seed.py title; --decay-steps silently inert in
+jaxili (LR const 1e-4, symmetric); "3 MAF seeds" vary ONLY the data split (flow init fixed at 42);
+best_val selection = single random 128-batch (noisy); sweeps are HOST-DISPATCH-BOUND (jaxili
+.sample un-jitted, ~600 dispatches/call; dim-3200 only ~25% slower than dim-10) ⇒ jit fix ~10
+lines. Full report: cnn_phase/../PIPELINE_AUDIT_2026-06-10.md. BATCH-A FIXES COMMITTED 5f1afd9
+(derived verdicts, wrong-obs fix, --compressor-val-batches, channel_scale+effective-policy in
+cache meta, truth key). BATCH B (population_sweep_flatsky.py + npe_l1norm imports) DEFERRED until
+the multiseed driver exits — pending product sweeps execute those files from disk. bench_sample_
+jit.py ready (bit-identity gate + timings, run on GPU 1 when free). NEXT_THREADS_PLAN_2026-06-10.md
+drafted (best-seed-by-val-loss, BNT design: noise→BNT→cross-build→whiten, batch-B+jit). MULTISEED
+EARLY READ: auto-only compressor seeds 2325/2170/2480 STRADDLE L1 2405 (best +3%, worst −10%);
+product-vs-none compressor VMIM val loss ≈ EQUAL per seed (−10.76≈−10.75 s42, −10.80≈−10.82 s43)
+⇒ product channel adds no measurable MI at the compressor objective. Product sweeps land ~13:40.
+
 ## Loop status (fable5-handoff 2026-06-10)
 SESSION HANDOFF to Fable 5 written: HANDOFF_FABLE5_2026-06-10.md (repo root, the new entry point) +
 FABLE5_FIRST_PROMPT.md (copy-paste first prompt). ★ LIVE QUESTION (Andreas 2026-06-10): is the CNN
