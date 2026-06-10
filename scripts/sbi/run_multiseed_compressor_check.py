@@ -83,11 +83,21 @@ def run_phase(name, cmd_fn, steps=None):
     pending = list(JOBS); slots = {g: None for g in GPUS}; t0 = time.time(); failed = {}
     def launch(job, gpu):
         op, seed = job
+        # Command construction can itself fail (e.g. fidsumm_cmd np.load's the
+        # compressor cache meta of a job that FAILed in the previous phase).
+        # SKIP the chain instead of crashing the whole driver.
+        try:
+            c = cmd_fn(op, seed, gpu, steps) if steps is not None else cmd_fn(op, seed, gpu)
+        except Exception as exc:
+            failed[f"{op}_s{seed}"] = f"cmd-build: {exc}"
+            print(f"[{time.time()-t0:6.0f}s] SKIP {name} {op}_s{seed} "
+                  f"(command build failed: {exc})", flush=True)
+            return None
         log = open(f"{LOGS}/{name}_{op}_s{seed}.log", "w")
         env = dict(os.environ, PYTHONUNBUFFERED="1", TF_CPP_MIN_LOG_LEVEL="3",
                    XLA_PYTHON_CLIENT_PREALLOCATE="false", XLA_PYTHON_CLIENT_MEM_FRACTION="0.5",
-                   PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True")
-        c = cmd_fn(op, seed, gpu, steps) if steps is not None else cmd_fn(op, seed, gpu)
+                   PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True",
+                   CNN_CPU_THREADS="8")
         p = subprocess.Popen(c, cwd=SBI, env=env, stdout=log, stderr=subprocess.STDOUT,
                              stdin=subprocess.DEVNULL)
         print(f"[{time.time()-t0:6.0f}s] LAUNCH {name} {op}_s{seed} GPU{gpu} (pid {p.pid})", flush=True)

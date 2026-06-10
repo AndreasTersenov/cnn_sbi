@@ -23,7 +23,7 @@ def cmd(op, gpu):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
-    ap.add_argument("--gpus", default="1,2,3")
+    ap.add_argument("--gpus", default="1,2")   # pool is 0,1,2; GPU 3 is never ours
     ap.add_argument("--mem-fraction", default="0.4")
     args = ap.parse_args()
     GPUS = [int(g) for g in args.gpus.split(",")]

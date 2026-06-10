@@ -39,6 +39,18 @@ import os
 from pathlib import Path
 from typing import List, Tuple
 
+# Bounded CPU budget (mirrors npe_cnn_nbody_tomo.py:31-91; same CNN_CPU_THREADS
+# knob). Must precede the numpy import; without it, standalone launches default
+# the BLAS pools off the ~128 visible cores.
+_v = os.environ.get("CNN_CPU_THREADS") or os.environ.get("CNN_TF_THREADS")
+try:
+    _avail = len(os.sched_getaffinity(0))
+except AttributeError:
+    _avail = os.cpu_count() or 1
+_CPU_THREADS = max(1, int(_v)) if _v else max(1, min(8, _avail))
+for _var in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS", "NUMEXPR_NUM_THREADS"):
+    os.environ[_var] = str(_CPU_THREADS)
+
 import numpy as np
 
 FIDUCIAL = np.array([0.26, 0.84, -1.0, 0.6736, 0.9649, 0.0493])

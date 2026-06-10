@@ -27,6 +27,26 @@ from functools import partial
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+# --- Bounded CPU parallelism budget (mirrors npe_cnn_nbody_tomo.py:31-91) ---
+# Without this, TF/torch/BLAS pools default off the ~128 visible cores (the
+# documented failure mode is ~1237 threads -> lock thrash) and compliance
+# depends on whichever shell exported OMP_NUM_THREADS. Same small budget and
+# the same CNN_CPU_THREADS override as the CNN entry, so orchestrators set one
+# knob for every entry point. BLAS env MUST be set before numpy is imported.
+def _resolve_cpu_threads() -> int:
+    _v = os.environ.get("CNN_CPU_THREADS") or os.environ.get("CNN_TF_THREADS")
+    if _v:
+        return max(1, int(_v))
+    try:
+        _avail = len(os.sched_getaffinity(0))
+    except AttributeError:
+        _avail = os.cpu_count() or 1
+    return max(1, min(8, _avail))
+
+_CPU_THREADS = _resolve_cpu_threads()
+for _v in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS", "NUMEXPR_NUM_THREADS"):
+    os.environ[_v] = str(_CPU_THREADS)
+
 import h5py
 import healpy as hp
 import jax
@@ -37,6 +57,18 @@ import torch
 import wandb
 from jax.lib import xla_bridge
 from sklearn.decomposition import PCA
+
+# TF op threadpools + torch CPU threads from the same budget (must run before
+# any TF op; tf.data sizes off the intra-op pool, so this also bounds the
+# reader that previously defaulted to all cores — 523 threads measured).
+try:
+    tf.config.threading.set_intra_op_parallelism_threads(_CPU_THREADS)
+    tf.config.threading.set_inter_op_parallelism_threads(max(2, _CPU_THREADS // 4))
+    print(f"[l1-threading] CPU budget={_CPU_THREADS} "
+          f"(BLAS env + TF intra={_CPU_THREADS}/inter={max(2, _CPU_THREADS // 4)})")
+except RuntimeError as _exc:
+    print(f"[l1-threading] TF threads already initialized: {_exc}")
+torch.set_num_threads(_CPU_THREADS)
 
 try:
     from jaxili.inference import NPE
@@ -2363,9 +2395,21 @@ def train_with_nan_retry(
                 decay_steps=decay_steps,
             )
 
+            # jaxili's train() returns a plain dict keyed "train/loss"/"val/loss"
+            # (best-model metrics). The original attribute-style check
+            # (hasattr(metrics, "train_loss")) could NEVER fire on a dict, so the
+            # NaN guard was dead code — a NaN-corrupted run reported success.
+            def _lookup_metric(m, names):
+                for n in names:
+                    if isinstance(m, dict) and n in m:
+                        yield n, m[n]
+                    elif not isinstance(m, dict) and hasattr(m, n):
+                        yield n, getattr(m, n)
+
             nan_source = None
-            for metric_name in ("train_loss", "val_loss"):
-                if hasattr(metrics, metric_name) and _metric_has_nan(getattr(metrics, metric_name)):
+            for metric_name, value in _lookup_metric(
+                    metrics, ("train/loss", "val/loss", "train_loss", "val_loss")):
+                if _metric_has_nan(value):
                     nan_source = metric_name
                     break
 
@@ -2375,8 +2419,10 @@ def train_with_nan_retry(
                 inference = inference.append_simulations(params, data, key=split_key)
                 continue
 
-            if hasattr(metrics, "test_loss") and _metric_has_nan(getattr(metrics, "test_loss")):
-                print("  Note: test_loss has NaN values; continuing because train/val are finite.")
+            for metric_name, value in _lookup_metric(metrics, ("test/loss", "test_loss")):
+                if _metric_has_nan(value):
+                    print("  Note: test loss has NaN values; continuing because train/val are finite.")
+                    break
 
             print("  Training completed successfully.")
             return inference, metrics, density_estimator

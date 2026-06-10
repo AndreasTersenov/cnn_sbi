@@ -33,6 +33,9 @@ def parse_args():
     p.add_argument("--batch-size", type=int, default=256)
     p.add_argument("--learning-rate", type=float, default=1e-4)
     p.add_argument("--warmup-steps", type=int, default=100)
+    # NB: currently INERT — jaxili's NPE.train does not forward decay_steps to the
+    # optimizer (cosine horizon defaults to ~num_epochs/2), so the effective LR is
+    # constant 1e-4 after warmup. Kept for CLI compatibility; do not tune via this.
     p.add_argument("--decay-steps", type=int, default=10000)
     p.add_argument("--cuda-visible-devices", default="1")
     return p.parse_args()
@@ -63,11 +66,16 @@ def main():
     fz = np.load(a.fiducial_summaries_npz)
     S = fz["S"].astype(np.float64); perm = fz["perm"]
     sel = np.where(perm < a.max_perm)[0][:a.n_obs]
+    # PRNG keys below are seed*100003 + sel[i]; obs indices >= 100003 would alias
+    # seed s / obs (100003+k) with seed s+1 / obs k.
+    assert sel.size > 0 and int(sel.max()) < 100003, \
+        f"obs index {int(sel.max())} >= 100003 would collide PRNG keys across seeds"
     _, _, fid_p, _, _ = preprocess_summaries(
         x_tr_raw, x_va_raw[:1], S[sel], summary_transform=a.preproc_transform,
         clip_value=clip, mean=mean, std=std)
     x_obs = fid_p[:, mask].astype(np.float32)
-    truth = fz["truth"] if "truth" in fz.files else None
+    # fidsumm files written before 2026-06-10 stored the key as `theta`
+    truth = next((fz[k] for k in ("truth", "theta") if k in fz.files), None)
     N, M = x_obs.shape[0], a.m_samples
     print(f"[{a.arm_label}] {N} fiducial obs (perm<{a.max_perm})", flush=True)
 
@@ -86,6 +94,7 @@ def main():
 
     # per-patch metrics (3-seed pooled posterior per obs)
     sig = np.full((N, 3), np.nan); pair = np.full((N, 3), np.nan); fom3 = np.full(N, np.nan)
+    n_finite = np.zeros(N, dtype=np.int32)   # surviving pooled samples per obs (of 3*M)
     t0 = time.time()
     for i in range(N):
         pooled = []
@@ -93,18 +102,26 @@ def main():
             k = jax.random.PRNGKey(seed * 100003 + int(sel[i]))
             pooled.append(np.asarray(post.sample(x=jnp.asarray(x_obs[i]), num_samples=M, key=k)))
         ps = np.concatenate(pooled, 0); ps = ps[np.all(np.isfinite(ps), 1)]
+        n_finite[i] = ps.shape[0]
         if ps.shape[0] < 100:
             continue
         ms = marginal_stats(ps); f2 = fom2d(ps)
-        sig[i] = list(ms["sigma"].values())[:3]      # Om, s8, w0
-        pair[i] = list(f2.values())                  # Om_s8, Om_w0, s8_w0
+        sig[i] = [ms["sigma"][k] for k in ("Omega_m", "sigma_8", "w_0")]
+        pair[i] = [f2["fom2d_Omega_m_sigma_8"], f2["fom2d_Omega_m_w_0"],
+                   f2["fom2d_sigma_8_w_0"]]
         fom3[i] = compute_fom3(ps)["fom3"]
         if (i + 1) % 500 == 0:
             print(f"  sampled {i+1}/{N} ({time.time()-t0:.0f}s)", flush=True)
+    n_skipped = int((n_finite < 100).sum())
+    n_partial = int(((n_finite >= 100) & (n_finite < 3 * M)).sum())
+    if n_skipped or n_partial:
+        print(f"  [warn] {n_skipped} obs skipped (<100 finite), {n_partial} obs with "
+              f"partial sample loss (<{3*M} finite) — see n_finite in per_patch_metrics.npz",
+              flush=True)
 
     out = Path(a.output_dir); out.mkdir(parents=True, exist_ok=True)
     np.savez(out / "per_patch_metrics.npz", sigma=sig, fom2d=pair, fom3=fom3,
-             perm=perm[sel], patch=fz["patch"][sel], sel=sel,
+             perm=perm[sel], patch=fz["patch"][sel], sel=sel, n_finite=n_finite,
              truth=(truth if truth is not None else np.array([])))
     g = np.isfinite(fom3)
     med = dict(arm=a.arm_label, n=int(g.sum()),

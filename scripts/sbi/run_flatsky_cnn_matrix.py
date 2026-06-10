@@ -88,7 +88,8 @@ def main():
         env = dict(os.environ, PYTHONUNBUFFERED="1", TF_CPP_MIN_LOG_LEVEL="3",
                    XLA_PYTHON_CLIENT_PREALLOCATE="false",
                    XLA_PYTHON_CLIENT_MEM_FRACTION="0.4",
-                   PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True")
+                   PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True",
+                   CNN_CPU_THREADS="8")
         p = subprocess.Popen(cnn_cmd(job["op"], gpu, args.compressor_steps), cwd=SBI,
                              env=env, stdout=log, stderr=subprocess.STDOUT,
                              stdin=subprocess.DEVNULL)
