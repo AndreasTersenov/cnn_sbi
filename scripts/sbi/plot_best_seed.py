@@ -73,6 +73,29 @@ def main():
         g.fig.savefig(OUT / "corner_best_seed_product.png", dpi=200)
         g.fig.savefig(OUT / "corner_best_seed_product.pdf")
         print(f"wrote {OUT}/corner_best_seed_product.{{png,pdf}}")
+
+        # --- per-arm 2-contour overlay: CNN best seed vs L1 pooled (typical obs) ---
+        import matplotlib.lines as mlines
+        bs_all = np.load(OUT / "best_seed_samples_typical.npz")
+        for op, lab in ARMS:
+            cb = bs_all[op][:, idx]
+            l1s = np.load(FC / f"representative_corner/flat_{op}/corner_samples.npz")["typical"][:, idx]
+            mc_l1 = MCSamples(samples=l1s, names=names, labels=labs)
+            mc_cb = MCSamples(samples=cb, names=names, labels=labs)
+            gg = plots.get_subplot_plotter(width_inch=7.087)
+            gg.settings.axes_labelsize = 15
+            gg.triangle_plot([mc_cb, mc_l1], params=names, filled=True,
+                             contour_colors=[C_BEST, C_L1], contour_ls=["--", "-"],
+                             contour_lws=[1.6, 1.6], markers=truth)
+            for lg in list(gg.fig.legends): lg.remove()
+            for axx in gg.fig.axes:
+                if axx.get_legend(): axx.get_legend().remove()
+            h = [mlines.Line2D([], [], color=C_L1, ls="-", lw=1.6, label=f"L1 {lab} (pooled median)"),
+                 mlines.Line2D([], [], color=C_BEST, ls="--", lw=1.6, label=f"CNN {lab} (best single seed)")]
+            gg.fig.legend(handles=h, loc="upper right", bbox_to_anchor=(0.97, 0.97), fontsize=12, frameon=False)
+            gg.fig.savefig(OUT / f"corner_best_seed_vs_l1_{op}.png", dpi=200)
+            gg.fig.savefig(OUT / f"corner_best_seed_vs_l1_{op}.pdf")
+            print(f"wrote {OUT}/corner_best_seed_vs_l1_{op}.{{png,pdf}}")
     except Exception as e:
         print(f"[warn] corner failed: {e}")
 
