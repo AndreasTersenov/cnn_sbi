@@ -22,6 +22,16 @@ Each arm cross-gain over auto-only is measured AND calibration-validated (TARP/S
 ## Guardrails
 patch-local cross ONLY (never full-sphere = leakage); per-channel noise (not shared auto-sigma); never PCA L1; GPU 1 only; example-disjoint compressor/NDE split by perm; calibrate BEFORE contours; SAME auto channels across all arms; one apodized-circular convolution definition; do not relitigate the operator choice (notes S8-12).
 
+## Loop status (bnt-campaign-LAUNCHED 2026-06-10 20:05 UTC)
+★ BNT CAMPAIGN RUNNING (run_flatsky_bnt_campaign.py pid 655563, GPUs 1+2, detached; monitor
+armed). P0 sigma freeze --bnt DONE in 30 s, GATE A1b ALL PASS — empirical BNT auto noise matches
+the analytic mixing prediction sqrt(sum B_ij^2)=(1.000,1.414,1.820,1.621) to 3 digits (all 4 bins
+collapse onto identical white ratios after the factor); conv/product sigma depart from white
+(L1-dist 0.470/0.228); inter-bin corr +0.0026. flatsky_cross_noise_sigma_bnt.npz written. P1
+both-BNT build running (the loader-bound pass). Then: L1 arm slices + 6 CNN BNT compressors →
+fidsumms → 8 jit sweeps → BNT_CAMPAIGN_RESULT.md (derived prediction-ladder verdict). ETA ~5-6 h
+(≈ 01:00-02:00 UTC). Andreas gave GO 2026-06-10 ~20:00.
+
 ## Loop status (recipe-verdict 2026-06-10 16:45 UTC)
 ★ RECIPE-LEVEL CHECK DONE (160k + val-batches 16, seeds 42/43, paired vs 80k): THE HEAVIER
 RECIPE DOES NOTHING — 160k/80k per seed: auto 1.08/0.97, product 1.00/1.01 (mean auto 1.02×,
