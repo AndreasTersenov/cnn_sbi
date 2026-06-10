@@ -35,6 +35,18 @@ Pooling 3 MAF seeds applies a haircut, so the best single seed is the CNN at its
 Figures: `cnn_phase/best_seed/` (FoM3 bars, per-arm CNN-best-seed vs L1-pooled overlays). Caveat: best-vs-L1-*pooled* is best-vs-haircut, not best-vs-best (L1's 2000-d datavector can't be reloaded per-seed); the robust claim is the within-CNN no-gain.
 
 
+## Robustness — compressor seed (multiseed check, 2026-06-10)
+Two extra compressor seeds (42, 43) trained for auto-only and +product, each run through the identical pipeline (own compressor → fiducial summaries → pooled 3-MAF-seed 9000-obs median). **The cross effect flips sign with the compressor draw** (s41 0.94×, s42 1.10×, s43 0.98×; mean-of-seeds 1.00×): the strict no-gain is NOT seed-robust — the CNN's product effect is smaller than its compressor-seed variance (±~8%) and is consistent with ZERO SYSTEMATIC gain, not a systematic loss.
+
+| compressor seed | auto-only | +product | product/auto | CNN/L1 (product) |
+|---|---|---|---|---|
+| 41 (orig) | 2325 | 2181 | 0.94× | 0.76× |
+| 42 | 2170 | 2393 | 1.10× | 0.83× |
+| 43 | 2480 | 2433 | 0.98× | 0.85× |
+
+Robust across draws: every CNN product seed stays below the L1 product (0.76–0.85× of L1 2875), while the CNN auto-only seeds (2170–2480) straddle L1 auto (2405) — auto-only is a statistical tie. Compressor VMIM val losses are equal for product vs auto per seed (Δ≲0.02 nats), i.e. the compressor objective registers no extra mutual information in the product channel at this recipe. Details: `cnn_phase/multiseed/MULTISEED_COMPRESSOR_CHECK.md`.
+
+
 ## GATE C — calibration
 Full interpretation: **`cnn_phase/gate_c/GATE_C_INTERPRETATION.md`** (TARP/SBC verdicts documented there from `gate_c/{tarp_drp,sbc}/`). The L-C2ST verdicts below are derived from the per-arm summaries.
 

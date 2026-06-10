@@ -89,6 +89,24 @@ assuming no NaN surprises. Multi-day only if conv/both arms or extra seeds are a
    `population_sweep_flatsky.py` (per-posterior `jax.jit`, identical per-obs keys; chunked vmap
    only if the plain jit win is insufficient). All future sweeps (incl. A and B above) inherit it.
 
-## Priority call (after the multiseed verdict)
+## Priority call (multiseed verdict in, 2026-06-10 ~13:30)
 
-*Pending — filled in when MULTISEED_COMPRESSOR_CHECK.md lands.*
+The check landed in the **mixed branch**: product/auto flips sign with the compressor draw
+(0.94/1.10/0.98, mean 1.00×) ⇒ the CNN's cross effect is zero-within-seed-noise, NOT a robust
+loss; but every CNN product seed stays ≤ 0.85× of L1 product, and VMIM val losses show no extra
+MI extracted from the product channel at this recipe. Consequences for the threads:
+
+1. **Throughput first (C)** — jit benchmark + packing measurements + Tier-1 scheduler. Cheap,
+   and halves the cost of everything below. → benchmark running now; scheduler diff after the
+   packing numbers, with sign-off.
+2. **BNT campaign (B)** — the main remaining scientific deliverable; start once C lands
+   (design in §B above needs Andreas's confirmation on the open question).
+3. **Recipe-level CNN test (new, optional)** — the surviving form of the optimization-limited
+   hypothesis: train the product arm harder (e.g. 160k steps + `--compressor-val-batches 16`,
+   2 seeds) and see if CNN/L1(product) moves above 0.85×. ~2 compressor+sweep chains; cheap
+   after C; can ride alongside BNT on packed GPUs. Decision: Andreas.
+4. **Principled best-seed (A) — largely superseded** for the auto-only story: the multiseed
+   check already provides matched-aggregation per-compressor-seed numbers; selection by val
+   loss picks s43 (best val loss AND best auto FoM3 2480 vs L1 2405 = +3%) — the honest claim
+   remains "auto-only tie". The expensive L1 per-NDE-seed retrain would not change any
+   conclusion; recommend SKIP unless the paper needs a formal best-to-best table.

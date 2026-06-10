@@ -10,7 +10,7 @@ tags:
     - flat-sky
     - paper
 created-at: 2026-06-08T16:45:21.09193286Z
-outcome: 'OPEN (filed 2026-06-08). Replace the LEAKY full-sphere harmonic cross-maps (every cross-patch is a global functional of the whole sky; auto+cross constraining power partly UNPHYSICAL — see CROSS_MAP_LEAKAGE_FINDING.md) with PATCH-LOCAL flat-sky cross-maps, recompute stats, train L1+CNN, get CALIBRATED cosmological contours. Design+validation DONE (FLATSKY_CROSS_REDESIGN_NOTES.md S1-14): cross map = apodized-circular CONVOLUTION (Zurcher Eq.12 flat-sky analog) AND pointwise PRODUCT (its mean = xi_ij); complementary -> TEST BOTH. NO sim/dataset rebuild (cross computed on-the-fly from auto ch0-3 of TFDS grid_10deg_80px_nonoverlap180; auto-only baseline uses identical autos => clean comparison). CAUTION: do NOT reuse the old --cross-maps route wholesale (it is the bad one we dissected) — reuse only the FFT-product math + apodization window (re-validated), REWRITE the noise/SNR (per-channel, not shared auto-sigma), and compute the FFTs ON-DEVICE/batched (torch/JAX), NOT in a CPU tf.data map (starves the GPU). PRIMARY METRIC: median over typical patches of sigma(w0) + 2D(Om,s8); FoM3 reported NEVER headlined. NEXT: implement on-device augmentation (L1 --cross-op {conv,product,both}; ADD flat-sky to CNN; per-channel/per-scale noise) -> GATE A construction+throughput (bitmatch, xi_ij, benchmark augment ON vs OFF) -> GATE B cosmology-dependence (NEW, decisive) -> train matrix (auto-only / +conv / +product / +both x L1,CNN, 3 seeds) -> GATE C calibration (TARP/SBC/L-C2ST) -> contours vs auto-only AND vs full-sphere. Expect MODEST gains (cross info is large-scale, patch samples it poorly = physically correct). See FLATSKY_CROSS_BUILD_PLAN.md + HANDOFF_FLATSKY_CROSS_2026-06-08.md. Continues [[definitive-l1-vs-cnn-10deg-2026-06]].'
+outcome: 'RESOLVED 2026-06-10 (calibrated, multi-compressor-seed-robust): on the physically-buildable patch-local cross, L1 gains +20% (product=xi_ij; 2405->2875) while the CNN gets NO SYSTEMATIC gain (product/auto flips sign with the compressor draw 0.94/1.10/0.98, mean 1.00x — zero gain dominated by +-8% seed variance, NOT a systematic loss); every CNN product seed <= 0.85x L1 product (L1 > CNN on the explicit cross channel, draw-robust); auto-only = statistical TIE (CNN seeds 2170-2480 straddle L1 2405). ~92% of the old full-sphere cross gain was leakage. VMIM val loss product~=auto per seed => optimization-limited hypothesis lives at the RECIPE level (untested). OPEN threads: recipe-level test, principled best-seed (val-loss), BNT-cross campaign, scheduler packing (EFFICIENCY_AUDIT_2026-06-10.md). HISTORICAL OBJECTIVE (filed 2026-06-08): Replace the LEAKY full-sphere harmonic cross-maps (every cross-patch is a global functional of the whole sky; auto+cross constraining power partly UNPHYSICAL — see CROSS_MAP_LEAKAGE_FINDING.md) with PATCH-LOCAL flat-sky cross-maps, recompute stats, train L1+CNN, get CALIBRATED cosmological contours. Design+validation DONE (FLATSKY_CROSS_REDESIGN_NOTES.md S1-14): cross map = apodized-circular CONVOLUTION (Zurcher Eq.12 flat-sky analog) AND pointwise PRODUCT (its mean = xi_ij); complementary -> TEST BOTH. NO sim/dataset rebuild (cross computed on-the-fly from auto ch0-3 of TFDS grid_10deg_80px_nonoverlap180; auto-only baseline uses identical autos => clean comparison). CAUTION: do NOT reuse the old --cross-maps route wholesale (it is the bad one we dissected) — reuse only the FFT-product math + apodization window (re-validated), REWRITE the noise/SNR (per-channel, not shared auto-sigma), and compute the FFTs ON-DEVICE/batched (torch/JAX), NOT in a CPU tf.data map (starves the GPU). PRIMARY METRIC: median over typical patches of sigma(w0) + 2D(Om,s8); FoM3 reported NEVER headlined. NEXT: implement on-device augmentation (L1 --cross-op {conv,product,both}; ADD flat-sky to CNN; per-channel/per-scale noise) -> GATE A construction+throughput (bitmatch, xi_ij, benchmark augment ON vs OFF) -> GATE B cosmology-dependence (NEW, decisive) -> train matrix (auto-only / +conv / +product / +both x L1,CNN, 3 seeds) -> GATE C calibration (TARP/SBC/L-C2ST) -> contours vs auto-only AND vs full-sphere. Expect MODEST gains (cross info is large-scale, patch samples it poorly = physically correct). See FLATSKY_CROSS_BUILD_PLAN.md + HANDOFF_FLATSKY_CROSS_2026-06-08.md. Continues [[definitive-l1-vs-cnn-10deg-2026-06]].'
 ---
 
 ## Primary metric
@@ -21,6 +21,25 @@ Each arm cross-gain over auto-only is measured AND calibration-validated (TARP/S
 
 ## Guardrails
 patch-local cross ONLY (never full-sphere = leakage); per-channel noise (not shared auto-sigma); never PCA L1; GPU 1 only; example-disjoint compressor/NDE split by perm; calibrate BEFORE contours; SAME auto channels across all arms; one apodized-circular convolution definition; do not relitigate the operator choice (notes S8-12).
+
+## Loop status (multiseed-verdict 2026-06-10 ~13:30)
+★★ MULTI-COMPRESSOR-SEED CHECK DONE (277 min, 4 sweeps n=9000 each). Pooled 3-MAF 9000-obs median
+FoM3 — auto: s41 2325 / s42 2170 / s43 2480; product: 2181 / 2393 / 2433 ⇒ product/auto = 0.94 /
+**1.10** / 0.98 (mean-of-seeds 1.00×). VERDICT (mixed branch): the strict "CNN gains NOTHING" is
+NOT compressor-seed-robust — the cross effect FLIPS SIGN with the draw; correct claim = ZERO
+SYSTEMATIC gain, dominated by compressor-seed variance (±~8%). ROBUST facts: every CNN product
+seed ≤ 0.85× L1 product 2875 (L1 +20% stands; L1 > CNN on the explicit cross channel across all
+draws); CNN auto seeds STRADDLE L1 auto 2405 ⇒ auto-only = statistical tie. VMIM val loss product
+≈ auto per seed (Δ≲0.02 nats) ⇒ compressor objective sees no extra MI in the product channel at
+this recipe ⇒ optimization-limited hypothesis moves to the RECIPE level (untested), seed-level
+rescue falsified. Writeup: FLATSKY_CNN_RESULT.md gains a derived "Robustness — compressor seed"
+section (generator-emitted, consolidate_cnn_vs_l1.py); MULTISEED_COMPRESSOR_CHECK.md verdict
+hand-corrected (the in-flight driver predated the 5f1afd9 hardcoded-verdict fix and wrote the
+WRONG verdict against its own 1.10× table — live demonstration of the bug). Memory
+project_flatsky_cnn_no_cross_gain rewritten. NB the A2 "~20% on-device cross cost" note below is
+WRONG (run-level medians: product/both at parity or faster than none; 75-vs-93 was ambient load).
+NEXT: bench_sample_jit on freed GPUs → packing benchmarks → scheduler plan (EFFICIENCY_AUDIT_
+2026-06-10.md); audit fix batches A (5f1afd9) + B (dabda3a) + GPU-policy update (c0ae139) landed.
 
 ## Loop status (audit+fixes 2026-06-10 ~12:15)
 ★ PIPELINE AUDIT DONE (4 parallel subagents, read-only): PUBLISHED NUMBERS STAND — disjointness
