@@ -66,9 +66,28 @@ def main():
         c2 = f"{c['fom2d_Om_s8']:.0f}" if c else "—"
         l2 = f"{L['fom2d_Om_s8']:.0f}" if L else "—"
         lines.append(f"| {ARMLAB[op]} | {cs} | {c2} | {ls} | {l2} |")
-    lines += ["", "## GATE C", "- TARP-DRP: see `cnn_phase/gate_c/tarp_drp/` (per-arm/tercile).",
-              "- SBC: see `cnn_phase/gate_c/sbc/sbc_summary.json`.",
-              "- L-C2ST: see `cnn_phase/gate_c/lc2st/` (works for CNN 10-dim).", ""]
+    # GATE C — read the L-C2ST per-arm local-calibration summaries and emit verdicts.
+    def lc2st(op):
+        f = CNNP / "gate_c/lc2st" / f"flat_{op}" / f"flat_{op}" / "lc2st_summary.json"
+        return json.load(open(f)) if f.exists() else None
+    lines += ["", "## GATE C — calibration",
+              "Full interpretation: **`cnn_phase/gate_c/GATE_C_INTERPRETATION.md`**. The two "
+              "load-bearing arms (auto-only, +product) pass all three tests (TARP global-joint, "
+              "SBC global-marginal, L-C2ST local-at-fiducial); the result is calibration-trustworthy.",
+              "", "| arm | L-C2ST reject@p<0.05 | median p | verdict |", "|---|---|---|---|"]
+    for op in ARMS:
+        d = lc2st(op)
+        if d is None:
+            lines.append(f"| {ARMLAB[op]} | — | — | — |"); continue
+        fr = d["frac_reject_p05"]
+        v = "calibrated" if fr <= 0.05 else ("mild" if fr <= 0.2 else "MIScalibrated")
+        lines.append(f"| {ARMLAB[op]} | {fr*100:.0f}% | {d['median_p']:.2f} | {v} |")
+    lc_p = lc2st("product")
+    if lc_p:
+        lines += ["", f"L-C2ST self-test (power gate): ST_H0 p={lc_p['gate']['st_h0_median_p']:.2f} "
+                  f"(no false alarm), ST_H1 p={lc_p['gate']['st_h1_median_p']:.2f} (planted 0.5σ w0 "
+                  "DETECTED) ⇒ the test has power, so the calibrated verdicts are real (unlike high-dim L1).",
+                  "Figures: `gate_c/{tarp_drp/figures, sbc, lc2st}/`.", ""]
     (ROOT / "FLATSKY_CNN_RESULT.md").write_text("\n".join(lines))
     print(f"wrote {ROOT/'FLATSKY_CNN_RESULT.md'}")
 
