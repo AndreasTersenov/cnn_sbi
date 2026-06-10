@@ -22,6 +22,18 @@ Each arm cross-gain over auto-only is measured AND calibration-validated (TARP/S
 ## Guardrails
 patch-local cross ONLY (never full-sphere = leakage); per-channel noise (not shared auto-sigma); never PCA L1; GPU 1 only; example-disjoint compressor/NDE split by perm; calibrate BEFORE contours; SAME auto channels across all arms; one apodized-circular convolution definition; do not relitigate the operator choice (notes S8-12).
 
+## Loop status (cnn-best-seed 2026-06-10)
+★ CNN BEST-SINGLE-SEED (un-pooled) CHECK DONE 2026-06-10. The no-cross-gain is NOT a pool-haircut
+artifact: reloaded the per-seed MAF checkpoints (CNN 10-d reloads bit-exact; L1 2000-d truncates →
+can't), sampled each MAF seed separately at the typical obs (perm16/patch23). Best single seed FoM3:
+auto 2620 | conv 2491 (0.95×) | product 2331 (0.89×) | both 2475 (0.94×) — every cross arm STILL
+≤ auto-only. Auto-only tie holds (CNN best-seed 2620 ≈ L1 pooled 2487; fair pooled-vs-pooled 2325 vs
+2405). Even CNN's best-seed product is wider than L1 pooled. (NB: MAF seeds, not compressor seeds —
+still 1 compressor seed; the multi-COMPRESSOR-seed check remains the open robustness follow-up.)
+Artifacts: cnn_phase/best_seed/{CNN_BEST_SEED.md, per_seed.json, fom3_best_seed.*, corner_best_seed_
+product.*, corner_best_seed_vs_l1_<arm>.*}; scripts cnn_per_seed_best.py + plot_best_seed.py. Baked
+into FLATSKY_CNN_RESULT.md (§Robustness) + GATE_C_INTERPRETATION.md. Commits d4884b3→cf96f25, pushed.
+
 ## Loop status (cnn-overnight 2026-06-09 22:10)
 AUTONOMOUS OVERNIGHT PIPELINE LAUNCHED (overnight_cnn_pipeline.sh, detached pid 1518292). Waits for
 the population sweep, then runs: headline consolidate → SBC(cnn) → L-C2ST(cnn) → representative

@@ -66,6 +66,28 @@ def main():
         c2 = f"{c['fom2d_Om_s8']:.0f}" if c else "—"
         l2 = f"{L['fom2d_Om_s8']:.0f}" if L else "—"
         lines.append(f"| {ARMLAB[op]} | {cs} | {c2} | {ls} | {l2} |")
+    # Best single (MAF) seed — un-pooled robustness check (does the no-gain survive the haircut?).
+    bs_f = CNNP / "best_seed" / "per_seed.json"
+    if bs_f.exists():
+        bs = json.load(open(bs_f))
+        lines += ["", "## Robustness — best single (MAF) seed, un-pooled",
+                  "Pooling 3 MAF seeds applies a haircut, so the best single seed is the CNN at its "
+                  "most favorable. Reloaded the trained MAF checkpoints, sampled each seed at the typical "
+                  "obs. **The no-cross-gain survives un-pooling** — every cross arm stays ≤ auto-only, so "
+                  "it is not a pool-haircut artifact. (MAF seeds, not compressor seeds; one compressor.)",
+                  "", "| arm | s41 | s42 | s43 | best | best vs-auto |", "|---|---|---|---|---|---|"]
+        auto_best = bs["none"]["best_fom3"]
+        for op in ARMS:
+            if op not in bs:
+                continue
+            ps = bs[op]["per_seed"]
+            lines.append(f"| {ARMLAB[op]} | {ps['41']['fom3']:.0f} | {ps['42']['fom3']:.0f} | "
+                         f"{ps['43']['fom3']:.0f} | **{bs[op]['best_fom3']:.0f}** (s{bs[op]['best_seed']}) | "
+                         f"{bs[op]['best_fom3']/auto_best:.2f}× |")
+        lines += ["", "Figures: `cnn_phase/best_seed/` (FoM3 bars, per-arm CNN-best-seed vs L1-pooled "
+                  "overlays). Caveat: best-vs-L1-*pooled* is best-vs-haircut, not best-vs-best (L1's "
+                  "2000-d datavector can't be reloaded per-seed); the robust claim is the within-CNN no-gain.", ""]
+
     # GATE C — read the L-C2ST per-arm local-calibration summaries and emit verdicts.
     def lc2st(op):
         f = CNNP / "gate_c/lc2st" / f"flat_{op}" / f"flat_{op}" / "lc2st_summary.json"

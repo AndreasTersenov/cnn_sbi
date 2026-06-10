@@ -22,6 +22,19 @@
 | +product | 0.053,0.085,0.244 | 421 | 0.048,0.075,0.238 | 522 |
 | +both | 0.051,0.080,0.247 | 444 | 0.046,0.075,0.232 | 528 |
 
+## Robustness — best single (MAF) seed, un-pooled
+Pooling 3 MAF seeds applies a haircut, so the best single seed is the CNN at its most favorable. Reloaded the trained MAF checkpoints, sampled each seed at the typical obs. **The no-cross-gain survives un-pooling** — every cross arm stays ≤ auto-only, so it is not a pool-haircut artifact. (MAF seeds, not compressor seeds; one compressor.)
+
+| arm | s41 | s42 | s43 | best | best vs-auto |
+|---|---|---|---|---|---|
+| auto-only | 2620 | 2364 | 2387 | **2620** (s41) | 1.00× |
+| +conv | 2418 | 1968 | 2491 | **2491** (s43) | 0.95× |
+| +product | 2225 | 2331 | 2017 | **2331** (s42) | 0.89× |
+| +both | 2475 | 2436 | 2205 | **2475** (s41) | 0.94× |
+
+Figures: `cnn_phase/best_seed/` (FoM3 bars, per-arm CNN-best-seed vs L1-pooled overlays). Caveat: best-vs-L1-*pooled* is best-vs-haircut, not best-vs-best (L1's 2000-d datavector can't be reloaded per-seed); the robust claim is the within-CNN no-gain.
+
+
 ## GATE C — calibration
 Full interpretation: **`cnn_phase/gate_c/GATE_C_INTERPRETATION.md`**. The two load-bearing arms (auto-only, +product) pass all three tests (TARP global-joint, SBC global-marginal, L-C2ST local-at-fiducial); the result is calibration-trustworthy.
 
