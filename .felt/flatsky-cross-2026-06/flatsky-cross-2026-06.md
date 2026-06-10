@@ -22,6 +22,19 @@ Each arm cross-gain over auto-only is measured AND calibration-validated (TARP/S
 ## Guardrails
 patch-local cross ONLY (never full-sphere = leakage); per-channel noise (not shared auto-sigma); never PCA L1; GPU 1 only; example-disjoint compressor/NDE split by perm; calibrate BEFORE contours; SAME auto channels across all arms; one apodized-circular convolution definition; do not relitigate the operator choice (notes S8-12).
 
+## Loop status (BNT-RESULT 2026-06-10 23:55 UTC)
+★★★ BNT CAMPAIGN DONE (3.7 h, zero failures) — ALL THREE PREDICTIONS HOLD. Inflation
+FoM3_BNT/noBNT: L1 auto 0.15× (2405→364; σ_s8 0.082→0.176 DOUBLES, σ_Om +69%) | L1 +product
+0.22× (637; every marginal better than L1-auto-BNT — explicit cross channel partially recovers)
+| CNN auto 0.94/1.00/0.86 → mean 0.93× | CNN product → 0.88× (marginals ≤3%; within/near the
+±8% comp-seed band). ⇒ BNT inflation is an ANALYSIS artifact of per-channel statistics; the
+channel-mixing CNN is BNT-invariant ⇒ BNT empirically LOSSLESS. PLAIN CNN sufficed (no advanced
+arch needed at 10°, unlike the 20° campaign's 0.85×). PILLARS UNITED: CNN can't exploit the
+explicit cross (pillar 1) but doesn't need it (pillar 2); L1 gains +20% from it no-BNT and loses
+85% without it under BNT — cross-maps are a device FOR per-channel statistics, both halves shown.
+Writeup FLATSKY_BNT_RESULT.md (root) + memory project_flatsky_bnt_losslessness. REMAINING for
+paper-grade: GATE C (TARP/SBC + L-C2ST-CNN) on the BNT arms — runners exist, ~2 h on 2 GPUs.
+
 ## Loop status (bnt-campaign-LAUNCHED 2026-06-10 20:05 UTC)
 ★ BNT CAMPAIGN RUNNING (run_flatsky_bnt_campaign.py pid 655563, GPUs 1+2, detached; monitor
 armed). P0 sigma freeze --bnt DONE in 30 s, GATE A1b ALL PASS — empirical BNT auto noise matches
