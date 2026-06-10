@@ -22,6 +22,18 @@ Each arm cross-gain over auto-only is measured AND calibration-validated (TARP/S
 ## Guardrails
 patch-local cross ONLY (never full-sphere = leakage); per-channel noise (not shared auto-sigma); never PCA L1; GPU 1 only; example-disjoint compressor/NDE split by perm; calibrate BEFORE contours; SAME auto channels across all arms; one apodized-circular convolution definition; do not relitigate the operator choice (notes S8-12).
 
+## Loop status (bnt-campaign-ready 2026-06-10 ~16:15)
+★ BNT CAMPAIGN ORCHESTRATOR READY (run_flatsky_bnt_campaign.py, dry-run validated): P0 sigma
+freeze --bnt (skipped if table exists) → P1 L1 both-BNT build (solo) → P2 L1 {none,product} BNT
+slices + P3 CNN {none,product}×s{41,42,43} BNT compressors (RECIPE-MATCHED to no-BNT baseline:
+plain/80k/val-batches-1 — inflation ratios must compare like-trained arms) → fidsumms (CNN ×6 +
+L1 precompute --bnt + per-arm slice) → 8 jit sweeps → BNT_CAMPAIGN_RESULT.md with DERIVED
+inflation table (no-BNT refs read from disk: L1 2405/2875, CNN per-seed multiseed medians) +
+derived prediction-ladder verdict (L1-auto <0.9 / L1-product > L1-auto / CNN >0.9, contingency
+note if CNN inflates). precompute_fiducial_both_datavectors.py parameterized (--bnt/--both-cache/
+--sigma/--out). Est. ~5-6 h on 2 GPUs (post-jit). AWAITING Andreas's GO + free GPUs (recipe
+check still running).
+
 ## Loop status (bnt-wiring-built 2026-06-10 ~15:45)
 ★ BNT WIRING BUILT + GATE-A VALIDATED (CPU, all 8 op×bnt combos PASS; matrix det=1.0 exactly —
 unit-determinant lower-triangular). Single source of truth: flatsky_cross.apply_bnt_{np,torch,jax}
