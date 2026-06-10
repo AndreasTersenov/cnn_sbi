@@ -1,0 +1,14 @@
+{
+  "arm": "flat_none",
+  "n_cal": 2000,
+  "n_x0": 30,
+  "n_null": 100,
+  "median_T_obs": 0.0007723659589330176,
+  "median_p": 0.26732673267326734,
+  "frac_reject_p05": 0.0,
+  "frac_reject_p01": 0.0,
+  "gate": {
+    "st_h0_median_p": 0.8823529411764706,
+    "st_h1_median_p": 0.0196078431372549
+  }
+}

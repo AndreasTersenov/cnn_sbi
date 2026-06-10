@@ -1,0 +1,518 @@
+{
+  "generated_at_utc": "2026-06-09T21:51:14.231879+00:00",
+  "dumps_root": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/dumps",
+  "n_dumps": 36,
+  "dims": [
+    3,
+    6
+  ],
+  "num_bootstrap": 200,
+  "num_alpha_bins": null,
+  "norm": true,
+  "curves": [
+    {
+      "arm": "flat_both_HIGH",
+      "seed": 41,
+      "dim": 3,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/dumps/flat_both_HIGH/seed_41/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/curves/tarp_curve_flat_both_HIGH_seed41_dim3.npz"
+    },
+    {
+      "arm": "flat_both_HIGH",
+      "seed": 42,
+      "dim": 3,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/dumps/flat_both_HIGH/seed_42/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/curves/tarp_curve_flat_both_HIGH_seed42_dim3.npz"
+    },
+    {
+      "arm": "flat_both_HIGH",
+      "seed": 43,
+      "dim": 3,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/dumps/flat_both_HIGH/seed_43/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/curves/tarp_curve_flat_both_HIGH_seed43_dim3.npz"
+    },
+    {
+      "arm": "flat_both_LOW",
+      "seed": 41,
+      "dim": 3,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/dumps/flat_both_LOW/seed_41/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/curves/tarp_curve_flat_both_LOW_seed41_dim3.npz"
+    },
+    {
+      "arm": "flat_both_LOW",
+      "seed": 42,
+      "dim": 3,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/dumps/flat_both_LOW/seed_42/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/curves/tarp_curve_flat_both_LOW_seed42_dim3.npz"
+    },
+    {
+      "arm": "flat_both_LOW",
+      "seed": 43,
+      "dim": 3,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/dumps/flat_both_LOW/seed_43/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/curves/tarp_curve_flat_both_LOW_seed43_dim3.npz"
+    },
+    {
+      "arm": "flat_both_MID",
+      "seed": 41,
+      "dim": 3,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/dumps/flat_both_MID/seed_41/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/curves/tarp_curve_flat_both_MID_seed41_dim3.npz"
+    },
+    {
+      "arm": "flat_both_MID",
+      "seed": 42,
+      "dim": 3,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/dumps/flat_both_MID/seed_42/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/curves/tarp_curve_flat_both_MID_seed42_dim3.npz"
+    },
+    {
+      "arm": "flat_both_MID",
+      "seed": 43,
+      "dim": 3,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/dumps/flat_both_MID/seed_43/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/curves/tarp_curve_flat_both_MID_seed43_dim3.npz"
+    },
+    {
+      "arm": "flat_conv_HIGH",
+      "seed": 41,
+      "dim": 3,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/dumps/flat_conv_HIGH/seed_41/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/curves/tarp_curve_flat_conv_HIGH_seed41_dim3.npz"
+    },
+    {
+      "arm": "flat_conv_HIGH",
+      "seed": 42,
+      "dim": 3,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/dumps/flat_conv_HIGH/seed_42/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/curves/tarp_curve_flat_conv_HIGH_seed42_dim3.npz"
+    },
+    {
+      "arm": "flat_conv_HIGH",
+      "seed": 43,
+      "dim": 3,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/dumps/flat_conv_HIGH/seed_43/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/curves/tarp_curve_flat_conv_HIGH_seed43_dim3.npz"
+    },
+    {
+      "arm": "flat_conv_LOW",
+      "seed": 41,
+      "dim": 3,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/dumps/flat_conv_LOW/seed_41/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/curves/tarp_curve_flat_conv_LOW_seed41_dim3.npz"
+    },
+    {
+      "arm": "flat_conv_LOW",
+      "seed": 42,
+      "dim": 3,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/dumps/flat_conv_LOW/seed_42/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/curves/tarp_curve_flat_conv_LOW_seed42_dim3.npz"
+    },
+    {
+      "arm": "flat_conv_LOW",
+      "seed": 43,
+      "dim": 3,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/dumps/flat_conv_LOW/seed_43/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/curves/tarp_curve_flat_conv_LOW_seed43_dim3.npz"
+    },
+    {
+      "arm": "flat_conv_MID",
+      "seed": 41,
+      "dim": 3,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/dumps/flat_conv_MID/seed_41/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/curves/tarp_curve_flat_conv_MID_seed41_dim3.npz"
+    },
+    {
+      "arm": "flat_conv_MID",
+      "seed": 42,
+      "dim": 3,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/dumps/flat_conv_MID/seed_42/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/curves/tarp_curve_flat_conv_MID_seed42_dim3.npz"
+    },
+    {
+      "arm": "flat_conv_MID",
+      "seed": 43,
+      "dim": 3,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/dumps/flat_conv_MID/seed_43/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/curves/tarp_curve_flat_conv_MID_seed43_dim3.npz"
+    },
+    {
+      "arm": "flat_none_HIGH",
+      "seed": 41,
+      "dim": 3,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/dumps/flat_none_HIGH/seed_41/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/curves/tarp_curve_flat_none_HIGH_seed41_dim3.npz"
+    },
+    {
+      "arm": "flat_none_HIGH",
+      "seed": 42,
+      "dim": 3,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/dumps/flat_none_HIGH/seed_42/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/curves/tarp_curve_flat_none_HIGH_seed42_dim3.npz"
+    },
+    {
+      "arm": "flat_none_HIGH",
+      "seed": 43,
+      "dim": 3,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/dumps/flat_none_HIGH/seed_43/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/curves/tarp_curve_flat_none_HIGH_seed43_dim3.npz"
+    },
+    {
+      "arm": "flat_none_LOW",
+      "seed": 41,
+      "dim": 3,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/dumps/flat_none_LOW/seed_41/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/curves/tarp_curve_flat_none_LOW_seed41_dim3.npz"
+    },
+    {
+      "arm": "flat_none_LOW",
+      "seed": 42,
+      "dim": 3,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/dumps/flat_none_LOW/seed_42/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/curves/tarp_curve_flat_none_LOW_seed42_dim3.npz"
+    },
+    {
+      "arm": "flat_none_LOW",
+      "seed": 43,
+      "dim": 3,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/dumps/flat_none_LOW/seed_43/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/curves/tarp_curve_flat_none_LOW_seed43_dim3.npz"
+    },
+    {
+      "arm": "flat_none_MID",
+      "seed": 41,
+      "dim": 3,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/dumps/flat_none_MID/seed_41/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/curves/tarp_curve_flat_none_MID_seed41_dim3.npz"
+    },
+    {
+      "arm": "flat_none_MID",
+      "seed": 42,
+      "dim": 3,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/dumps/flat_none_MID/seed_42/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/curves/tarp_curve_flat_none_MID_seed42_dim3.npz"
+    },
+    {
+      "arm": "flat_none_MID",
+      "seed": 43,
+      "dim": 3,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/dumps/flat_none_MID/seed_43/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/curves/tarp_curve_flat_none_MID_seed43_dim3.npz"
+    },
+    {
+      "arm": "flat_product_HIGH",
+      "seed": 41,
+      "dim": 3,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/dumps/flat_product_HIGH/seed_41/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/curves/tarp_curve_flat_product_HIGH_seed41_dim3.npz"
+    },
+    {
+      "arm": "flat_product_HIGH",
+      "seed": 42,
+      "dim": 3,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/dumps/flat_product_HIGH/seed_42/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/curves/tarp_curve_flat_product_HIGH_seed42_dim3.npz"
+    },
+    {
+      "arm": "flat_product_HIGH",
+      "seed": 43,
+      "dim": 3,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/dumps/flat_product_HIGH/seed_43/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/curves/tarp_curve_flat_product_HIGH_seed43_dim3.npz"
+    },
+    {
+      "arm": "flat_product_LOW",
+      "seed": 41,
+      "dim": 3,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/dumps/flat_product_LOW/seed_41/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/curves/tarp_curve_flat_product_LOW_seed41_dim3.npz"
+    },
+    {
+      "arm": "flat_product_LOW",
+      "seed": 42,
+      "dim": 3,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/dumps/flat_product_LOW/seed_42/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/curves/tarp_curve_flat_product_LOW_seed42_dim3.npz"
+    },
+    {
+      "arm": "flat_product_LOW",
+      "seed": 43,
+      "dim": 3,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/dumps/flat_product_LOW/seed_43/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/curves/tarp_curve_flat_product_LOW_seed43_dim3.npz"
+    },
+    {
+      "arm": "flat_product_MID",
+      "seed": 41,
+      "dim": 3,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/dumps/flat_product_MID/seed_41/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/curves/tarp_curve_flat_product_MID_seed41_dim3.npz"
+    },
+    {
+      "arm": "flat_product_MID",
+      "seed": 42,
+      "dim": 3,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/dumps/flat_product_MID/seed_42/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/curves/tarp_curve_flat_product_MID_seed42_dim3.npz"
+    },
+    {
+      "arm": "flat_product_MID",
+      "seed": 43,
+      "dim": 3,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/dumps/flat_product_MID/seed_43/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/curves/tarp_curve_flat_product_MID_seed43_dim3.npz"
+    },
+    {
+      "arm": "flat_both_HIGH",
+      "seed": 41,
+      "dim": 6,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/dumps/flat_both_HIGH/seed_41/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/curves/tarp_curve_flat_both_HIGH_seed41_dim6.npz"
+    },
+    {
+      "arm": "flat_both_HIGH",
+      "seed": 42,
+      "dim": 6,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/dumps/flat_both_HIGH/seed_42/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/curves/tarp_curve_flat_both_HIGH_seed42_dim6.npz"
+    },
+    {
+      "arm": "flat_both_HIGH",
+      "seed": 43,
+      "dim": 6,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/dumps/flat_both_HIGH/seed_43/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/curves/tarp_curve_flat_both_HIGH_seed43_dim6.npz"
+    },
+    {
+      "arm": "flat_both_LOW",
+      "seed": 41,
+      "dim": 6,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/dumps/flat_both_LOW/seed_41/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/curves/tarp_curve_flat_both_LOW_seed41_dim6.npz"
+    },
+    {
+      "arm": "flat_both_LOW",
+      "seed": 42,
+      "dim": 6,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/dumps/flat_both_LOW/seed_42/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/curves/tarp_curve_flat_both_LOW_seed42_dim6.npz"
+    },
+    {
+      "arm": "flat_both_LOW",
+      "seed": 43,
+      "dim": 6,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/dumps/flat_both_LOW/seed_43/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/curves/tarp_curve_flat_both_LOW_seed43_dim6.npz"
+    },
+    {
+      "arm": "flat_both_MID",
+      "seed": 41,
+      "dim": 6,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/dumps/flat_both_MID/seed_41/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/curves/tarp_curve_flat_both_MID_seed41_dim6.npz"
+    },
+    {
+      "arm": "flat_both_MID",
+      "seed": 42,
+      "dim": 6,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/dumps/flat_both_MID/seed_42/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/curves/tarp_curve_flat_both_MID_seed42_dim6.npz"
+    },
+    {
+      "arm": "flat_both_MID",
+      "seed": 43,
+      "dim": 6,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/dumps/flat_both_MID/seed_43/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/curves/tarp_curve_flat_both_MID_seed43_dim6.npz"
+    },
+    {
+      "arm": "flat_conv_HIGH",
+      "seed": 41,
+      "dim": 6,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/dumps/flat_conv_HIGH/seed_41/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/curves/tarp_curve_flat_conv_HIGH_seed41_dim6.npz"
+    },
+    {
+      "arm": "flat_conv_HIGH",
+      "seed": 42,
+      "dim": 6,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/dumps/flat_conv_HIGH/seed_42/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/curves/tarp_curve_flat_conv_HIGH_seed42_dim6.npz"
+    },
+    {
+      "arm": "flat_conv_HIGH",
+      "seed": 43,
+      "dim": 6,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/dumps/flat_conv_HIGH/seed_43/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/curves/tarp_curve_flat_conv_HIGH_seed43_dim6.npz"
+    },
+    {
+      "arm": "flat_conv_LOW",
+      "seed": 41,
+      "dim": 6,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/dumps/flat_conv_LOW/seed_41/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/curves/tarp_curve_flat_conv_LOW_seed41_dim6.npz"
+    },
+    {
+      "arm": "flat_conv_LOW",
+      "seed": 42,
+      "dim": 6,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/dumps/flat_conv_LOW/seed_42/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/curves/tarp_curve_flat_conv_LOW_seed42_dim6.npz"
+    },
+    {
+      "arm": "flat_conv_LOW",
+      "seed": 43,
+      "dim": 6,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/dumps/flat_conv_LOW/seed_43/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/curves/tarp_curve_flat_conv_LOW_seed43_dim6.npz"
+    },
+    {
+      "arm": "flat_conv_MID",
+      "seed": 41,
+      "dim": 6,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/dumps/flat_conv_MID/seed_41/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/curves/tarp_curve_flat_conv_MID_seed41_dim6.npz"
+    },
+    {
+      "arm": "flat_conv_MID",
+      "seed": 42,
+      "dim": 6,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/dumps/flat_conv_MID/seed_42/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/curves/tarp_curve_flat_conv_MID_seed42_dim6.npz"
+    },
+    {
+      "arm": "flat_conv_MID",
+      "seed": 43,
+      "dim": 6,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/dumps/flat_conv_MID/seed_43/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/curves/tarp_curve_flat_conv_MID_seed43_dim6.npz"
+    },
+    {
+      "arm": "flat_none_HIGH",
+      "seed": 41,
+      "dim": 6,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/dumps/flat_none_HIGH/seed_41/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/curves/tarp_curve_flat_none_HIGH_seed41_dim6.npz"
+    },
+    {
+      "arm": "flat_none_HIGH",
+      "seed": 42,
+      "dim": 6,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/dumps/flat_none_HIGH/seed_42/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/curves/tarp_curve_flat_none_HIGH_seed42_dim6.npz"
+    },
+    {
+      "arm": "flat_none_HIGH",
+      "seed": 43,
+      "dim": 6,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/dumps/flat_none_HIGH/seed_43/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/curves/tarp_curve_flat_none_HIGH_seed43_dim6.npz"
+    },
+    {
+      "arm": "flat_none_LOW",
+      "seed": 41,
+      "dim": 6,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/dumps/flat_none_LOW/seed_41/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/curves/tarp_curve_flat_none_LOW_seed41_dim6.npz"
+    },
+    {
+      "arm": "flat_none_LOW",
+      "seed": 42,
+      "dim": 6,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/dumps/flat_none_LOW/seed_42/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/curves/tarp_curve_flat_none_LOW_seed42_dim6.npz"
+    },
+    {
+      "arm": "flat_none_LOW",
+      "seed": 43,
+      "dim": 6,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/dumps/flat_none_LOW/seed_43/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/curves/tarp_curve_flat_none_LOW_seed43_dim6.npz"
+    },
+    {
+      "arm": "flat_none_MID",
+      "seed": 41,
+      "dim": 6,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/dumps/flat_none_MID/seed_41/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/curves/tarp_curve_flat_none_MID_seed41_dim6.npz"
+    },
+    {
+      "arm": "flat_none_MID",
+      "seed": 42,
+      "dim": 6,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/dumps/flat_none_MID/seed_42/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/curves/tarp_curve_flat_none_MID_seed42_dim6.npz"
+    },
+    {
+      "arm": "flat_none_MID",
+      "seed": 43,
+      "dim": 6,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/dumps/flat_none_MID/seed_43/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/curves/tarp_curve_flat_none_MID_seed43_dim6.npz"
+    },
+    {
+      "arm": "flat_product_HIGH",
+      "seed": 41,
+      "dim": 6,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/dumps/flat_product_HIGH/seed_41/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/curves/tarp_curve_flat_product_HIGH_seed41_dim6.npz"
+    },
+    {
+      "arm": "flat_product_HIGH",
+      "seed": 42,
+      "dim": 6,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/dumps/flat_product_HIGH/seed_42/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/curves/tarp_curve_flat_product_HIGH_seed42_dim6.npz"
+    },
+    {
+      "arm": "flat_product_HIGH",
+      "seed": 43,
+      "dim": 6,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/dumps/flat_product_HIGH/seed_43/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/curves/tarp_curve_flat_product_HIGH_seed43_dim6.npz"
+    },
+    {
+      "arm": "flat_product_LOW",
+      "seed": 41,
+      "dim": 6,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/dumps/flat_product_LOW/seed_41/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/curves/tarp_curve_flat_product_LOW_seed41_dim6.npz"
+    },
+    {
+      "arm": "flat_product_LOW",
+      "seed": 42,
+      "dim": 6,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/dumps/flat_product_LOW/seed_42/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/curves/tarp_curve_flat_product_LOW_seed42_dim6.npz"
+    },
+    {
+      "arm": "flat_product_LOW",
+      "seed": 43,
+      "dim": 6,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/dumps/flat_product_LOW/seed_43/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/curves/tarp_curve_flat_product_LOW_seed43_dim6.npz"
+    },
+    {
+      "arm": "flat_product_MID",
+      "seed": 41,
+      "dim": 6,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/dumps/flat_product_MID/seed_41/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/curves/tarp_curve_flat_product_MID_seed41_dim6.npz"
+    },
+    {
+      "arm": "flat_product_MID",
+      "seed": 42,
+      "dim": 6,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/dumps/flat_product_MID/seed_42/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/curves/tarp_curve_flat_product_MID_seed42_dim6.npz"
+    },
+    {
+      "arm": "flat_product_MID",
+      "seed": 43,
+      "dim": 6,
+      "dump": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/dumps/flat_product_MID/seed_43/n200_m2000/posterior_samples.npz",
+      "curve": "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/cnn_phase/gate_c/tarp_drp/curves/tarp_curve_flat_product_MID_seed43_dim6.npz"
+    }
+  ]
+}
