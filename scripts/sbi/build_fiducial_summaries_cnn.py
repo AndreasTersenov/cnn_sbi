@@ -45,6 +45,14 @@ def parse_args():
                    help="If set, compute channel_scale from this TFDS (tfds_cross arm) "
                         "instead of the (deleted) grid .npz cache.")
     p.add_argument("--cross-tfds-data-dir", default="/home/tersenov/tensorflow_datasets")
+    p.add_argument("--cross-op", default="",
+                   help="Flat-local route: build the patch-local cross on-device per this op "
+                        "{none,conv,product,both} from autos ch 0..nbins-1 (NOT the leaky "
+                        "cross channels). Empty = legacy tfds_cross/grid path.")
+    p.add_argument("--nbins", type=int, default=4,
+                   help="Number of auto/tomo bins to read for the flat-local route (--cross-op).")
+    p.add_argument("--flatsky-roll-frac", type=float, default=0.10,
+                   help="Apodization roll fraction for the flat-local conv op (LOCKED 0.10).")
     p.add_argument("--fid-cache-dir", default="",
                    help="Override the fiducial obs cache dir (10deg: full_sphere_cache_fiducial_10deg).")
     p.add_argument("--channel-rms-nsample", type=int, default=8000,
@@ -89,11 +97,30 @@ def main():
     )
 
     fid_cache = Path(a.fid_cache_dir).resolve() if a.fid_cache_dir else FID_CACHE
-    ch_slice = slice(0, a.n_channels) if a.n_channels != 10 else None
-    print(f"[{a.arm_label}] channel_slice={ch_slice} dim={a.dim} fid_cache={fid_cache}", flush=True)
+    flat_local = bool(a.cross_op)
+    flat_transform = None
+    if flat_local:
+        # Flat-local route: read RAW autos ch 0..nbins-1 and build the patch-local cross
+        # on-device with the SAME estimator + transform as training (so G1 reproduces).
+        from npe_cnn_nbody_tomo import (
+            compute_flat_cross_channel_rms, make_flat_cross_transform,
+        )
+        ch_slice = slice(0, a.nbins)
+    else:
+        ch_slice = slice(0, a.n_channels) if a.n_channels != 10 else None
+    print(f"[{a.arm_label}] flat_local={flat_local} op={a.cross_op or '-'} "
+          f"channel_slice={ch_slice} dim={a.dim} fid_cache={fid_cache}", flush=True)
 
     # channel_scale (per-channel RMS; the CNN DIVIDE convention):
-    if a.cross_tfds_name:
+    if flat_local:
+        channel_scale = compute_flat_cross_channel_rms(
+            tfds_name=a.cross_tfds_name, data_dir=a.cross_tfds_data_dir,
+            op=a.cross_op, nbins=a.nbins, split="train",
+            n_sample=a.channel_rms_nsample, roll_frac=a.flatsky_roll_frac,
+        )
+        channel_scale = np.asarray(channel_scale, dtype=np.float32)
+        flat_transform = make_flat_cross_transform(a.cross_op, channel_scale, a.flatsky_roll_frac)
+    elif a.cross_tfds_name:
         # tfds_cross arm: SAME deterministic estimator as B-1 training (n_sample must
         # match training=8000) -> byte-identical scale; the grid .npz cache is deleted.
         from tfds_cross_tfdata_loader import compute_cross_tfds_channel_rms
@@ -142,10 +169,15 @@ def main():
         with np.load(npz, allow_pickle=False) as d:
             patches = np.asarray(d["patches"], dtype=np.float32)
             theta = np.asarray(d["theta"], dtype=np.float64)
-        if ch_slice is not None:
-            patches = patches[..., ch_slice]
-        patches = patches / channel_scale
-        y = summarize(patches)  # (48, dim)
+        if flat_local:
+            # RAW autos -> build patch-local cross + whiten on-device (same as training/obs).
+            autos = patches[..., ch_slice]
+            patches = np.asarray(flat_transform(autos), dtype=np.float32)
+        else:
+            if ch_slice is not None:
+                patches = patches[..., ch_slice]
+            patches = patches / channel_scale
+        y = summarize(patches)  # (n_patches, dim)
         S.append(y)
         P.append(np.full(y.shape[0], p, np.int32))
         PA.append(np.arange(y.shape[0], dtype=np.int32))
