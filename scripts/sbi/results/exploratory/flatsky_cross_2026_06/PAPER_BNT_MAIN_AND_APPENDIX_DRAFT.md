@@ -47,8 +47,10 @@ no learning involved — returns the full no-BNT figure of merit (recovered frac
 irreducibly joint: the collapse is entirely a property of the nulled frame — the unique
 frame, by construction, with no deep direction anywhere. (The rotation re-mixes the nulled
 kernels, so this is information accounting, not an analysis recipe; what it licenses is the
-separation of the cleaning basis from the statistics basis — and a cheaper fix still,
-appending a single deep combination map to the otherwise untouched nulled set.)
+separation of the cleaning basis from the statistics basis. A cheaper fix — appending a
+single deep combination map, the plain bin average, to the otherwise untouched nulled set —
+recovers 73% of the lost figure of merit on its own; the remainder is tomographic structure
+among the deep kernels that one average cannot carry.)
 
 A convolutional network fed the tomographic bins as input channels evades this for a simple,
 almost mechanical reason: the first operation of a multichannel CNN is a learned linear
@@ -195,9 +197,10 @@ appendix table). Noise correlation is invisible to marginals and noise amplifica
 absorbed by the SNR normalization, so neither was ever a complete mechanism. (Two earlier
 explanations — the pre-registered partial-recovery expectation and a first post-mortem based
 on mixing sign structure — were falsified against the data and the transform's own geometry;
-the chain is preserved in deep-dive §5 as journey material. Registered next test, §5.4:
-appending ONE deep channel to the four untouched nulled maps should recover ≥0.8 — a
-practical rescue that, unlike whitening, preserves the nulled channels for per-slice cuts.)
+the chain is preserved in deep-dive §5 as journey material. The §5.4 follow-up — ONE deep
+channel appended to the four untouched nulled maps, registered ≥0.8 — MEASURED 0.730:
+below registration, confirming the deep direction as dominant while refuting the
+single-direction strong form; the residual is tomographic structure among the deep kernels.)
 
 ## Interpretation (the two pillars as one statement)
 

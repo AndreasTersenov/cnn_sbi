@@ -72,9 +72,13 @@ normalization), not mixing per se. Diagnostic only: Q remixes the nulled kernels
 practical statement stays "cleaning basis ≠ statistics basis." Honesty trail: the
 pre-registered prediction (LOW-to-MID) was falsified AND the first post-mortem (sign
 structure) failed its own geometry check — both kept in the deep-dive §5 as journey material.
-Registered next test (§5.4, not run): append ONE deep channel (plain bin average) to the 4
-untouched nulled maps → predicted ≥0.8 recovery while preserving per-slice cuts. Recovered
-values marginally above 1 read as "complete to within a few percent."
+§5.4 test (registered ≥0.8, MEASURED 0.730 — `bntdeep_campaign/BNTDEEP_RESULT.md`): ONE
+appended deep channel (plain bin average; 4 nulled maps untouched) recovers FoM3 364 → 1854
+of 2405, σ(σ8) 0.176 → 0.096 (vs 0.082), σ(w0) ≈ restored — below registration ⇒ the deep
+direction is the DOMINANT carrier but the single-direction strong form is refuted; the
+residual ~27% is tomographic structure among the four deep kernels (one average can't carry
+it). Recovered values marginally above 1 (whitening) read as "complete to within a few
+percent."
 
 ## Caveats / validation (GATE C ran 2026-06-11 — pass WITH caveats; `bnt_campaign/gate_c/GATE_C_BNT.md`)
 

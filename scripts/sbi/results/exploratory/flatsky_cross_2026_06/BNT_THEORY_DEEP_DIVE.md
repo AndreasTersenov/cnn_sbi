@@ -48,6 +48,11 @@ and discarded — §5) is physical:
 > generic rotation, or the original bins — feeds per-channel statistics; the nulled frame is
 > the special frame that contains none.**
 
+Span calibration (§5.4, run after registration): ONE appended deep channel recovers 0.730 of
+(noBNT − BNT) — below its registered 0.8, so the single-direction strong form is refuted
+while the deep direction is confirmed as the dominant carrier; the residual ~27% is
+tomographic structure among the four deep kernels that one average cannot carry.
+
 Claims ledger (tags: PROVED here / MEASURED in the campaign / MECHANISM = physically grounded
 but not derived end-to-end):
 
@@ -67,8 +72,8 @@ but not derived end-to-end):
 | Pairwise union maps complete at 2nd order, incomplete at 3rd | PROVED | M2 |
 | l1 collapse 0.15×/0.22×; CNN 0.93×/0.88×; whitening recovers 1.06/1.01 | MEASURED | campaign |
 | σ8 hit hardest / w0 mildest: w0's room capped by the prior (max 1.9× vs measured 1.32×) | MEASURED+derived | F6 |
-| The no-deep-direction account of the collapse | MECHANISM | §5 |
-| Proposed decisive check: append ONE deep channel to the 4 nulled maps → near-full recovery | PREDICTION (not run) | §5.4 |
+| The no-deep-direction account of the collapse (dominant; span-calibrated) | MECHANISM | §5 |
+| §5.4 check: +1 deep channel, registered ≥0.8 → MEASURED 0.730 (partial; strong form refuted) | MEASURED | §5.4 |
 
 ================================================================================
 ## §1 — The story in plain language
@@ -220,11 +225,12 @@ Ranked; "measured" = this campaign, "exact" = proved, "predicted" = registered, 
    quantitative justification for higher-order statistics: skipping the rotate-back step
    costs 85% of the l1's FoM3 (measured), performing it costs nothing (measured, whitening),
    and P1/P4b are the proof-level statements that the post-cut basis is a free choice.
-2. **Append ONE deep channel** (predicted near-full recovery; cheap decisive test, §5.4):
-   keep the four nulled maps untouched — preserving per-slice cuts — and add the plain bin
-   average (κ₁+κ₂+κ₃+κ₄)/4 as a fifth l1 channel. If the no-deep-direction account is right,
-   most of the lost FoM3 returns with a single fixed extra channel and no re-mixing of the
-   nulled maps. Not yet run; would be a ~3 h mini-campaign with existing machinery.
+2. **Append ONE deep channel** (MEASURED 2026-06-11: recovers 0.73, §5.4): keep the four
+   nulled maps untouched — preserving per-slice cuts — and add the plain bin average
+   (κ₁+κ₂+κ₃+κ₄)/4 as a fifth l1 channel. Measured: FoM3 364 → 1854 (of 2405); σ(σ8)
+   0.176 → 0.096 (vs 0.082); σ(w0) essentially restored. One fixed extra channel undoes
+   ~3/4 of the collapse; the rest is tomographic structure among the deep kernels (a second,
+   depth-distinct deep channel is the registered-but-not-run next rung).
    **Real-survey caveat:** the appended deep map is exactly the object with ℓ↔k leakage, so
    in a cut analysis it must itself be cut conservatively — eroding its gain. It is the
    right MECHANISM test (uncut, information-accounting setting), not a survey recipe.
@@ -556,20 +562,49 @@ nulling directions b̂₂..b̂₄. What actually distinguishes the frames:
   the deep direction, and showed no collapse.
 
 So the durable statement: **the l1's BNT collapse is the starvation of a frame that contains
-no deep direction; restore one deep direction (Q does; a generic rotation does; the original
-axes do fourfold-redundantly) and the per-channel information returns in full — measured.**
-Tagged honestly: the invariances and the bounds are PROVED; the full-recovery and the 0.15×
-are MEASURED; "the deep direction carries the bulk" is MECHANISM — strongly supported
-(datavector response figure; the toy; the geometry above) but not derived end-to-end.
+no deep direction; restore the signal-rich subspace and the per-channel information returns.**
+Quantified by the §5.4 test: ONE appended deep direction restores 73%; frames spanning the
+signal-rich subspace with several channels (whitening, original axes) restore 100% — the
+residual ~27% is tomographic structure AMONG the deep kernels that a single average cannot
+carry. Tagged honestly: the invariances and the bounds are PROVED; 0.15×, 1.06/1.01, and
+0.730 are MEASURED; "per-channel information scales with the spanned signal-rich subspace"
+is MECHANISM — now calibrated at three points (0, 1, and 4-ish signal-rich directions) but
+not derived end-to-end.
 
-### 5.4 The decisive cheap test (registered, not run)
+### 5.4 The decisive cheap test — REGISTERED ≥ 0.8, MEASURED 0.73 (partial)
 
-If §5.3 is right, appending ONE deep channel — the plain average (κ₁+κ₂+κ₃+κ₄)/4, fixed, no
-learning — to the four untouched nulled maps should restore most of the lost FoM3, while
-keeping the nulled channels available for per-slice cuts (unlike whitening, which destroys
-them). Five-channel l1, one extra build slice, whiten-campaign template (~3 h). PREDICTION:
-recovery ≥ 0.8 of (noBNT − BNT). If it fails, §5.3 is wrong and the joint share is hiding
-somewhere subtler — either outcome is paper material.
+Registered before any data: appending ONE deep channel — the plain average (κ₁+κ₂+κ₃+κ₄)/4,
+fixed, no learning — to the four untouched nulled maps should restore ≥ 0.8 of (noBNT − BNT).
+Run 2026-06-11 (`bntdeep_campaign/BNTDEEP_RESULT.md`; BNT columns bit-identical to the
+measured 0.15× arm, theta/perm/patch alignment hard-asserted):
+
+| arm | FoM3 | σ(σ8) | σ(w0) |
+|---|---|---|---|
+| noBNT auto | 2405 | 0.082 | 0.245 |
+| BNT auto | 364 | 0.176 | 0.323 |
+| BNT + deep (5ch) | 1854 | 0.096 | 0.256 |
+
+**recovered = 0.730 — the registered threshold was NOT met.** Honest reading, both ways:
+- *Support:* a single fixed appended channel undoes 73% of the FoM3 loss, ~85% of the σ(σ8)
+  damage, and nearly all of the σ(w0) damage. The deep direction is confirmed as the
+  DOMINANT carrier of what per-channel statistics lose under nulling.
+- *Refutation of the strong form:* "the deep common mode carries essentially all of it" is
+  too strong by ~27%. The natural refinement: the original basis contains FOUR deep kernels
+  of different depths — a 4-dimensional signal-rich structure — and one average direction
+  cannot carry the tomographic information AMONG the deep modes. The full-recovery frames
+  (whitening, original axes) span the signal-rich subspace with several channels; the
+  bnt+deep frame spans one direction of it. Account update: per-channel-accessible
+  information scales with how much of the signal-rich subspace the frame's channels span —
+  one direction ≈ 73%, a spanning set = 100% (measured at both ends).
+- *Caveat biasing recovered DOWN (unquantified, small):* the deep channel inherits the
+  standard 40-bin protocol over its calibrated range, which is wide and heavy-tailed
+  ([−12.1, +14.4] in SNR; raw max 52) — coarser binning of the core than the other channels
+  get. Some of the missing 27% may be binning efficiency, not missing structure.
+- *Optional next rung (NOT run; needs a go):* append TWO deep channels of different depths
+  (e.g. the average + the deepest bin κ₄ alone) — the span refinement predicts a recovery
+  strictly between 0.73 and 1. Cheap (same concat machinery).
+Survey-recipe caveat unchanged: this is the uncut information-accounting setting (§1.7
+item 2).
 
 ### 5.5 Synthesis (the two pillars, final form)
 

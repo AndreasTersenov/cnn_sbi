@@ -22,6 +22,37 @@ Each arm cross-gain over auto-only is measured AND calibration-validated (TARP/S
 ## Guardrails
 patch-local cross ONLY (never full-sphere = leakage); per-channel noise (not shared auto-sigma); never PCA L1; GPU 1 only; example-disjoint compressor/NDE split by perm; calibrate BEFORE contours; SAME auto channels across all arms; one apodized-circular convolution definition; do not relitigate the operator choice (notes S8-12).
 
+## Loop status (bnt+deep-§5.4-RESULT 2026-06-11 ~22:00 UTC)
+★★ §5.4 DONE in 11 min (build 198s — TFDS hot — sweep 275s, zero failures, all alignment
+asserts PASS): **recovered = 0.730 — BELOW the registered 0.8 ⇒ PARTIAL.** deep5 FoM3 1854
+(noBNT 2405, BNT 364); σ_s8 0.176→0.096 (vs 0.082, ~85% of damage undone); σ_w0 ≈ restored
+(0.256 vs 0.245). READING: deep direction = DOMINANT carrier (one fixed channel undoes 3/4
+of the collapse) but the single-direction STRONG form is REFUTED — residual ~27% =
+tomographic structure among the 4 deep kernels (different depths; one average can't carry
+it). Account refined to SPAN-CALIBRATED: per-channel info scales with spanned signal-rich
+subspace — 0 directions→0.15×, 1→0.73, spanning set (whiten/original)→1.0. Caveat biasing
+0.73 DOWN: deep channel's 40 bins over a wide heavy-tailed range ([−12,14] SNR) = coarser
+core binning. Registered-not-run next rung: 2nd depth-distinct deep channel (predicted
+strictly between 0.73 and 1). Folded into deep-dive §0/§1.7/§5.3/§5.4 + ledger, FLATSKY_BNT_
+RESULT.md, paper draft Part I+II, memory, figure (4th bar). Honesty chain now THREE falsified
+/sub-threshold predictions kept as journey material (F4 LOW-MID → full; sign-structure → dead
+on geometry; §5.4 ≥0.8 → 0.73).
+
+## Loop status (bnt+deep-§5.4-LAUNCHED 2026-06-11 ~21:45 UTC)
+★ §5.4 TEST RUNNING (Andreas GO): run_flatsky_bntdeep_campaign.py detached GPU 1 (sole
+tenant), monitor armed. PRE-REGISTERED: recovered = (deep5−BNT)/(noBNT−BNT) ≥ 0.8 / 0.4–0.8
+partial / <0.4 refutes §5.3. Implementation = per-channel block CONCAT (no 5-ch plumbing):
+x = [cached flat_local_none_bnt 800 cols (bit-identical to the measured 0.15× arm) | fresh
+deep-channel 200 cols]; deep σ(s) = ¼√(Σσⱼ²) derived EXACTLY from the verified no-BNT table;
+loader params mirror the BNT build (train/5-6/flip/1001/512, val/test/0-1/noflip/2001);
+theta + fiducial perm/patch bit-equality HARD-ASSERTED. New: mix modes 'deep'(1×4 avg)/
+'bnt_deep'(5×4) + mode-aware n_built_channels (unit-checked: avg exact, row sums 1,0,0,0,1).
+Build streaming at ~3200 patches/s (TFDS hot in page cache after whiten campaign — vs 169/s
+cold). Code committed 60c9b61 + PLAN_BNTDEEP_TEST.md. Bin-count remarks (≥4-bins folklore
+derived: 2-param kernel ⇒ 2 conditions ⇒ 3 bins/row, N−2 nulled maps; row 2 only partially
+nulled) folded into deep-dive §1.2/F3 (f2a9e3c); Q-vs-B⁻¹ + survey-workflow clarifications
+(7258411).
+
 ## Loop status (whitening-vs-Binv + survey-workflow clarifications 2026-06-11 ~16:30 UTC)
 Andreas Q&A round 2: (1) Q vs B⁻¹ — clarified in doc §1.6: ALL noise-whiteners of the nulled
 maps form the family W = O·B⁻¹ (net transform = rotation); B⁻¹ is the O=I member (would have

@@ -38,10 +38,13 @@ def main():
         w = fom3(WH / f"population_sweep/l1_{op}")
         b = fom3(FC / f"bnt_campaign/population_sweep/l1_{op}")
         arms.append((label, n, w, b, (w - b) / (n - b)))
+    # optional 4th bar (auto arm only): the §5.4 bnt+deep test
+    d5_file = FC / "bntdeep_campaign/population_sweep/l1_none/median_summary.json"
+    d5 = json.load(open(d5_file))["fom3"] if d5_file.exists() else None
 
     x = np.arange(len(arms))
-    width = 0.26
-    fig, ax = plt.subplots(figsize=(5.5, 3.8))
+    width = 0.26 if d5 is None else 0.21
+    fig, ax = plt.subplots(figsize=(5.8, 3.8))
     for k, (vals, color, label) in enumerate((
             ([a[1] for a in arms], C_NOBNT, "no BNT"),
             ([a[2] for a in arms], C_WHITEN, "whitened (Q = (BBᵀ)$^{-1/2}$B)"),
@@ -53,15 +56,21 @@ def main():
                 color=C_WHITEN)
         ax.text(xi + width, b * 1.3, f"{b/n:.2f}×", ha="center", fontsize=9,
                 color=C_BNT)
+    if d5 is not None:
+        n0, b0 = arms[0][1], arms[0][3]
+        ax.bar(0 + 2 * width, d5, width, color="#CC79A7", edgecolor="k", lw=0.5,
+               label="BNT + deep channel (§5.4)")
+        ax.text(2 * width, d5 * 1.15, f"recovered\n{(d5-b0)/(n0-b0):.2f}", ha="center",
+                fontsize=8, color="#CC79A7")
     ax.set_yscale("log")
     ax.set_ylim(top=max(a[1] for a in arms) * 4)
     ax.set_ylabel(r"FoM$_3$ (pooled 9000-obs median)")
     ax.set_xticks(x)
     ax.set_xticklabels([a[0] for a in arms])
-    ax.legend(frameon=False, ncol=3, loc="lower center",
+    ax.legend(frameon=False, ncol=2, loc="lower center",
               bbox_to_anchor=(0.5, 1.0), fontsize=8)
     ax.set_title("Whitening decomposition of the L1 BNT collapse", fontsize=10,
-                 pad=28)
+                 pad=42)
     for ext in ("png", "pdf"):
         fig.savefig(FIGS / f"fom3_whiten_decomposition.{ext}", dpi=200)
     plt.close(fig)
