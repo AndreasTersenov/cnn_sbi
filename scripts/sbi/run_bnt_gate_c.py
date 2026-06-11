@@ -146,7 +146,10 @@ def tarp_devs():
         z = np.load(f)
         keys = set(z.files)
         a = z["alpha"] if "alpha" in keys else (z["alphas"] if "alphas" in keys else None)
-        e = z["ecp"] if "ecp" in keys else (z["coverage"] if "coverage" in keys else None)
+        if "ecp_bootstrap" in keys:
+            e = z["ecp_bootstrap"].mean(axis=0)
+        else:
+            e = z["ecp"] if "ecp" in keys else (z["coverage"] if "coverage" in keys else None)
         if a is None or e is None:
             continue
         name = Path(f).stem

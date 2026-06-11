@@ -47,10 +47,16 @@ noise matches the analytic mixing prediction √(Σⱼ B²ᵢⱼ) to 3 digits). 
 Notably, the **plain** CNN achieved this at the standard recipe — the 20° campaign's "advanced
 architecture" contingency was not needed at 10°/80px.
 
-## Caveats / remaining validation
+## Caveats / validation (GATE C ran 2026-06-11 — pass WITH caveats; `bnt_campaign/gate_c/GATE_C_BNT.md`)
 
-- GATE C (TARP/SBC; L-C2ST for CNN) has **not yet run on the BNT arms** — required before
-  paper-grade claims. The no-BNT arms all passed; the machinery is identical.
+- **Headline-safe:** all calibration deviations are at the ~5–10% credible-width level vs the
+  ~90% (L1) and ≤10% (CNN) measured width effects. Directionally: L1-BNT is mildly
+  over-confident (SBC std 0.295–0.304) ⇒ the true L1 inflation is at least as severe as quoted
+  ⇒ predictions 1–2 conservative as stated.
+- **CNN arms are harder to calibrate in BNT space than in the original basis** (no-BNT arms
+  were clean): cnn-auto = mild (TARP tightest-tercile −0.068; L-C2ST 13%; SBC conservative);
+  cnn-product = locally miscalibrated at the fiducial (L-C2ST 40% reject, self-test powered).
+  Quote losslessness from the AUTO arm; carry the product caveat explicitly.
 - CNN mean ratios (0.93×/0.88×) sit at the edge of the compressor-seed band: a mild ≲10%
   residual loss is not excluded; "lossless within seed scatter" is the precise claim.
 - L1 arms have no compressor-seed dimension (deterministic datavector); 3-MAF pooling only.

@@ -22,6 +22,20 @@ Each arm cross-gain over auto-only is measured AND calibration-validated (TARP/S
 ## Guardrails
 patch-local cross ONLY (never full-sphere = leakage); per-channel noise (not shared auto-sigma); never PCA L1; GPU 1 only; example-disjoint compressor/NDE split by perm; calibrate BEFORE contours; SAME auto channels across all arms; one apodized-circular convolution definition; do not relitigate the operator choice (notes S8-12).
 
+## Loop status (bnt-gate-c 2026-06-11 08:40 UTC)
+★ BNT GATE C DONE (corners→overlays→TARP→SBC→L-C2ST, ~5.5 h, zero job failures): PASS WITH
+CAVEATS, HEADLINE-SAFE. Deviations ≈5–10% credible-width vs 90%(L1)/≤10%(CNN) effects. L1-BNT
+mildly OVER-confident (SBC std 0.295–0.304) ⇒ true inflation ≥ measured ⇒ predictions 1–2
+protected. CNN: SBC mildly conservative; TARP cnn-auto tightest tercile −0.068 (mild
+over-conf), others conservative; L-C2ST auto 13% (mild, self-test powered), product 40% (LOCAL
+miscalib at fiducial — real flag). BNT space measurably harder to calibrate than original basis
+(no-BNT arms were ≤0.037/0%). Paper phrasing: losslessness from the AUTO arm (0.93×); product
+0.88× with explicit caveat. Corner overlays delivered + committed (cf25cb6); GATE_C_BNT.md has
+the full derived tables (TARP parser fixed for ecp_bootstrap). Paper docs: FLATSKY_BNT_RESULT
+caveats updated; PAPER_BNT_MAIN_AND_APPENDIX_DRAFT.md (main-text + formal appendix + Part III
+joint-PDF/Cramér–Wold/catalog-cross-maps discussion). PILLAR 2 NOW COMPLETE: result +
+calibration + figures + paper drafts.
+
 ## Loop status (BNT-RESULT 2026-06-10 23:55 UTC)
 ★★★ BNT CAMPAIGN DONE (3.7 h, zero failures) — ALL THREE PREDICTIONS HOLD. Inflation
 FoM3_BNT/noBNT: L1 auto 0.15× (2405→364; σ_s8 0.082→0.176 DOUBLES, σ_Om +69%) | L1 +product
