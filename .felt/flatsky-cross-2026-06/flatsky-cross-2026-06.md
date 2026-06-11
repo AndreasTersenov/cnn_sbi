@@ -22,6 +22,21 @@ Each arm cross-gain over auto-only is measured AND calibration-validated (TARP/S
 ## Guardrails
 patch-local cross ONLY (never full-sphere = leakage); per-channel noise (not shared auto-sigma); never PCA L1; GPU 1 only; example-disjoint compressor/NDE split by perm; calibrate BEFORE contours; SAME auto channels across all arms; one apodized-circular convolution definition; do not relitigate the operator choice (notes S8-12).
 
+## Loop status (session-handoff 2026-06-11 ~13:40 UTC)
+SESSION HANDOFF to the next Fable 5 session: HANDOFF_FABLE5_2026-06-11.md (repo root, the new
+entry point — supersedes the 06-10 handoff). ★ RUNNING: run_flatsky_whiten_campaign.py (pid
+3108884, GPU 1, launched ~12:45) — per-channel L1 in Q=(BB^T)^-1/2 B (orthogonal, verified) →
+whiten_campaign/WHITEN_RESULT.md with recovered fraction (whiten−BNT)/(noBNT−BNT) decomposing
+the 0.15× L1 collapse into noise-geometry vs irreducibly-joint; ETA ~15:30–16:30 UTC; THE OLD
+SESSION'S MONITORS ARE DEAD — next session must check driver.out itself. ★ PRIORITY 2 (Andreas,
+explicit): the theory explanation (Parts I–IV of PAPER_BNT_MAIN_AND_APPENDIX_DRAFT.md) was NOT
+thorough enough for him — deepen it (honest 2-bin Gaussian Fisher diag-vs-joint, σ8-anisotropy
+mechanism, possible numerical mini-demos, consolidate the four accreted parts into one layered
+doc; interview him on what felt thin first). Backlog: Tier-1 scheduler packing (benchmarks in
+EFFICIENCY_AUDIT never run), paper assembly (/paper-draft), joint-PDF third-pillar idea (needs
+explicit go). Both pillars otherwise COMPLETE (results+calibration+figures+drafts). Session
+total: 20 commits 5f1afd9→b551586 + this, all pushed.
+
 ## Loop status (bnt-figure-kit 2026-06-11 ~10:30 UTC)
 ★ BNT FIGURE KIT COMPLETE + one NEW DIAGNOSTIC FINDING. Figures (bnt_campaign/figures/):
 fom3_bnt_inflation (headline log bars), sigma_bnt_dumbbell (σ8 hit hardest, w0 mildest —
