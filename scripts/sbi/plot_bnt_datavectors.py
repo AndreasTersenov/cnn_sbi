@@ -100,6 +100,44 @@ def main():
     for ext in ("png", "pdf"):
         fig.savefig(OUT / f"datavectors_bnt_vs_nobnt_s8_relative.{ext}", dpi=180)
     print(f"wrote {OUT}/datavectors_bnt_vs_nobnt_s8_relative.{{png,pdf}}")
+    plt.close(fig)
+
+    hist_grid()
+
+
+def hist_grid(nlev: int = 16):
+    """BNT twin of figs/l1_hist_vs_s8_viridis: rows = (auto bin4, conv 3x4, prod 3x4),
+    cols = 5 scales; each panel = the 40-SNR-bin L1 histogram at `nlev` sigma8-quantile
+    levels, viridis-coded. Exact inference datavectors from the BNT both-cache."""
+    rows = [("auto κ4 (BNT)", 3), ("conv 3×4 (BNT)", 9), ("product 3×4 (BNT)", 15)]
+    z = np.load(CACHES[1][1])     # the BNT both-cache
+    s8 = z["theta"][:, 1].astype(np.float64)
+    X = z["x"]
+    edges = np.quantile(s8, np.linspace(0, 1, nlev + 1))
+    cmap = plt.get_cmap("viridis")
+    norm = Normalize(vmin=s8.min(), vmax=s8.max())
+    fig, axes = plt.subplots(3, NSC, figsize=(15.5, 7.2))
+    for r, (rlab, ch) in enumerate(rows):
+        for sc in range(NSC):
+            ax = axes[r, sc]
+            cols = ch * FEAT + sc * L1N + np.arange(L1N)
+            for i in range(nlev):
+                m = (s8 >= edges[i]) & (s8 <= edges[i + 1] if i == nlev - 1 else s8 < edges[i + 1])
+                mid = 0.5 * (edges[i] + edges[i + 1])
+                ax.plot(X[m][:, cols].mean(axis=0), color=cmap(norm(mid)), lw=1.1)
+            if r == 0:
+                ax.set_title(f"scale {sc}", fontsize=11)
+            if sc == 0:
+                ax.set_ylabel(rlab, fontsize=11)
+            if r == 2:
+                ax.set_xlabel("SNR bin")
+    cb = fig.colorbar(ScalarMappable(norm=norm, cmap=cmap), ax=axes, fraction=0.02, pad=0.01)
+    cb.set_label(r"$\sigma_8$")
+    fig.suptitle(f"L1 histograms vs σ8 — {nlev} cosmology levels "
+                 "(op=both, exact datavector, BNT basis)", fontsize=13)
+    for ext in ("png", "pdf"):
+        fig.savefig(OUT / f"l1_hist_vs_s8_viridis_bnt.{ext}", dpi=170)
+    print(f"wrote {OUT}/l1_hist_vs_s8_viridis_bnt.{{png,pdf}}")
 
 
 if __name__ == "__main__":
