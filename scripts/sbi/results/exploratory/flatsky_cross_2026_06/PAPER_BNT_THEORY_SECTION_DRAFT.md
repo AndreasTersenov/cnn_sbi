@@ -27,7 +27,11 @@ indistinguishable to t_pc — blind to the inter-channel copula at every scale.
 Channel-mixing compressor f_phi (CNN+VMIM): first operation is a learned linear channel mix,
 so the hypothesis class is CLOSED under channel-basis changes:
     F o (I (x) B) = F  for all B in GL(N)
-(compose with pointwise B^-1, absorbed into the first convolution at zero capacity cost). Hence
+(kernel-level: K'_{oj}(q) = sum_i K_{oi}(q) B_ij — same shape, absorbed before the first
+nonlinearity at zero capacity cost; requires only that the first layer is linear in channels,
+true for the plain CNN). NB the per-channel RMS whitening preprocessing is diagonal-linear and
+per-basis, so closure survives it: D B^-1 D'^-1 is one absorbable channel map; demeaning
+commutes with B. Hence
     max_{f in F} I(theta; f(Bx)) = max_{f in F} I(theta; f(x))
 — achievable information is exactly basis-invariant; only optimization can differ. Measured
 residual: 0.93x (auto) / 0.88x (auto+product), within compressor-seed scatter.
@@ -39,13 +43,21 @@ t_pc is NOT closed under mixing: marginal reductions do not commute with linear 
 intuition (mechanism, not theorem): S' = B S B^T against Sigma' = sigma^2 B B^T — nulling
 suppresses per-map S/N of the nulled bins while conserving total information, so the
 information share in inter-channel structure grows by exactly what the marginals lose.
-Measured: l1 on nulled autos 0.15x, sigma(sigma_8) doubles.
+Measured: l1 on nulled autos 0.15x, sigma(sigma_8) doubles. (NB info does not decompose
+additively into diagonal/off-diagonal shares — the defensible chain is: total invariant
+[exact] + per-map S/N of nulled bins drops [by construction] + per-channel statistic loses 85%
+[measured]; the 'migration' sentence is connective intuition. Even at Gaussian level,
+SCALE-RESOLVED cross-spectra restore invariance in any basis — indicting the pixel product's
+scale-blending specifically.) Control: the BNT arm used a RE-FROZEN per-(channel,scale) sigma
+in the BNT basis (GATE A1b PASS), so the collapse cannot be blamed on mis-normalization — it
+isolates the statistic's inability to use cross-channel CORRELATION.
 
 ## Why appended quadratic channels recover only part (0.15x -> 0.22x)
 
-kappa'_i kappa'_j = sum_kl B_ik B_jl kappa_k kappa_l — quadratic monomials span a B-invariant
-subspace, so the FULL quadratic vector carries the same second-order information in any basis.
-Losses in practice:
+kappa'_i kappa'_j = sum_kl B_ik B_jl kappa_k kappa_l — the 10 quadratic monomials (incl.
+squares) span a B-invariant LINEAR subspace. Neither condition for basis-invariance holds in
+the arm as built: we feed only the 6 i<j products (a sub-basis), and the subsequent reduction
+is nonlinear per-channel. Losses in practice:
  (i)  non-commutation again: per-channel histograms of W_s[kappa'_i kappa'_j]; histograms of
       fixed components do not determine histograms of recombinations;
  (ii) scale blending: W_s[kappa_i kappa_j] mixes all Fourier pairs beating into band s
@@ -54,7 +66,7 @@ Losses in practice:
  (iii) noise standardisation: per-(channel,scale) scalar sigma_c(s) cannot represent the
       inter-channel covariance Sigma'.
 
-## Diagnostic decomposition (whitening identity)
+## Diagnostic decomposition (whitening identity) — DIAGNOSTIC ONLY, not a practical rescue
 
 Equal per-bin noise => M = (B B^T)^(-1/2) satisfies (M B)(M B)^T = I: noise-whitening the
 nulled maps = an ORTHOGONAL rotation Q = M B of the original basis. Per-channel statistics on
@@ -62,12 +74,25 @@ M kappa' see independent equal-variance noise again; the residual deficit vs no-
 the genuinely joint (rotation-mixed) information. (Footnote: unequal per-bin n_gal =>
 Sigma' = B diag(sigma_i^2) B^T; whitener still defined, no longer a pure rotation.)
 
+IMPORTANT FRAMING CORRECTION (red-team pass 2026-06-11): whitening — like B^-1 — REMIXES the
+nulled kernels and therefore destroys the very structure BNT is applied for. It is NOT a way
+to keep BNT's systematics benefits while rescuing a per-channel statistic. Two honest
+framings: (a) DIAGNOSTIC — the whitened run decomposes the inflation into a noise-basis
+component vs an irreducibly-joint component (pure information accounting); (b) PIPELINE
+DECOUPLING — in a realistic analysis BNT serves the CLEANING step (nulling-informed scale
+cuts); after cleaning, the STATISTICS basis is a free choice, and our result says the
+post-cleaning information is recoverable in any basis (learned or constructed). (b) is the
+paper-level point; state it as its own claim, not as a property of whitening.
+
 ## Interpretation (the two pillars as one statement)
 
-Friendly basis: the learned compressor does NOT out-extract the hand-crafted statistic on the
-explicit cross channel (0.83-0.85x, robust to compressor seed and doubled training budget) —
-its cross-moment machinery is not sharper. What it has — provably by class closure,
-empirically by the nulling test — is BASIS ADAPTIVITY. Per-channel statistics:
+Friendly basis: the TRAINED compressor did not match the hand-crafted statistic on the
+explicit cross channel (0.83-0.85x, robust to compressor seed and doubled training budget).
+NB the asymmetry: the BNT-invariance argument compares the CNN TO ITSELF across bases (class
+closure = exact; 0.93x = measured optimization residual), while the friendly-basis comparison
+is between ACHIEVED ESTIMATORS (10-d summary, finite data; independent evidence the CNN is
+data-limited) — class capability is exactly what it cannot establish. What the compressor has
+— provably by class closure, empirically by the nulling test — is BASIS ADAPTIVITY. Per-channel statistics:
 statistic-strong, basis-fragile. Channel-mixing compressors: basis-robust, not
 statistic-optimal. The reported BNT inflation of higher-order statistics is an artefact of the
 analysis basis, not information loss — removable by learning the basis (CNN) or constructing
@@ -76,7 +101,9 @@ phase-aware cross statistics, e.g. wavelet phase harmonics).
 
 ## Empirical anchors (this work)
 
-- CNN BNT/noBNT: 0.93x auto / 0.88x product (3 compressor seeds; marginals <= 3%).
+- CNN BNT/noBNT: 0.93x auto / 0.88x product (3 compressor seeds; marginals <= 3%); 6/6
+  chains at or below 1.0 (mean ~0.90) => quote as 'lossless within seed scatter; residual
+  <~10% optimization-in-harder-basis cost not excluded'.
 - l1 BNT/noBNT: 0.15x auto (sigma_s8 x2), 0.22x with explicit product channel.
 - No-BNT CNN/l1 on product: 0.83-0.85x, robust to seed and 2x recipe.
 
