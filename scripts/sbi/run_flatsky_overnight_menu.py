@@ -16,8 +16,10 @@ Detached:  setsid nohup python run_flatsky_overnight_menu.py --gpus 1 &
 import argparse
 import json
 import os
+import queue
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -81,7 +83,7 @@ def run_phase(name, cmd, gpu, t0):
     log_path = f"{LOGS}/{name}.log"
     print(f"[{time.time()-t0:7.0f}s] ===== {name} ===== (GPU{gpu})", flush=True)
     env = dict(os.environ, PYTHONUNBUFFERED="1", TF_CPP_MIN_LOG_LEVEL="3",
-               XLA_PYTHON_CLIENT_PREALLOCATE="false", XLA_PYTHON_CLIENT_MEM_FRACTION="0.5",
+               XLA_PYTHON_CLIENT_PREALLOCATE="false", XLA_PYTHON_CLIENT_MEM_FRACTION="0.40",
                PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True", CNN_CPU_THREADS="8",
                OMP_NUM_THREADS="8", MKL_NUM_THREADS="8", CUDA_VISIBLE_DEVICES=str(gpu))
     with open(log_path, "w") as log:
@@ -90,6 +92,17 @@ def run_phase(name, cmd, gpu, t0):
     print(f"[{time.time()-t0:7.0f}s] {'DONE' if rc == 0 else 'FAIL'} {name} (rc={rc})",
           flush=True)
     return rc == 0
+
+
+def gpu_foreign_mb(gpu):
+    """Total memory in use on `gpu` (anything present before OUR launch = foreign)."""
+    try:
+        out = subprocess.run(["nvidia-smi", "--query-gpu=memory.used",
+                              "--format=csv,noheader,nounits", "-i", str(gpu)],
+                             capture_output=True, text=True, timeout=20).stdout.strip()
+        return int(out.splitlines()[0])
+    except Exception:
+        return 1 << 30
 
 
 def med(outdir):
@@ -154,31 +167,83 @@ Open follow-ups queued for Andreas:
     print("wrote handoff", flush=True)
 
 
+FOREIGN_LIMIT_MB = 12000   # back off a GPU if a tenant holds more than this
+
+
+def _polite_wait(gpu, t0):
+    waited = 0
+    while gpu_foreign_mb(gpu) > FOREIGN_LIMIT_MB and waited < 3600:
+        print(f"[{time.time()-t0:7.0f}s] GPU{gpu} busy (foreign > {FOREIGN_LIMIT_MB} MB) — "
+              "waiting 300 s", flush=True)
+        time.sleep(300); waited += 300
+
+
+def _screen_worker(gpu, q, results, lock, t0):
+    while True:
+        try:
+            name = q.get_nowait()
+        except queue.Empty:
+            return
+        _polite_wait(gpu, t0)
+        arm = ARMS[name]
+        if not run_phase(f"{name}_build", arm["build"], gpu, t0):
+            with lock:
+                status_append(f"- {name}: BUILD FAIL (GPU{gpu})")
+            continue
+        cmd, outdir = sweep_cmd(name, arm, gpu, full=False)
+        if not run_phase(f"{name}_screen", cmd, gpu, t0):
+            with lock:
+                status_append(f"- {name}: SCREEN SWEEP FAIL (GPU{gpu})")
+            continue
+        m = med(outdir)
+        with lock:
+            results[name]["screen"] = m
+            rec = (m["fom3"] - BNT_FOM) / (NOBNT_FOM - BNT_FOM) if m else float("nan")
+            status_append(f"- {name}: screening FoM3 {m['fom3']:.0f} "
+                          f"(recovered-equiv {rec:.3f}) [GPU{gpu}]")
+
+
+def _full_worker(gpu, q, results, lock, t0):
+    while True:
+        try:
+            name = q.get_nowait()
+        except queue.Empty:
+            return
+        _polite_wait(gpu, t0)
+        cmd, outdir = sweep_cmd(name, ARMS[name], gpu, full=True)
+        if run_phase(f"{name}_full", cmd, gpu, t0):
+            with lock:
+                results[name]["full"] = med(outdir)
+                status_append(f"- {name}: FULL FoM3 {results[name]['full']['fom3']:.0f} "
+                              f"[GPU{gpu}]")
+        else:
+            with lock:
+                status_append(f"- {name}: FULL SWEEP FAIL (GPU{gpu})")
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--gpus", default="1")
+    ap.add_argument("--gpus", default="1,0,2")
     ap.add_argument("--dry-run", action="store_true")
     a = ap.parse_args()
-    gpu = a.gpus.split(",")[0]
+    gpus = [g.strip() for g in a.gpus.split(",") if g.strip()]
     if a.dry_run:
         for n, arm in ARMS.items():
             print(n, ":", " ".join(arm["build"]))
         return 0
     t0 = time.time()
     os.makedirs(OM, exist_ok=True)
-    status_append(f"## run started {time.strftime('%F %T')}")
+    status_append(f"## run started {time.strftime('%F %T')} (GPUs {gpus})")
     results = {n: {} for n in ARMS}
+    lock = threading.Lock()
 
-    for name, arm in ARMS.items():
-        if not run_phase(f"{name}_build", arm["build"], gpu, t0):
-            status_append(f"- {name}: BUILD FAIL"); continue
-        cmd, outdir = sweep_cmd(name, arm, gpu, full=False)
-        if not run_phase(f"{name}_screen", cmd, gpu, t0):
-            status_append(f"- {name}: SCREEN SWEEP FAIL"); continue
-        m = med(outdir)
-        results[name]["screen"] = m
-        rec = (m["fom3"] - BNT_FOM) / (NOBNT_FOM - BNT_FOM) if m else float("nan")
-        status_append(f"- {name}: screening FoM3 {m['fom3']:.0f} (recovered-equiv {rec:.3f})")
+    q1 = queue.Queue()
+    for name in ARMS:
+        q1.put(name)
+    threads = [threading.Thread(target=_screen_worker, args=(g, q1, results, lock, t0),
+                                daemon=True) for g in gpus]
+    [th.start() for th in threads]
+    [th.join() for th in threads]
 
     escalated = set()
     for name, arm in ARMS.items():
@@ -188,15 +253,15 @@ def main():
             escalated.add(name)
             if arm["pair"]:
                 escalated.add(arm["pair"])
+    status_append(f"- escalation set: {sorted(escalated)}")
+    q2 = queue.Queue()
     for name in sorted(escalated):
-        if not results[name].get("screen"):
-            continue
-        cmd, outdir = sweep_cmd(name, ARMS[name], gpu, full=True)
-        if run_phase(f"{name}_full", cmd, gpu, t0):
-            results[name]["full"] = med(outdir)
-            status_append(f"- {name}: FULL FoM3 {results[name]['full']['fom3']:.0f}")
-        else:
-            status_append(f"- {name}: FULL SWEEP FAIL")
+        if results[name].get("screen"):
+            q2.put(name)
+    threads = [threading.Thread(target=_full_worker, args=(g, q2, results, lock, t0),
+                                daemon=True) for g in gpus]
+    [th.start() for th in threads]
+    [th.join() for th in threads]
 
     write_result(results, escalated)
     write_handoff(results, escalated, t0)

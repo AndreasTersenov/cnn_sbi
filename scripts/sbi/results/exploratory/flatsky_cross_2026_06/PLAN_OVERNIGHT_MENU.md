@@ -1,5 +1,12 @@
 # PLAN — overnight rescue-menu + joint-statistics screening (GO Andreas 2026-06-11 night)
 
+**Pre-sleep interview outcomes (Andreas):** run beside the small foreign tenants on GPUs
+0/2 (polite 40% mem caps, probe before each job, back off above 12 GB foreign); matrix as
+planned; doc writeups WAIT for the morning (tables + handoff only); VMIM-MLP compression of
+the joint datavectors allowed but ONLY as the last thing after everything else has run, and
+only if the screening evidence warrants it. Extra-test license granted (think before
+burning compute). Driver parallelized across GPUs 1,0,2 (slot workers).
+
 **Mandate:** test the §1.7 rescue items not yet checked and still relevant; test the joint
 PDF; test a new "joint wavelet l1"; SCREENING rigor (1 MAF seed, 3000 obs) overnight, with
 automatic escalation (3 seeds, 9000 obs — only a re-sweep, caches reusable) for arms that
