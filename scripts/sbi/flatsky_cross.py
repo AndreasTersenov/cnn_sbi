@@ -71,13 +71,45 @@ def whiten_matrix_np() -> np.ndarray:
     return (M @ B).astype(np.float32)
 
 
+def deep_matrix_np() -> np.ndarray:
+    """1x4 'deep channel' mix: the plain bin average of the ORIGINAL autos —
+    the single most kernel-deep direction in channel space (BNT_THEORY_DEEP_DIVE.md
+    §5.3/§5.4). Used standalone to build the appended 5th channel of the bnt+deep test."""
+    return np.full((1, 4), 0.25, dtype=np.float32)
+
+
+def bnt_deep_matrix_np() -> np.ndarray:
+    """5x4 mix: the 4 BNT rows + the deep (bin-average) row — the §5.4 test frame."""
+    return np.concatenate([bnt_matrix_np(), deep_matrix_np()], axis=0)
+
+
 def mix_matrix_np(mode) -> np.ndarray:
-    """Channel-mix matrix for `mode`: True/'bnt' -> BNT; 'whiten' -> noise-whitened BNT."""
+    """Channel-mix matrix for `mode`: True/'bnt' -> BNT; 'whiten' -> noise-whitened BNT;
+    'deep' -> 1x4 bin average; 'bnt_deep' -> 5x4 [BNT; average]. Mixes need not be square:
+    output channels = rows."""
     if mode is True or mode == "bnt":
         return bnt_matrix_np()
     if mode == "whiten":
         return whiten_matrix_np()
-    raise ValueError(f"Unknown channel-mix mode {mode!r}; expected 'bnt'/'whiten'.")
+    if mode == "deep":
+        return deep_matrix_np()
+    if mode == "bnt_deep":
+        return bnt_deep_matrix_np()
+    raise ValueError(f"Unknown channel-mix mode {mode!r}; expected 'bnt'/'whiten'/'deep'/'bnt_deep'.")
+
+
+def n_built_channels(nbins: int, op: str, mode=False) -> int:
+    """Channel count build_channels_* actually emits: the mix (if any) sets the auto count
+    (= mix rows), and the cross pairs are built from the MIXED channels."""
+    m = mix_matrix_np(mode).shape[0] if mode else nbins
+    npairs = len(cross_pairs(m))
+    if op == "none":
+        return m
+    if op in ("conv", "product"):
+        return m + npairs
+    if op == "both":
+        return m + 2 * npairs
+    raise ValueError(f"Unknown cross op={op!r}; expected one of {CROSS_OPS}")
 
 
 def _check_bnt_nbins(n: int) -> None:

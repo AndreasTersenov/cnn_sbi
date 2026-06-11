@@ -234,7 +234,7 @@ def calibrate_snr_range_flat_local(
     Returns (C, 2)."""
     from tfds_cross_tfdata_loader import iter_cross_tfds_batches
     print("######## [flat_local] CALIBRATING PER-CHANNEL SNR RANGE (frozen sigma) ########")
-    C = fx.n_output_channels(nbins, op)
+    C = fx.n_built_channels(nbins, op, bnt)   # mode-aware: non-square mixes change the count
     n_scales = stats.n_scales
     reservoirs: List[List[torch.Tensor]] = [[] for _ in range(C)]
     gen = torch.Generator(device=stats.device); gen.manual_seed(0xC0FFEE)
