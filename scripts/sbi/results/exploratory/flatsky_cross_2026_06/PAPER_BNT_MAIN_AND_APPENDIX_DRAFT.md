@@ -214,3 +214,55 @@ Q2 — survey practice (cross catalogs) and data access:
   the bottom rung (zero cross channels, hostile basis), not a ceiling of map-level statistics.
 - Honesty cap: Cramer-Wold completeness is a ONE-POINT-level statement; full-field claims
   still rest on the Part II field-level argument.
+
+
+================================================================================
+## PART IV — The point-cloud picture (pedagogical core; Andreas Q&A 2026-06-11)
+================================================================================
+
+THE PICTURE: smooth at scale s; each pixel = a 4-VECTOR => the map stack = a cloud of N_pix
+points in 4D. Per-channel PDF/l1 = axis SHADOWS of the cloud; joint PDF = the cloud's SHAPE;
+cross-correlations (all orders) = the ways the cloud is not the product of its shadows; BNT =
+a linear distortion of the cloud (info unchanged, axes changed); Martinet union map = a
+DIAGONAL shadow; product map = shadow of a quadratically WARPED cloud.
+
+WHERE THE INFO GOES UNDER BNT (geometric): the noise blob is spherical pre-BNT, an ELONGATED
+ELLIPSOID (sigma^2 B B^T) post-BNT; the signal directions are no longer axis-aligned while the
+noise is fat along the axes => every axis shadow is noise-dominated (the sigma8-flat histogram
+grid) even though in 4D the signal still stands out along directions where the noise is thin.
+2-bin toy: k2' = k2 - k1 = B + (n2 - n1): doubled noise, anti-correlated with channel 1.
+SHARP STATEMENT: BNT is pixelwise => everything it moves is at ZERO LAG and EQUAL SCALE; the
+per-scale joint ONE-POINT PDF captures in principle all BNT-displaced information (multi-point
+cross stats are not needed for BNT recovery). Non-Gaussian sector: post-BNT the surviving
+non-Gaussianity is in JOINT tail events (several maps simultaneously extreme in the right
+pattern vs noise coincidences) — invisible to any per-map histogram.
+HONESTY NOTE: in degenerate toys the diagonal of C can still determine the params and the loss
+is estimator INEFFICIENCY (noise-correlation inflates diag-estimator variance); in the real
+4-bin non-Gaussian case both effects act; 0.15x is the combined measurement; the whitening
+test separates the noise-geometry share.
+
+JOINT PDF, CONCRETELY: histogramdd of the per-pixel 4-vectors per smoothing scale (wavelet
+version: joint histogram of W_s kappa_1..4 = the strict joint generalization of l1). Classical
+obstacle (10^4-cell covariance) EVAPORATES IN SBI: coarse-bin (6^4 cells or 6 pairwise 15x15
+2D histograms ~ 1300 numbers, comparable to our 800-3200-d datavectors), feed to the same MAF.
+Basis-covariant => BNT-robust by construction (Part II). LDT lensing-PDF programme is moving
+toward joint tomographic PDFs at low order; the wavelet-domain joint version would be new.
+
+MARTINET MAPPING (exact): union-catalog map = count-weighted average of the bin maps, noise
+included: k_{i u j} = (n_i k_i + n_j k_j)/(n_i + n_j); pooled-noise variance identical either
+way => EVERYTHING Martinet extracts is extractable from the auto maps (catalogs add
+bookkeeping, not field information). What a union map adds vs per-channel-on-autos: ONE
+diagonal shadow; its k-th cumulant = binomial-weighted sum of order-k MIXED cumulants.
+COMPLETENESS = CRAMER-WOLD (CT-scan metaphor): 1-d laws along ALL directions reconstruct the
+joint law; per-channel = 4 axis projections; Martinet pairs = a few diagonal projections (a
+finite Radon sampling); more weight ratios pin individual mixed cumulants order-by-order;
+triplet unions reach 3-bin cumulants; the all-directions limit IS the joint PDF. Product maps
+= a different (nonlinear-warp) probe family; neither contains the other; both < joint PDF.
+
+HIERARCHY (one line): axis shadows (per-channel PDF/l1) < finitely many shadows (Martinet
+unions, products) < cloud shape (joint one-point PDF per scale) < full field (multi-point /
+field level). BNT-induced losses live entirely within level 3 (pixelwise transform).
+
+WHITENING TEST (running 2026-06-11, whiten_campaign/): per-channel L1 in Q = (BB^T)^-1/2 B
+(orthogonal; noise blob spherical again). Recovered fraction (whiten-BNT)/(noBNT-BNT)
+decomposes the inflation into noise-geometry vs irreducibly-joint components.
