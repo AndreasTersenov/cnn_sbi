@@ -22,6 +22,21 @@ Each arm cross-gain over auto-only is measured AND calibration-validated (TARP/S
 ## Guardrails
 patch-local cross ONLY (never full-sphere = leakage); per-channel noise (not shared auto-sigma); never PCA L1; GPU 1 only; example-disjoint compressor/NDE split by perm; calibrate BEFORE contours; SAME auto channels across all arms; one apodized-circular convolution definition; do not relitigate the operator choice (notes S8-12).
 
+## Loop status (bnt-figure-kit 2026-06-11 ~10:30 UTC)
+★ BNT FIGURE KIT COMPLETE + one NEW DIAGNOSTIC FINDING. Figures (bnt_campaign/figures/):
+fom3_bnt_inflation (headline log bars), sigma_bnt_dumbbell (σ8 hit hardest, w0 mildest —
+parameter-anisotropic damage), sbc_bnt_ranks (CNN hugs center=conservative, L1 edges raised=
+over-confident — visual match to the numeric SBC), lc2st_bnt_cnn, tarp_bnt_colored_dim{3,6}
+(RESTYLED per Andreas: campaign colors CNN-blues/L1-oranges, 16–84% bands at alpha 0.40 — bands
+intrinsically tight), corner overlays (delivered 06-11 am), and NEW datavectors_bnt_vs_nobnt_s8
+[_relative]: σ8-quantile-binned L1 'both' datavectors in both bases from the on-disk training
+caches. ★ The RELATIVE version visualizes the mechanism: under BNT the auto+conv blocks lose
+nearly ALL σ8 response while the PRODUCT block retains the most — per-channel collapse + partial
+cross-channel rescue in one figure (paper-grade diagnostic; backs the Part II 'where the
+information goes' argument empirically). Scripts: bnt_campaign_figures.py, plot_tarp_bnt_
+colored.py, plot_bnt_datavectors.py. FLATSKY_BNT_RESULT.md gained a figure inventory. Pillar 2:
+result + calibration + figures + paper drafts ALL complete and committed.
+
 ## Loop status (bnt-gate-c 2026-06-11 08:40 UTC)
 ★ BNT GATE C DONE (corners→overlays→TARP→SBC→L-C2ST, ~5.5 h, zero job failures): PASS WITH
 CAVEATS, HEADLINE-SAFE. Deviations ≈5–10% credible-width vs 90%(L1)/≤10%(CNN) effects. L1-BNT

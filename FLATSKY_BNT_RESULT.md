@@ -62,6 +62,18 @@ architecture" contingency was not needed at 10°/80px.
 - L1 arms have no compressor-seed dimension (deterministic datavector); 3-MAF pooling only.
 - FoM3 fragility is irrelevant at these effect sizes (6.6× and 4.5×), and the marginals agree.
 
+## Figures (`bnt_campaign/figures/`)
+
+- `fom3_bnt_inflation` — headline log-scale bars (0.15×/0.22× collapse vs 0.93×/0.87× lossless).
+- `corner_bnt_vs_nobnt_{l1,cnn}_{none,product}` — BNT vs no-BNT contours at the typical obs.
+- `sigma_bnt_dumbbell` — per-parameter marginal widths (σ8 hit hardest, w0 mildest).
+- `datavectors_bnt_vs_nobnt_s8[_relative]` — σ8-coded L1 'both' datavectors in both bases. The
+  RELATIVE version is the mechanism made visible: under BNT the auto/conv blocks lose almost
+  all σ8 response while the PRODUCT block retains the most — the per-channel collapse and the
+  partial cross-channel rescue in one figure.
+- GATE C: `tarp_bnt_colored_dim{3,6}` (campaign colors, 16–84% bands), `sbc_bnt_ranks`,
+  `lc2st_bnt_cnn`.
+
 ## Reproduce
 
 `run_flatsky_bnt_campaign.py` (one driver: sigma freeze → L1 both-BNT build → arm slices +
@@ -70,4 +82,5 @@ Artifacts: `scripts/sbi/results/exploratory/flatsky_cross_2026_06/bnt_campaign/`
 (BNT_CAMPAIGN_RESULT.md, population_sweep/*/median_summary.json);
 BNT noise table `…/flatsky_cross_noise_sigma_bnt.npz` (GATE A1b in the sigma log).
 BNT operators: `flatsky_cross.apply_bnt_*` + `bnt=` on `build_channels_*`; CNN `--flatsky-bnt`;
-L1 `--apply-bnt` on the flat_local route.
+L1 `--apply-bnt` on the flat_local route. Figures: `bnt_campaign_figures.py`,
+`bnt_corner_overlays.py`, `plot_tarp_bnt_colored.py`, `plot_bnt_datavectors.py`.
