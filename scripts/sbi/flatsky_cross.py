@@ -60,29 +60,49 @@ def bnt_matrix_np() -> np.ndarray:
     return np.asarray(BNT_MATRIX, dtype=np.float32)
 
 
+def whiten_matrix_np() -> np.ndarray:
+    """Q = (B B^T)^(-1/2) B — the noise-whitened BNT basis. Orthogonal for equal
+    per-bin noise (Q Q^T = I), i.e. an orthogonal rotation of the ORIGINAL basis:
+    per-channel statistics on Q kappa see independent equal-variance noise again.
+    Diagnostic basis for decomposing the BNT inflation (PAPER_BNT_* Part II)."""
+    B = bnt_matrix_np().astype(np.float64)
+    w, V = np.linalg.eigh(B @ B.T)
+    M = V @ np.diag(w ** -0.5) @ V.T
+    return (M @ B).astype(np.float32)
+
+
+def mix_matrix_np(mode) -> np.ndarray:
+    """Channel-mix matrix for `mode`: True/'bnt' -> BNT; 'whiten' -> noise-whitened BNT."""
+    if mode is True or mode == "bnt":
+        return bnt_matrix_np()
+    if mode == "whiten":
+        return whiten_matrix_np()
+    raise ValueError(f"Unknown channel-mix mode {mode!r}; expected 'bnt'/'whiten'.")
+
+
 def _check_bnt_nbins(n: int) -> None:
     if n != 4:
-        raise ValueError(f"BNT (tomo4_bnt_v1) requires 4 auto channels, got {n}.")
+        raise ValueError(f"channel mix (tomo4) requires 4 auto channels, got {n}.")
 
 
-def apply_bnt_np(autos_b: np.ndarray) -> np.ndarray:
+def apply_bnt_np(autos_b: np.ndarray, mode=True) -> np.ndarray:
     _check_bnt_nbins(autos_b.shape[-1])
-    M = bnt_matrix_np()
+    M = mix_matrix_np(mode)
     out = np.tensordot(autos_b.astype(np.float32), M, axes=([autos_b.ndim - 1], [1]))
     return out.astype(np.float32)
 
 
-def apply_bnt_torch(autos_b):
+def apply_bnt_torch(autos_b, mode=True):
     import torch
     _check_bnt_nbins(autos_b.shape[-1])
-    M = torch.from_numpy(bnt_matrix_np()).to(device=autos_b.device, dtype=autos_b.dtype)
+    M = torch.from_numpy(mix_matrix_np(mode)).to(device=autos_b.device, dtype=autos_b.dtype)
     return torch.tensordot(autos_b, M, dims=([autos_b.ndim - 1], [1]))
 
 
-def apply_bnt_jax(autos_b):
+def apply_bnt_jax(autos_b, mode=True):
     import jax.numpy as jnp
     _check_bnt_nbins(autos_b.shape[-1])
-    M = jnp.asarray(bnt_matrix_np(), dtype=autos_b.dtype)
+    M = jnp.asarray(mix_matrix_np(mode), dtype=autos_b.dtype)
     return jnp.tensordot(autos_b, M, axes=([autos_b.ndim - 1], [1]))
 
 
@@ -147,7 +167,7 @@ def build_channels_np(autos: np.ndarray, op: str, roll_frac: float = 0.10,
     then all live in BNT space)."""
     autos_b, was_batched = _as_batched(np.asarray(autos, dtype=np.float32))
     if bnt:
-        autos_b = apply_bnt_np(autos_b)
+        autos_b = apply_bnt_np(autos_b, mode=bnt)
     npix = autos_b.shape[1]
     parts = [autos_b]
     if op in ("conv", "both"):
@@ -194,7 +214,7 @@ def build_channels_torch(autos, op, roll_frac: float = 0.10, bnt: bool = False):
     was_batched = autos.ndim == 4
     autos_b = autos if was_batched else autos.unsqueeze(0)
     if bnt:
-        autos_b = apply_bnt_torch(autos_b)
+        autos_b = apply_bnt_torch(autos_b, mode=bnt)
     npix = autos_b.shape[1]
     parts = [autos_b]
     if op in ("conv", "both"):
@@ -237,7 +257,7 @@ def build_channels_jax(autos, op, roll_frac: float = 0.10, bnt: bool = False):
     was_batched = autos.ndim == 4
     autos_b = autos if was_batched else autos[None]
     if bnt:
-        autos_b = apply_bnt_jax(autos_b)
+        autos_b = apply_bnt_jax(autos_b, mode=bnt)
     npix = autos_b.shape[1]
     parts = [autos_b]
     if op in ("conv", "both"):

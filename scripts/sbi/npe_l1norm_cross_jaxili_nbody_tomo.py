@@ -1960,6 +1960,18 @@ def parse_args() -> argparse.Namespace:
         help="Per-channel SNR-range percentiles (lo,hi) for flat_local binning.",
     )
     p.add_argument(
+        "--flatsky-channel-mix",
+        choices=("none", "bnt", "whiten"),
+        default="none",
+        help=(
+            "flat_local route: linear channel mix applied to the 4 autos on-device before "
+            "the cross build. 'bnt' = nulling (equivalent to --apply-bnt); 'whiten' = "
+            "(BB^T)^-1/2 B, the noise-whitened BNT basis (= orthogonal rotation of the "
+            "original basis) — the inflation-decomposition diagnostic. Requires the "
+            "matching frozen sigma table (mode key enforced)."
+        ),
+    )
+    p.add_argument(
         "--flatsky-both-cache",
         type=str,
         default=None,
@@ -2593,14 +2605,19 @@ def main() -> None:
                 "--cross-maps-route flat_local is incompatible with --full-sphere-cross-cache "
                 "(it reads ch 0-3 of the cross TFDS and builds patch-local cross on-device)."
             )
-        # --apply-bnt on flat_local = on-device BNT of the 4 cache autos BEFORE the
-        # cross build (order: noise [cache] -> demean [cache] -> BNT -> cross -> L1).
-        # The CACHE regime stays 'nobnt' (BNT is applied on the fly, not baked in).
-        flat_local_bnt = bool(args.apply_bnt)
+        # Channel mix on flat_local = on-device linear mix of the 4 cache autos BEFORE
+        # the cross build (order: noise [cache] -> demean [cache] -> mix -> cross -> L1).
+        # The CACHE regime stays 'nobnt' (the mix is applied on the fly, not baked in).
+        _mix = args.flatsky_channel_mix
+        if args.apply_bnt:
+            if _mix == "whiten":
+                raise ValueError("--apply-bnt conflicts with --flatsky-channel-mix whiten.")
+            _mix = "bnt"
+        flat_local_bnt = False if _mix == "none" else _mix   # False | 'bnt' | 'whiten'
         if flat_local_bnt:
             validate_bnt_configuration(args.nbins, parse_tomo_bin_indices(args.tomo_bin_indices))
-            print("  [flat_local] BNT ENABLED (tomo4_bnt_v1): autos nulled on-device before "
-                  "the cross build; frozen sigma table must be the BNT one.")
+            print(f"  [flat_local] channel mix ENABLED (mode={flat_local_bnt}): autos mixed "
+                  "on-device before the cross build; frozen sigma table mode is enforced.")
         if args.fiducial_obs_cache_dir is None:
             raise ValueError(
                 "--cross-maps-route flat_local requires --fiducial-obs-cache-dir "
@@ -2930,7 +2947,7 @@ def main() -> None:
         # otherwise collide on the same L1-datavector cache. (_bnt suffix is
         # belt-and-braces: the cache meta's apply_bnt field already mismatches.)
         cache_dir = cache_dir / (f"flat_local_{args.cross_op}"
-                                 + ("_bnt" if flat_local_bnt else ""))
+                                 + (f"_{flat_local_bnt}" if flat_local_bnt else ""))
     cache_meta_expected: Optional[Dict[str, object]] = None
 
     do_calibrate = (cross_maps_route != "flat_local") and (
@@ -3082,12 +3099,14 @@ def main() -> None:
             # Tripwire: a no-BNT both-cache must not feed a BNT arm (and vice versa) —
             # the datavectors/ranges live in different spaces. Convention: BNT both-caches
             # carry 'bnt' in their dir name (the flat_local_<op>_bnt cache layout).
-            _bc_is_bnt = "bnt" in Path(args.flatsky_both_cache).name.lower()
-            if _bc_is_bnt != flat_local_bnt:
+            _bc_name = Path(args.flatsky_both_cache).name.lower()
+            _bc_mode = ("whiten" if "whiten" in _bc_name
+                        else ("bnt" if "bnt" in _bc_name else False))
+            if _bc_mode != flat_local_bnt:
                 raise ValueError(
-                    f"--flatsky-both-cache {args.flatsky_both_cache} looks "
-                    f"{'BNT' if _bc_is_bnt else 'no-BNT'} but this arm has "
-                    f"apply_bnt={flat_local_bnt}; mixing spaces silently corrupts the arm."
+                    f"--flatsky-both-cache {args.flatsky_both_cache} looks mode={_bc_mode} "
+                    f"but this arm has mode={flat_local_bnt}; mixing spaces silently "
+                    "corrupts the arm."
                 )
             both_ranges = np.load(Path(args.flatsky_both_cache) / "flat_local_ranges.npy")
             rows = fxl.op_channel_rows(args.cross_op, args.nbins)

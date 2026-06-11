@@ -38,7 +38,10 @@ def main():
     ap.add_argument("--bnt", action="store_true",
                     help="BNT the obs autos on-device before the channel build (must match "
                          "the training build; the sigma table's bnt key is enforced).")
+    ap.add_argument("--mode", choices=("none", "bnt", "whiten"), default=None,
+                    help="Channel-mix mode (overrides --bnt): bnt | whiten.")
     a = ap.parse_args()
+    a.mix = (a.mode if a.mode not in (None, "none") else ("bnt" if a.bnt else False))
 
     import torch
     from wl_stats_torch import WLStatistics
@@ -46,10 +49,10 @@ def main():
     ranges = np.load(a.both_cache + "/flat_local_ranges.npy")        # (16, 2) calibrated, frozen
     assert ranges.shape == (16, 2), ranges.shape
     stats = WLStatistics(n_scales=NS, device=dev, pixel_arcmin=RESO, dtype=torch.float64)
-    sig, names, _ = fxl.select_frozen_sigma(a.sigma, "both", NB, dev, expected_bnt=a.bnt)
+    sig, names, _ = fxl.select_frozen_sigma(a.sigma, "both", NB, dev, expected_bnt=a.mix)
     files = sorted(glob.glob(FC + "/cosmo_fiducial_perm*.npz"),
                    key=lambda f: int(f.split("perm")[-1].split(".")[0]))
-    print(f"############ precompute fiducial 'both' datavectors (bnt={a.bnt}) ############")
+    print(f"############ precompute fiducial 'both' datavectors (mix={a.mix}) ############")
     print(f"  {len(files)} perm files, ranges from {a.both_cache}")
 
     X, perms, patches = [], [], []
@@ -59,7 +62,7 @@ def main():
         z = np.load(f)
         autos = z["patches"][:, :, :, :4].astype(np.float32)        # (180,80,80,4)
         x = fxl.build_and_l1(autos, "both", sig, stats, L1N, ranges, clamp_overflow=True,
-                             bnt=a.bnt)  # (180,3200)
+                             bnt=a.mix)  # (180,3200)
         X.append(x)
         p = int(z["perm"]) if "perm" in z.files else int(f.split("perm")[-1].split(".")[0])
         perms.append(np.full(x.shape[0], p, np.int32))
@@ -75,7 +78,7 @@ def main():
     perms = np.concatenate(perms); patches = np.concatenate(patches)
     np.savez(a.out, x=X, perm=perms, patch=patches, truth=truth,
              channel_names=np.array(names), n_scales=NS, l1_nbins=L1N,
-             ranges=ranges, bnt=bool(a.bnt),
+             ranges=ranges, bnt=(a.mix == 'bnt'), mode=str(a.mix or 'none'),
              note="both(16ch) flat-local obs datavectors; slice per arm via op_feature_columns")
     print(f"  saved {X.shape} -> {a.out}  ({time.time()-t0:.0f}s); truth={truth}")
 

@@ -66,12 +66,16 @@ def select_frozen_sigma(npz_path: str, op: str, nbins: int, device, dtype=torch.
     """
     z = np.load(npz_path)
     if expected_bnt is not None:
-        table_bnt = bool(z["bnt"]) if "bnt" in z.files else False
-        if table_bnt != bool(expected_bnt):
+        # mode resolution: 'mode' key (2026-06-11+) wins; legacy 'bnt' bool; very old = none.
+        if "mode" in z.files:
+            table_mode = str(z["mode"])
+        else:
+            table_mode = "bnt" if ("bnt" in z.files and bool(z["bnt"])) else "none"
+        want = ("bnt" if expected_bnt is True else (expected_bnt or "none"))
+        if table_mode != want:
             raise ValueError(
-                f"frozen sigma table {npz_path} has bnt={table_bnt} but the arm requires "
-                f"bnt={bool(expected_bnt)}; refreeze with freeze_flatsky_cross_noise.py"
-                f"{' --bnt' if expected_bnt else ''}."
+                f"frozen sigma table {npz_path} has mode={table_mode} but the arm requires "
+                f"mode={want}; refreeze with freeze_flatsky_cross_noise.py --mode {want}."
             )
     sigma16 = np.asarray(z["sigma"], dtype=np.float64)          # (16, n_scales)
     names16 = [str(x) for x in z["channel_names"]]

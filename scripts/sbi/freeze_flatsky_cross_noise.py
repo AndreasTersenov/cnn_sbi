@@ -119,6 +119,10 @@ def main():
     ap.add_argument("--workers", type=int, default=32)
     ap.add_argument("--seed-base", type=int, default=987654321)
     ap.add_argument("--out-dir", type=str, default=str(OUT_DIR))
+    ap.add_argument("--mode", choices=("bnt", "whiten"), default=None,
+                    help="Channel-mix mode for the frozen table: 'bnt' (nulled basis) or "
+                         "'whiten' ((BB^T)^-1/2 B — noise-whitened BNT = rotated original "
+                         "basis; the inflation-decomposition diagnostic).")
     ap.add_argument("--bnt", action="store_true",
                     help="Freeze the sigma table in BNT space: S+N_r is BNT'd before the "
                          "channel build (BNT(S+N)=BNT(S)+BNT(N), so the estimator logic is "
@@ -129,6 +133,8 @@ def main():
     import torch
     from multiprocessing import Pool
     from wl_stats_torch import WLStatistics
+
+    mode = args.mode or ("bnt" if args.bnt else None)
 
     out_dir = Path(args.out_dir); out_dir.mkdir(parents=True, exist_ok=True)
     C = _load_constants()
@@ -166,7 +172,7 @@ def main():
     print(f"  wavelet pass over r (device={dev}, accumulators {tuple(acc_sum.shape)})...")
     for r in range(R):
         data_r = S_t + torch.from_numpy(N_list[r]).to(dev, dtype=torch.float64)  # demean(S)+demean(N)
-        chans = fx.build_channels_torch(data_r, "both", bnt=args.bnt)  # (180,80,80,16)
+        chans = fx.build_channels_torch(data_r, "both", bnt=(mode or False))  # (180,80,80,16)
         for c in range(n_ch):
             stats.compute_wavelet_transform(chans[..., c], 1.0, subtract_coarse_mean=True)
             wc = stats.wavelet_coeffs                         # (180, S_ns, H, W)
@@ -198,14 +204,14 @@ def main():
     provenance = ("frozen at fiducial; fixed deterministic normalization (does not bias SBI); "
                   "cross-noise is mildly signal-dependent via S(x)N so most exact near fiducial")
     out_dir.mkdir(parents=True, exist_ok=True)
-    _stem = "flatsky_cross_noise_sigma" + ("_bnt" if args.bnt else "")
+    _stem = "flatsky_cross_noise_sigma" + (f"_{mode}" if mode else "")
     npz_path = out_dir / f"{_stem}.npz"
     np.savez(npz_path, sigma=sigma, channel_names=np.array(names), n_scales=S_ns,
              white_per_scale=white_scale, sigma_pix=sig_pix, n_real=R,
              nside=C["nside"], lmax=C["lmax"], sigma_e=C["sigma_e"],
              galaxy_density=C["galaxy_density"], reso_arcmin=C["reso_arcmin"],
              field_npix=npix, seed_base=args.seed_base, provenance=provenance,
-             bnt=bool(args.bnt))
+             bnt=(mode == 'bnt'), mode=(mode or 'none'))
     print(f"\nwrote {npz_path}")
 
     # ---- GATE A1b checks ----
@@ -214,9 +220,9 @@ def main():
     # linear mix of INDEPENDENT white noises -> still spatially white per map, with
     # amplitude sqrt(sum_j B_ij^2); the analytic reference scales per bin accordingly
     # (the cross-BIN correlation BNT creates does not affect this per-map check).
-    if args.bnt:
-        bnt_amp = np.sqrt((fx.bnt_matrix_np().astype(np.float64) ** 2).sum(axis=1))
-        print(f"  BNT per-bin white-amplitude factors sqrt(sum B_ij^2): "
+    if mode:
+        bnt_amp = np.sqrt((fx.mix_matrix_np(mode).astype(np.float64) ** 2).sum(axis=1))
+        print(f"  [{mode}] per-bin white-amplitude factors sqrt(sum M_ij^2): "
               + " ".join(f"{a:.3f}" for a in bnt_amp))
     else:
         bnt_amp = np.ones(4)
@@ -255,7 +261,7 @@ def main():
     json_path = out_dir / f"{_stem}.json"
     json_path.write_text(json.dumps({
         "provenance": provenance,
-        "bnt": bool(args.bnt),
+        "bnt": (mode == "bnt"), "mode": (mode or "none"),
         "channel_names": names,
         "n_scales": S_ns, "n_real": R, "sigma_pix": sig_pix,
         "constants": {k: C[k] for k in ("nside", "lmax", "sigma_e", "galaxy_density",
