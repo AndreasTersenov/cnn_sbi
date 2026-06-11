@@ -41,7 +41,8 @@ OUT_FID = BASE + "/bntdeep_campaign/fiducial_summaries/fiducial_summaries_l1_non
 RESO, L1N, NS = 7.5, 40, 5
 
 
-DEEP_NAMES = {"deep": ["deep"], "deep2": ["deep", "bin4"]}
+DEEP_NAMES = {"deep": ["deep"], "deep2": ["deep", "bin4"],
+              "unions6": ["u12", "u13", "u14", "u23", "u24", "u34"]}
 
 
 def main():

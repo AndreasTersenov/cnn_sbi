@@ -90,9 +90,21 @@ def deep2_matrix_np() -> np.ndarray:
                      [0.0, 0.0, 0.0, 1.0]], dtype=np.float32)
 
 
+def unions6_matrix_np() -> np.ndarray:
+    """6x4 mix: the equal-weight pair averages (kappa_i+kappa_j)/2, i<j — the survey-
+    practice union-map analogs (M2). Basis-agnostic: constructible from BNT maps."""
+    rows = []
+    for i, j in cross_pairs(4):
+        r = np.zeros(4, dtype=np.float32)
+        r[i] = r[j] = 0.5
+        rows.append(r)
+    return np.stack(rows)
+
+
 def mix_matrix_np(mode) -> np.ndarray:
     """Channel-mix matrix for `mode`: True/'bnt' -> BNT; 'whiten' -> noise-whitened BNT;
-    'deep' -> 1x4 bin average; 'bnt_deep' -> 5x4 [BNT; average]. Mixes need not be square:
+    'deep' -> 1x4 bin average; 'deep2' -> 2x4 [average; e4]; 'bnt_deep' -> 5x4
+    [BNT; average]; 'unions6' -> 6x4 pair averages. Mixes need not be square:
     output channels = rows."""
     if mode is True or mode == "bnt":
         return bnt_matrix_np()
@@ -104,8 +116,11 @@ def mix_matrix_np(mode) -> np.ndarray:
         return deep2_matrix_np()
     if mode == "bnt_deep":
         return bnt_deep_matrix_np()
+    if mode == "unions6":
+        return unions6_matrix_np()
     raise ValueError(
-        f"Unknown channel-mix mode {mode!r}; expected 'bnt'/'whiten'/'deep'/'deep2'/'bnt_deep'.")
+        f"Unknown channel-mix mode {mode!r}; expected one of "
+        "'bnt'/'whiten'/'deep'/'deep2'/'bnt_deep'/'unions6'.")
 
 
 def n_built_channels(nbins: int, op: str, mode=False) -> int:

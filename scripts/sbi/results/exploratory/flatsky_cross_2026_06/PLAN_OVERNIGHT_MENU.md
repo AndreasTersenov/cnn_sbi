@@ -1,0 +1,71 @@
+# PLAN — overnight rescue-menu + joint-statistics screening (GO Andreas 2026-06-11 night)
+
+**Mandate:** test the §1.7 rescue items not yet checked and still relevant; test the joint
+PDF; test a new "joint wavelet l1"; SCREENING rigor (1 MAF seed, 3000 obs) overnight, with
+automatic escalation (3 seeds, 9000 obs — only a re-sweep, caches reusable) for arms that
+qualify; morning handoff. Dimensionality kept ≤ ~3200 tonight; if posteriors look
+dim-limited, the VMIM-MLP compressor route is TOMORROW's tool (Andreas).
+
+## Scope decisions (registered)
+
+- §1.7 item 1 (cut-then-rotate): SKIPPED — uncut rotate-back ≡ the noBNT arm (vacuous);
+  whitening already measured the nontrivial rotation (1.06); the CUT version needs Andreas's
+  cut protocol (not tonight's scope).
+- item 2 (deep channels): DONE (0.730 / 1.082).
+- item 4 (products): DONE (0.22×).
+- item 3 → **A1**, item 5 → **A2**, item 6 + joint-l1 → **B/C** (below).
+
+## Arms (screening: seed 41, 3000 obs, m=2000; pooled median FoM3)
+
+**A1 — BNT-L1 + second moments (P7).** Append the per-scale wavelet (co)variances of the 4
+BNT channels (10 per scale × 5 = 50 cols) to the bit-identical BNT-L1 800 → 850-dim.
+By P7 these are an invertible repackaging of the original-basis second moments ⇒ they
+restore the COMPLETE Gaussian sector exactly. The recovered fraction directly measures the
+Gaussian share of what the l1 lost. Registered reading: recovered ≈ Gaussian-sector share;
+no threshold (it is a measurement, not a pass/fail); ALWAYS escalated.
+
+**A2 — BNT-L1 + 6 pairwise-union channels (survey practice / M2).** Append l1 blocks of the
+6 equal-weight pair averages (κᵢ+κⱼ)/2 of the ORIGINAL bins (constructible from BNT maps;
+basis-agnostic), built with the deep-block machinery (mode `unions6`, σ rows √(ΣM²σ²)):
+800 + 1200 = 2000-dim. Span account predicts ~full recovery (the 6 unions span the deep
+subspace richly). Registered: recovered ≥ 0.95 expected.
+
+**B — joint one-point PDF (per scale, SNR units, fixed [−5,5] range, clamp-to-edge):**
+- B1/B2: pairwise-2D, K=10 → 6 pairs × 5 scales × 100 = 3000-dim; noBNT / BNT bases.
+- B3/B4: full-4D, K=5 → 625 × 5 scales = 3125-dim; noBNT / BNT bases.
+Registered predictions: **B4/B3 ≈ 1** (full-4D is exactly basis-covariant, P4b — the
+decisive invariance test); B2/B1 may deviate (pairwise-2D is NOT closed under mixing —
+its deviation measures the pairwise approximation's basis fragility); B1 vs l1-noBNT 2405
+measures whether the joint PDF is competitive as a statistic at all.
+
+**C — joint wavelet l1 (NEW; Andreas).** Same pairwise-2D cells as B1/B2, but each cell
+holds Σ(|uᵢ|+|uⱼ|)/2 over its pixels (SNR-magnitude-weighted; the strict joint
+generalization of the pipeline's SNR-binned l1) instead of counts. C1 noBNT / C2 BNT,
+K=10, 3000-dim. Registered: C1 vs B1 measures what l1-weighting adds over the plain PDF;
+C2/C1 the basis fragility.
+
+All arms: identical loader parameters as every campaign arm (train perms 5-6/flip/seed 1001/
+batch 512; val test 0-1/noflip/2001), frozen σ tables per basis (nobnt / bnt — both exist,
+GATE A1b-passed), theta/perm/patch alignment HARD-ASSERTED where concat is used; standalone
+joint arms get fresh caches in the standard sweep layout. Fiducial: same 36000-obs pass.
+
+## Escalation (automatic, registered)
+
+After all screenings: re-sweep (3 seeds, 9000 obs — no rebuild) any arm with screening
+FoM3 ≥ 0.7 × 2405 ≈ 1680, plus A1 always, plus BOTH members of a {noBNT, BNT} pair if
+either qualifies (invariance ratios need matched rigor). Escalated outputs land in
+`<arm>/population_sweep_full/`; the derived report quotes screening AND full numbers.
+
+## Outputs
+
+`overnight_menu/` campaign dir: per-arm caches + logs + `OVERNIGHT_STATUS.md` (incremental,
+appended after every arm) + final derived `OVERNIGHT_RESULT.md` (rescue-ladder table
+extended by A1/A2; joint-statistic table with invariance ratios; escalation table) +
+`HANDOFF_OVERNIGHT_2026-06-12.md` for the morning.
+
+## Budget (measured analogs, not guesses)
+
+Per arm: build = one TFDS pass (measured today: ~3.5–4.5 min hot cache, ~50 min cold) +
+fiducial pass (~2–4 min) + screening sweep (< the measured 5–9 min full sweeps). 8 arms:
+~1.5 h hot to ~8 h cold; escalation re-sweeps ~10 min/arm. Single GPU from the 0/1/2 pool,
+tenant-checked at launch; sequential phases (overnight co-tenant safety).
