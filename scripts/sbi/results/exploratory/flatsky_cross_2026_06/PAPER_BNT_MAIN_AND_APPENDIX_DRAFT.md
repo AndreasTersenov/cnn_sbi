@@ -1,8 +1,65 @@
-# SUPERSEDED (2026-06-11) — absorbed into PAPER_BNT_MAIN_AND_APPENDIX_DRAFT.md
+# Paper draft — BNT losslessness: main-text + appendix versions (2026-06-11)
 
-# Paper section draft — why nulling is lossless for channel-mixing compressors (2026-06-11)
+Two registers of the same argument, per Andreas's plan: the cosmologist-oriented version for
+the MAIN TEXT, the formal version (post red-team pass) for an APPENDIX. Numbers from
+FLATSKY_BNT_RESULT.md; informal precursor BNT_CROSS_INFO_ARGUMENT.md; supersedes
+PAPER_BNT_THEORY_SECTION_DRAFT.md (kept for history).
 
-Companion to BNT_CROSS_INFO_ARGUMENT.md (informal version) and FLATSKY_BNT_RESULT.md (numbers).
+================================================================================
+## PART I — MAIN TEXT (cosmologist-oriented): "Where does the information go under BNT?"
+================================================================================
+
+The BNT transform is a fixed, invertible linear recombination of the tomographic maps,
+kappa' = B kappa. Invertibility has an immediate consequence worth stating plainly: no
+information about cosmology is created or destroyed by applying it. Whatever constraints are
+obtainable from the original maps are obtainable, exactly, from the nulled maps. The contour
+inflation reported for higher-order statistics on BNT maps — which we reproduce dramatically
+here, the wavelet l1 retaining only 15% of its figure of merit — therefore cannot be a
+property of the transform. It must be a property of the STATISTIC.
+
+The resolution is that BNT moves information, and some statistics cannot follow it. By
+construction, nulling concentrates the signal into fewer maps and leaves the remaining maps
+with little signal over their noise; at the same time, because each nulled map is a
+combination of the original bins, the shape noise — independent between bins before nulling —
+becomes correlated BETWEEN the nulled maps. The total information is conserved, but it now
+resides less in the appearance of each individual map and more in the relationships between
+maps: which fluctuations appear coherently across bins, and how the correlated noise can be
+told apart from signal. A statistic computed map-by-map — the wavelet l1, peak counts,
+Minkowski functionals, any statistic that reduces each channel separately before comparison —
+sees only the individual maps, and so inherits only the diminished per-map share. This is why
+the inflation occurs, and why it is largest exactly when nulling works as designed.
+
+A convolutional network fed the tomographic bins as input channels evades this for a simple,
+almost mechanical reason: the first operation of a multichannel CNN is a learned linear
+combination of its input channels. Undoing the nulling — applying B^-1 — is therefore an
+operation the network can absorb into its first layer at no cost, before any nonlinearity
+acts. Its constraining power is consequently insensitive to any invertible re-mixing of the
+input maps; the inflation test measures whether training actually finds this in practice, and
+it does (BNT/no-BNT figure-of-merit ratios 0.93 and 0.88, within the compressor seed-to-seed
+scatter of our pipeline). We emphasise what this does and does not show: the network is not
+extracting MORE cross-bin information than a well-built summary statistic — on the un-nulled
+maps it does not outperform the l1 given an explicit cross-map (Sect. X) — it is BASIS-ROBUST,
+where per-channel statistics are basis-fragile.
+
+The explicit cross-maps occupy the middle ground. Supplying the pointwise products
+kappa_i kappa_j alongside the autos injects genuine cross-bin information and lifts the nulled
+l1 from 0.15 to 0.22 of its no-BNT figure of merit — but only partially, because the products
+are a few combinations fixed in advance, blended across scales, and still reduced map-by-map
+afterwards. Cross-maps are, in this precise sense, a device FOR per-channel statistics:
+pillar 1 of this work shows the network neither needs nor uses them, and pillar 2 shows the
+per-channel statistic without them loses most of its power the moment the basis turns hostile.
+
+None of this diminishes BNT. Its purpose — localising the lensing kernels so that small-scale
+systematics can be excised bin by bin — is a property of the nulled BASIS, and it is retained.
+The lesson is that the cleaning basis and the statistics basis need not be the same: once
+nulling has served its purpose, the information that survives the cuts can be extracted in any
+basis — by a compressor that learns the rotation, or by a statistic handed the right
+combinations explicitly.
+
+================================================================================
+## PART II — APPENDIX (formal; post red-team pass 2026-06-11)
+================================================================================
+
 LaTeX-ready prose; convert math with the paper-draft pipeline.
 
 ## Setup
