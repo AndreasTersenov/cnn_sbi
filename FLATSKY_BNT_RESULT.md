@@ -47,6 +47,31 @@ noise matches the analytic mixing prediction √(Σⱼ B²ᵢⱼ) to 3 digits). 
 Notably, the **plain** CNN achieved this at the standard recipe — the 20° campaign's "advanced
 architecture" contingency was not needed at 10°/80px.
 
+## Whitening decomposition (2026-06-11): FULL recovery — the collapse is a frame artifact
+
+Per-channel L1 in the noise-whitened BNT basis Q = (BBᵀ)^(−1/2)B — an orthogonal rotation of
+the original basis (signal fully mixed, noise back to iid equal-variance). Pooled 3-MAF
+9000-obs medians (`whiten_campaign/WHITEN_RESULT.md`):
+
+| arm | no-BNT | whitened | BNT | recovered (whiten−BNT)/(noBNT−BNT) |
+|---|---|---|---|---|
+| L1 auto | 2405 | 2524 | 364 | **1.06** |
+| L1 +product | 2875 | 2897 | 637 | **1.01** |
+
+Recovery is complete marginal-by-marginal (whiten σ(σ8) 0.080/0.075 vs noBNT 0.082/0.075;
+σ(w0) 0.239/0.233 vs 0.245/0.238). Reading (full chain in `BNT_THEORY_DEEP_DIVE.md` L5.2):
+the irreducibly-joint share of the L1's BNT loss is ≈ 0 — everything the per-channel
+statistic extracts in the original basis is available through single-channel marginals in
+ONE FIXED rotation of the nulled maps. The collapse is a property of the nulling FRAME
+(signal-poor, signed-differencing directions, which also cancel the non-Gaussian signal
+content), not of mixing per se, not of noise correlation (invisible to marginals), and not of
+noise amplification (the SNR normalization absorbs it). Diagnostic only: Q remixes the nulled
+kernels, so this is information accounting, not an analysis recipe — the practical statement
+stays "cleaning basis ≠ statistics basis." Note the pre-registered theory prediction
+(LOW-to-MID recovery) was falsified — honest post-mortem in the deep-dive; recovered values
+marginally above 1 are read as "complete to within a few percent" (re-train repeatability for
+pooled L1 arms not separately measured).
+
 ## Caveats / validation (GATE C ran 2026-06-11 — pass WITH caveats; `bnt_campaign/gate_c/GATE_C_BNT.md`)
 
 - **Headline-safe:** all calibration deviations are at the ~5–10% credible-width level vs the
@@ -73,6 +98,8 @@ architecture" contingency was not needed at 10°/80px.
   partial cross-channel rescue in one figure.
 - GATE C: `tarp_bnt_colored_dim{3,6}` (campaign colors, 16–84% bands), `sbc_bnt_ranks`,
   `lc2st_bnt_cnn`.
+- `../whiten_campaign/figures/fom3_whiten_decomposition` — noBNT/whitened/BNT bars with
+  recovered fractions (`whiten_campaign_figure.py`).
 
 ## Reproduce
 
@@ -84,3 +111,7 @@ BNT noise table `…/flatsky_cross_noise_sigma_bnt.npz` (GATE A1b in the sigma l
 BNT operators: `flatsky_cross.apply_bnt_*` + `bnt=` on `build_channels_*`; CNN `--flatsky-bnt`;
 L1 `--apply-bnt` on the flat_local route. Figures: `bnt_campaign_figures.py`,
 `bnt_corner_overlays.py`, `plot_tarp_bnt_colored.py`, `plot_bnt_datavectors.py`.
+Whitening test: `run_flatsky_whiten_campaign.py` (sigma freeze w/ GATE A1b → both-whiten build
+→ arm slices → fiducial precompute → jit sweeps → derived WHITEN_RESULT.md);
+`--flatsky-channel-mix whiten` on the L1 flat_local route; figure `whiten_campaign_figure.py`.
+Theory: `BNT_THEORY_DEEP_DIVE.md` (same dir as the campaign) — the canonical derivation layer.

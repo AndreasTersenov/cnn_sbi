@@ -28,6 +28,12 @@ from. The single most important derived result is a negative one:
 > KERNELS, not covariances — F3.4); (iii) response flattening against the fixed SNR bin grid
 > (F3.5). The whitening test measures the complementary noise-geometry share (F4).
 
+Measured the same day (L5.2): the whitening test recovers FULLY (1.06 auto / 1.01 product) —
+the joint-only share of the L1's loss is ≈ 0 and the collapse is a FRAME artifact. The
+nulling rows are signal-poor, signed-differencing directions (F5 bites along them; not along
+the same-sign rows of Q); one fixed orthogonal rotation of the nulled maps hands the
+per-channel l1 everything back. The F4 LOW-to-MID prediction was wrong — post-mortem in L5.2.
+
 Claims ledger (every claim in the paper maps to one row; tags: PROVED here, MEASURED in the
 campaign, MECHANISM = honest flagged intuition):
 
@@ -45,7 +51,7 @@ campaign, MECHANISM = honest flagged intuition):
 | Pairwise unions complete at 2nd order, incomplete at 3rd (order-by-order accounting) | PROVED | M2 |
 | l1 collapse 0.15×/0.22×; CNN 0.93×/0.88× | MEASURED | campaign |
 | σ8 hit hardest / w0 mildest; w0 substantially prior-capped | MEASURED+derived | F6 |
-| Real-case damage split: noise-geometry vs irreducibly-joint | MEASURED | whitening, L5.2 |
+| Whitening recovers FULLY (1.06/1.01) ⇒ joint-only share ≈ 0; collapse = frame artifact | MEASURED | whitening, L5.2 |
 | Residual cross-signal response asymmetry between bases | MECHANISM | F3.4 |
 
 ================================================================================
@@ -240,6 +246,9 @@ dominantly irreducibly-joint / mixing-destroyed structure (the F3-trap + F5 pred
 Given F3's result — at the Gaussian one-point level there is nothing for whitening to give
 back that BNT took — F5-type damage should dominate and we expect LOW-to-MID. [Written
 before WHITEN_RESULT.md; the measured number goes in L5.2 untouched either way.]
+[OUTCOME 2026-06-11: measured HIGH — recovered 1.06/1.01, FULL recovery; this prediction was
+WRONG. Post-mortem and the sharpened mechanism in L5.2: F5 bites along B's signed-differencing
+rows but not along Q's same-sign rows; the collapse is a frame (direction-sampling) artifact.]
 NB whitening, like B⁻¹, destroys the nulled kernels — it is information accounting, not an
 analysis recipe; the pipeline-level statement stays "cleaning basis ≠ statistics basis."
 
@@ -352,10 +361,42 @@ neither needs nor uses them; pillar 2 shows the per-channel statistic without th
 of its power when the basis turns hostile — and with them (product, 0.22×) recovers only the
 share their fixed directions carry.
 
-**L5.2 The whitening decomposition (slot — filled when WHITEN_RESULT.md lands).**
-recovered = (whiten − BNT)/(noBNT − BNT) = ____ . Reading per F4's pre-registered ladder:
->0.8 noise-geometry-dominated / 0.4–0.8 mixed / <0.4 irreducibly-joint-dominated; F3+F5
-predict LOW-to-MID. [TO FILL]
+**L5.2 The whitening decomposition (MEASURED 2026-06-11) — full recovery; the F4
+prediction was WRONG, and the post-mortem sharpens the mechanism.**
+recovered = (whiten − BNT)/(noBNT − BNT) = **1.06 (auto) / 1.01 (+product)** — COMPLETE
+recovery, marginal by marginal (whiten σ(σ8) 0.080/0.075 vs noBNT 0.082/0.075; σ(w0)
+0.239/0.233 vs 0.245/0.238; whiten_campaign/WHITEN_RESULT.md; figure
+fom3_whiten_decomposition). The HIGH branch of the pre-registered ladder; F4 predicted
+LOW-to-MID via F5-applied-to-Q. Post-mortem, honestly:
+- F4's error: F5 bounds the cumulant contraction of ANY mixing, but the actual contraction
+  depends on SIGN STRUCTURE (the b_j^k terms). Q's rows are predominantly same-sign
+  (averaging-like: row 1 = (0.875, 0.392, 0.221, 0.180)) — aligned non-Gaussian signal adds
+  coherently and survives; B's nulling rows are signed-differencing — built to cancel the
+  correlated (low-z) signal, non-Gaussian content included. F5 is real but bites along B's
+  rows, not Q's. The lemma stands; its application to Q was the mistake.
+- What the measurement establishes: (i) per-channel marginals cannot see inter-channel noise
+  correlation at all, and per-channel rescaling is information-neutral (the l1 SNR-normalizes
+  by the re-frozen σ anyway) — so neither "correlated noise" nor "amplified noise" was ever a
+  complete mechanism; (ii) what kills the nulled frame is its DIRECTIONS: a channel basis is
+  a 4-direction Radon sampling of the per-scale joint law (M2 view), the nulling rows are by
+  design signal-poor directions, and — being non-orthogonal — all four can simultaneously
+  avoid the signal subspace. An orthonormal frame cannot (tr(QSQᵀ) = tr(S)); its marginals
+  must catch the signal somewhere, and empirically Q's marginals catch ALL of it.
+- Consequence (sharper than pre-registered): the irreducibly-joint share of what the L1
+  loses under BNT is ≈ 0. Everything the per-channel L1 extracts in the original basis is
+  available through single-channel marginals in ONE FIXED rotation of the nulled maps — no
+  learning, no joint statistics, no cross-maps needed (diagnostic only: Q remixes the nulled
+  kernels, Part II framing). The BNT inflation of per-channel statistics is entirely a FRAME
+  artifact. This also recasts F3: the Gaussian toy said one-point geometry predicts no
+  collapse — confirmed now from the measurement side.
+- Caveats: recovered marginally exceeds 1 (+5% auto / +1% product); re-train/refreeze
+  repeatability for pooled L1 arms is not separately measured, so we read this as "complete
+  to within a few percent," not as Q beating the original axes. And completeness is relative
+  to what the L1 HAD: nothing here says axis marginals exhaust the field (P5; the CNN/product
+  results bound that separately).
+- Third-pillar implication: the joint-PDF datavector (M3) loses its BNT-rescue motivation (a
+  fixed rotation suffices); its remaining case is level-3-vs-level-1 information beyond ANY
+  single frame's marginals (e.g. the +20% product gain), which is a different question.
 
 **L5.3 What would rescue a fixed statistic (ranked by principle).** (1) The per-scale joint
 one-point PDF (M3) — the canonical BNT-robust object (P4b). (2) Scale-resolved cross-coherence

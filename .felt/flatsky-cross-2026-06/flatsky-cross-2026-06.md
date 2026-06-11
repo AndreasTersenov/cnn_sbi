@@ -22,6 +22,25 @@ Each arm cross-gain over auto-only is measured AND calibration-validated (TARP/S
 ## Guardrails
 patch-local cross ONLY (never full-sphere = leakage); per-channel noise (not shared auto-sigma); never PCA L1; GPU 1 only; example-disjoint compressor/NDE split by perm; calibrate BEFORE contours; SAME auto channels across all arms; one apodized-circular convolution definition; do not relitigate the operator choice (notes S8-12).
 
+## Loop status (WHITEN-RESULT 2026-06-11 ~15:00 UTC)
+★★★ WHITENING TEST DONE (2h22m, zero failures, ahead of ETA) — **FULL RECOVERY**: recovered
+fraction (whiten−BNT)/(noBNT−BNT) = **1.06 (L1 auto: 2405→2524 vs BNT 364) / 1.01 (product:
+2875→2897 vs 637)**, complete marginal-by-marginal (whiten σ_s8 0.080/0.075 ≈ noBNT
+0.082/0.075; σ_w0 0.239/0.233 ≈ 0.245/0.238). ⇒ The L1 BNT collapse has irreducibly-joint
+share ≈ 0 — it is ENTIRELY a FRAME artifact: the nulling rows are signal-poor,
+signed-differencing directions (cancel coherent non-Gaussian content; F5 bites along them);
+one fixed orthogonal rotation Q of identical mixedness (same-sign rows) hands everything
+back. NB: noise correlation is invisible to marginals & amplification absorbed by SNR
+re-freeze ⇒ neither was ever a complete mechanism. ★ HONESTY: the deep-dive's pre-registered
+F4 prediction (LOW-to-MID) was FALSIFIED — post-mortem written into L5.2 (sign-structure
+resolution); F3's "Gaussian one-point predicts no collapse" CONFIRMED from the measurement
+side. Third-pillar note: joint-PDF datavector loses its BNT-rescue motivation (fixed rotation
+suffices); remaining case = level-3-vs-level-1 info (product's +20%). Folded into:
+FLATSKY_BNT_RESULT.md (new section + inventories), deep-dive L0/F4/L5.2, paper draft Part
+I+II, memory, figure fom3_whiten_decomposition (whiten_campaign_figure.py). PACKING
+DECISIONS (Andreas): benchmarks DEFERRED to next campaign's first phase; footgun fixes land
+now; 3-pack only when run (PLAN_PACKING_BENCHMARKS.md).
+
 ## Loop status (theory-deep-dive 2026-06-11 ~14:10 UTC)
 ★ BNT THEORY DEEP-DIVE DELIVERED (Andreas-interviewed, plan signed off, no numerics, ≤400
 lines): BNT_THEORY_DEEP_DIVE.md is now the canonical treatment — claims ledger

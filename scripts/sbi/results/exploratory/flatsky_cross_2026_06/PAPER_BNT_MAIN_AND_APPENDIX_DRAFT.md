@@ -40,7 +40,14 @@ are exactly what mixing erases from every individual map. The geometric effect a
 not explain the measurement: an honest Gaussian accounting of map-by-map variances predicts
 no collapse at all (in the idealized nulling limit it even favors the nulled basis; Appendix
 ref). The inflation is a collapse of the per-map *non-Gaussian* signal, and it is largest
-exactly when nulling works as designed.
+exactly when nulling works as designed. A whitening test makes the localization exact:
+re-analysing the nulled maps after one fixed orthogonal rotation — the noise-whitened BNT
+basis, no learning involved — returns the full no-BNT figure of merit (recovered fraction
+1.06 and 1.01 for the two l1 configurations), marginal by marginal. Nothing the statistic
+lost is irreducibly joint: the loss is a property of the nulled frame's directions —
+signal-poor, signed-differencing combinations that also cancel the coherent non-Gaussian
+content — and a same-sign rotation of identical mixedness gives it all back. (The rotation
+re-mixes the nulled kernels, so this is information accounting, not an analysis recipe.)
 
 A convolutional network fed the tomographic bins as input channels evades this for a simple,
 almost mechanical reason: the first operation of a multichannel CNN is a learned linear
@@ -162,6 +169,15 @@ DECOUPLING — in a realistic analysis BNT serves the CLEANING step (nulling-inf
 cuts); after cleaning, the STATISTICS basis is a free choice, and our result says the
 post-cleaning information is recoverable in any basis (learned or constructed). (b) is the
 paper-level point; state it as its own claim, not as a property of whitening.
+
+MEASURED OUTCOME (2026-06-11, whiten_campaign/): recovered fraction
+(whiten − BNT)/(noBNT − BNT) = 1.06 (auto) / 1.01 (+product) — FULL recovery, marginal by
+marginal. The irreducibly-joint component is ≈ 0: the l1's BNT loss is entirely a frame
+(direction-sampling) artifact. Mechanism resolution per BNT_THEORY_DEEP_DIVE.md L5.2: the
+contraction of non-Gaussian content depends on the SIGN STRUCTURE of the mixing — B's
+signed-differencing nulling rows cancel it, Q's same-sign rows preserve it; noise correlation
+is invisible to marginals and noise amplification is absorbed by the SNR normalization, so
+neither was ever a complete mechanism.
 
 ## Interpretation (the two pillars as one statement)
 
