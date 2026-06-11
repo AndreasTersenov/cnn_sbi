@@ -49,24 +49,52 @@ def cov_features(wc: torch.Tensor) -> torch.Tensor:
     return feat.reshape(B, -1)
 
 
-def _snr_bins(wc: torch.Tensor, sigma: torch.Tensor, k: int):
-    """SNR u = wc/sigma[c,s]; bin indices in [0,k) with clamp-to-edge. Returns (u, bins)."""
+def _snr_bins(wc: torch.Tensor, sigma: torch.Tensor, k: int, ranges=None):
+    """SNR u = wc/sigma[c,s]; bin indices in [0,k) with clamp-to-edge. Returns (u, bins).
+    ranges: optional (C,S,2) per-(channel,scale) [lo,hi] in SNR units (signal-adapted
+    percentile grid — the 'transported binning' variant); default = fixed [-5,5]."""
     B, C, S, H, W = wc.shape
     u = wc / sigma.view(1, C, S, 1, 1)
-    width = 2.0 * SNR_RANGE / k
-    bins = torch.clamp(((u + SNR_RANGE) / width).long(), 0, k - 1)
+    if ranges is None:
+        width = 2.0 * SNR_RANGE / k
+        bins = torch.clamp(((u + SNR_RANGE) / width).long(), 0, k - 1)
+    else:
+        lo = ranges[..., 0].view(1, C, S, 1, 1)
+        hi = ranges[..., 1].view(1, C, S, 1, 1)
+        bins = torch.clamp(((u - lo) / (hi - lo) * k).long(), 0, k - 1)
     return u, bins
 
 
+def calibrate_joint_ranges(autos_iter, basis, sigma, stats, k_unused,
+                           n_examples=3600, q_lo=0.5, q_hi=99.5) -> torch.Tensor:
+    """Per-(channel,scale) SNR percentile ranges from ~n_examples maps — the
+    signal-adapted grid. Returns (C,S,2) on stats.device."""
+    pooled = None
+    n = 0
+    for autos_np in autos_iter:
+        wc = wavelet_stack(autos_np, basis, stats)                 # (B,C,S,H,W)
+        B, C, S, H, W = wc.shape
+        u = (wc / sigma.view(1, C, S, 1, 1)).reshape(B, C, S, -1)
+        sub = u[:, :, :, ::37].reshape(-1, C, S)                   # thin pixel subsample
+        pooled = sub if pooled is None else torch.cat([pooled, sub], 0)
+        n += B
+        if n >= n_examples:
+            break
+    lo = torch.quantile(pooled, q_lo / 100.0, dim=0)               # (C,S)
+    hi = torch.quantile(pooled, q_hi / 100.0, dim=0)
+    span = hi - lo
+    return torch.stack([lo - 0.05 * span, hi + 0.05 * span], dim=-1)  # (C,S,2)
+
+
 def pair2d_features(wc, sigma, k: int, weighted: bool = False,
-                    dequant_gen=None) -> torch.Tensor:
+                    dequant_gen=None, ranges=None) -> torch.Tensor:
     """(B,C,S,H,W) -> (B, npairs*S*k*k). weighted=False: counts (the joint PDF estimate);
     weighted=True: cells hold sum (|u_i|+|u_j|)/2 (the joint wavelet l1).
     dequant_gen: optional — U(0,1) noise per cell (kills the zero-point-mass of
     rarely-occupied cells, which seed-dependently NaN the MAF in the sparse BNT basis)."""
     B, C, S, H, W = wc.shape
     P = H * W
-    u, bins = _snr_bins(wc, sigma, k)
+    u, bins = _snr_bins(wc, sigma, k, ranges=ranges)
     u = u.reshape(B, C, S, P)
     bins = bins.reshape(B, C, S, P)
     pairs = fx.cross_pairs(C)
@@ -91,14 +119,14 @@ def pair2d_features(wc, sigma, k: int, weighted: bool = False,
     return f
 
 
-def full4d_features(wc, sigma, k: int, dequant_gen=None) -> torch.Tensor:
+def full4d_features(wc, sigma, k: int, dequant_gen=None, ranges=None) -> torch.Tensor:
     """(B,C,S,H,W) -> (B, S*k^C) full joint histogram counts (exactly basis-covariant).
     dequant_gen: optional torch.Generator — adds U(0,1) dequantization noise to every cell
     (the standard flows-on-count-data fix; quasi-discrete sparse cells NaN the MAF —
     diagnosed 2026-06-11 night: median surviving dim had ~4 distinct values)."""
     B, C, S, H, W = wc.shape
     P = H * W
-    _, bins = _snr_bins(wc, sigma, k)
+    _, bins = _snr_bins(wc, sigma, k, ranges=ranges)
     bins = bins.reshape(B, C, S, P)
     ncell = k ** C
     row = (torch.arange(B, device=wc.device) * ncell).view(B, 1)
@@ -118,16 +146,18 @@ def full4d_features(wc, sigma, k: int, dequant_gen=None) -> torch.Tensor:
 
 
 def compute_features(autos_np, stat: str, basis, sigma, stats, k: int,
-                     dequant_gen=None) -> np.ndarray:
+                     dequant_gen=None, ranges=None) -> np.ndarray:
     wc = wavelet_stack(autos_np, basis, stats)
     if stat == "cov":
         f = cov_features(wc)
     elif stat == "pair2d":
-        f = pair2d_features(wc, sigma, k, weighted=False, dequant_gen=dequant_gen)
+        f = pair2d_features(wc, sigma, k, weighted=False, dequant_gen=dequant_gen,
+                            ranges=ranges)
     elif stat == "jointl1":
-        f = pair2d_features(wc, sigma, k, weighted=True, dequant_gen=dequant_gen)
+        f = pair2d_features(wc, sigma, k, weighted=True, dequant_gen=dequant_gen,
+                            ranges=ranges)
     elif stat == "full4d":
-        f = full4d_features(wc, sigma, k, dequant_gen=dequant_gen)
+        f = full4d_features(wc, sigma, k, dequant_gen=dequant_gen, ranges=ranges)
     else:
         raise ValueError(f"unknown stat {stat!r}")
     return f.cpu().numpy()

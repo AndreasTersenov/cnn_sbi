@@ -42,7 +42,7 @@ def load_sigma(basis, dev):
 
 
 def dataset_pass(split, perm_lo, perm_hi, flip, seed, stat, basis_mix, sigma, stats, k,
-                 dq_gen=None):
+                 dq_gen=None, ranges=None):
     from tfds_cross_tfdata_loader import iter_cross_tfds_batches
     print(f"  [{stat}] features from cross TFDS [{split} perms {perm_lo}-{perm_hi} "
           f"flip={flip} basis={basis_mix}] ...", flush=True)
@@ -54,7 +54,7 @@ def dataset_pass(split, perm_lo, perm_hi, flip, seed, stat, basis_mix, sigma, st
         if np.isnan(autos_np).any():
             print("    [!] skipped batch with NaN autos"); continue
         xs.append(fjs.compute_features(autos_np, stat, basis_mix, sigma, stats, k,
-                                       dequant_gen=dq_gen))
+                                       dequant_gen=dq_gen, ranges=ranges))
         th = theta_np.copy(); th[:, 3] = th[:, 3] / 100.0
         ths.append(th)
         n += autos_np.shape[0]
@@ -80,6 +80,9 @@ def main():
                     help="parent fiducial npz (S concatenated; perm/patch asserted)")
     ap.add_argument("--dequantize", action="store_true",
                     help="add seeded U(0,1) dequantization noise to full4d counts")
+    ap.add_argument("--adaptive-ranges", action="store_true",
+                    help="per-(channel,scale) percentile SNR grid instead of fixed [-5,5] "
+                         "(the transported-binning variant; calibrated on ~3600 train maps)")
     a = ap.parse_args()
 
     import torch
@@ -93,11 +96,26 @@ def main():
         dq_gen = torch.Generator(device=dev); dq_gen.manual_seed(0xDEC0DE)
 
     print(f"############ joint arm build: stat={a.stat} basis={a.basis} k={a.k} "
-          f"dequantize={a.dequantize} ############", flush=True)
+          f"dequantize={a.dequantize} adaptive={a.adaptive_ranges} ############", flush=True)
+    ranges = None
+    if a.adaptive_ranges:
+        from tfds_cross_tfdata_loader import iter_cross_tfds_batches
+        def _autos_iter():
+            for autos_np, _ in iter_cross_tfds_batches(
+                    TFDS, DDIR, "train", 512, flip=False, channel_scale=None,
+                    channel_slice=slice(0, 4), perm_lo=5, perm_hi=6, seed=0):
+                if not np.isnan(autos_np).any():
+                    yield autos_np
+        ranges = fjs.calibrate_joint_ranges(_autos_iter(), basis_mix, sigma, stats, a.k)
+        print("  adaptive per-(channel,scale) SNR ranges:", flush=True)
+        for c in range(4):
+            r = ranges[c].cpu().numpy()
+            print("    ch%d: " % c + " ".join(f"[{x[0]:.1f},{x[1]:.1f}]" for x in r),
+                  flush=True)
     ds_tr = dataset_pass("train", 5, 6, True, 1001, a.stat, basis_mix, sigma, stats, a.k,
-                         dq_gen=dq_gen)
+                         dq_gen=dq_gen, ranges=ranges)
     ds_va = dataset_pass("test", 0, 1, False, 2001, a.stat, basis_mix, sigma, stats, a.k,
-                         dq_gen=dq_gen)
+                         dq_gen=dq_gen, ranges=ranges)
     x_tr, th_tr = ds_tr["x"], ds_tr["theta"]
     x_va, th_va = ds_va["x"], ds_va["theta"]
 
@@ -117,7 +135,7 @@ def main():
     np.savez(a.out_cache + "/l1_train.npz", theta=th_tr, x=x_tr)
     np.savez(a.out_cache + "/l1_val.npz", theta=th_va, x=x_va)
     np.savez(a.out_cache + "/l1_cache_meta.npz", stat=a.stat, basis=a.basis, k=a.k,
-             dequantize=a.dequantize,
+             dequantize=a.dequantize, adaptive_ranges=a.adaptive_ranges,
              snr_range=fjs.SNR_RANGE, append_to=str(a.append_to),
              note="overnight menu arm; PLAN_OVERNIGHT_MENU.md")
 
@@ -131,7 +149,7 @@ def main():
         zf = np.load(f)
         autos = zf["patches"][:, :, :, :4].astype(np.float32)
         X.append(fjs.compute_features(autos, a.stat, basis_mix, sigma, stats, a.k,
-                                      dequant_gen=dq_gen))
+                                      dequant_gen=dq_gen, ranges=ranges))
         p = int(zf["perm"]) if "perm" in zf.files else int(f.split("perm")[-1].split(".")[0])
         perms.append(np.full(X[-1].shape[0], p, np.int32))
         patches.append(np.arange(X[-1].shape[0], dtype=np.int32))

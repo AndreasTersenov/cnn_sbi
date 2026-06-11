@@ -63,6 +63,22 @@ FoM3 ≥ 0.7 × 2405 ≈ 1680, plus A1 always, plus BOTH members of a {noBNT, BN
 either qualifies (invariance ratios need matched rigor). Escalated outputs land in
 `<arm>/population_sweep_full/`; the derived report quotes screening AND full numbers.
 
+## NIGHT ADDENDA (registered as they arose)
+
+1. **Dequantization fix** (~23:10): full4d K=5 NaN'd the MAF — diagnosed on the cache
+   (median surviving feature ~4 distinct values; quasi-discrete sparse cells). Fix: counts +
+   seeded U(0,1) + K=4; later extended to pair2d/jointl1 after their BNT-basis FULL sweeps
+   hit the same (milder, seed-lottery) pathology. All retry arms rebuilt identically in both
+   bases (matched ratios).
+2. **Grid-transport test** (registered ~23:40, BEFORE running): the dequantized full4d
+   screening ratio came out 0.46, far from P4b's ≈1. Hypothesis: P4b covariance holds for
+   the DISTRIBUTION, but the fixed [−5,5] noise-scaled grid does not transport — in the BNT
+   basis the (amplified-noise-scaled) box buries the signal in a few central cells.
+   PREDICTION: rebuilding full4d with per-(channel,scale) PERCENTILE (signal-adapted) ranges
+   in both bases moves the invariance ratio substantially toward 1 (registered band: ≥0.75
+   supports grid-transport; ≤0.55 refutes it and leaves a genuine open problem for the
+   morning). Run only if the low ratio survives the full sweeps.
+
 ## Outputs
 
 `overnight_menu/` campaign dir: per-arm caches + logs + `OVERNIGHT_STATUS.md` (incremental,
