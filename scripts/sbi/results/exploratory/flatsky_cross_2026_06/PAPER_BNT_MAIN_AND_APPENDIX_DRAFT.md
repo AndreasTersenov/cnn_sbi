@@ -5,6 +5,14 @@ the MAIN TEXT, the formal version (post red-team pass) for an APPENDIX. Numbers 
 FLATSKY_BNT_RESULT.md; informal precursor BNT_CROSS_INFO_ARGUMENT.md; supersedes
 PAPER_BNT_THEORY_SECTION_DRAFT.md (kept for history).
 
+**2026-06-11 (deep-dive pass):** the canonical theory treatment is now
+`BNT_THEORY_DEEP_DIVE.md` (same directory) — all claims there are derived, with a claims
+ledger (PROVED / MEASURED / MECHANISM). Parts I–II below were REVISED against it: the worked
+Gaussian toy (deep-dive F3) shows the "suppressed per-map S/N + correlated noise" account,
+taken alone, predicts the OPPOSITE of the measurement — the causal weight now sits on the
+Gaussianization-of-marginals mechanism (F5), residual joint response (F3.4), and SNR-grid
+flattening (F3.5). Former Parts III–IV are superseded by the deep-dive (L4) and removed.
+
 ================================================================================
 ## PART I — MAIN TEXT (cosmologist-oriented): "Where does the information go under BNT?"
 ================================================================================
@@ -17,17 +25,22 @@ inflation reported for higher-order statistics on BNT maps — which we reproduc
 here, the wavelet l1 retaining only 15% of its figure of merit — therefore cannot be a
 property of the transform. It must be a property of the STATISTIC.
 
-The resolution is that BNT moves information, and some statistics cannot follow it. By
-construction, nulling concentrates the signal into fewer maps and leaves the remaining maps
-with little signal over their noise; at the same time, because each nulled map is a
-combination of the original bins, the shape noise — independent between bins before nulling —
-becomes correlated BETWEEN the nulled maps. The total information is conserved, but it now
-resides less in the appearance of each individual map and more in the relationships between
-maps: which fluctuations appear coherently across bins, and how the correlated noise can be
-told apart from signal. A statistic computed map-by-map — the wavelet l1, peak counts,
-Minkowski functionals, any statistic that reduces each channel separately before comparison —
-sees only the individual maps, and so inherits only the diminished per-map share. This is why
-the inflation occurs, and why it is largest exactly when nulling works as designed.
+The resolution is that BNT moves information, and some statistics cannot follow it. Because
+the transform acts pixel by pixel, everything it rearranges stays at zero lag and equal
+scale: information moves between what each map looks like on its own and how the maps relate
+jointly — never across scales or positions. A statistic computed map-by-map — the wavelet l1,
+peak counts, Minkowski functionals, any statistic that reduces each channel separately before
+comparison — keeps only the per-map share. Two effects then deplete that share. The familiar,
+geometric one: nulling leaves the nulled maps little signal over their amplified,
+inter-map-correlated noise. The decisive one is subtler: each nulled map is a signed mixture
+of several bins, and mixing drives the per-map distribution of the *signal* toward
+Gaussianity — a one-step central limit theorem — while the noise was Gaussian to begin with.
+The non-Gaussian features that make a higher-order statistic worth more than a power spectrum
+are exactly what mixing erases from every individual map. The geometric effect alone would
+not explain the measurement: an honest Gaussian accounting of map-by-map variances predicts
+no collapse at all (in the idealized nulling limit it even favors the nulled basis; Appendix
+ref). The inflation is a collapse of the per-map *non-Gaussian* signal, and it is largest
+exactly when nulling works as designed.
 
 A convolutional network fed the tomographic bins as input channels evades this for a simple,
 almost mechanical reason: the first operation of a multichannel CNN is a learned linear
@@ -98,18 +111,25 @@ residual: 0.93x (auto) / 0.88x (auto+product), within compressor-seed scatter.
 ## Why nulling is adversarial for the per-channel class
 
 t_pc is NOT closed under mixing: marginal reductions do not commute with linear recombination
-(t(a kappa_i + b kappa_j) is not a function of t(kappa_i), t(kappa_j)). Gaussian-sector
-intuition (mechanism, not theorem): S' = B S B^T against Sigma' = sigma^2 B B^T — nulling
-suppresses per-map S/N of the nulled bins while conserving total information, so the
-information share in inter-channel structure grows by exactly what the marginals lose.
-Measured: l1 on nulled autos 0.15x, sigma(sigma_8) doubles. (NB info does not decompose
-additively into diagonal/off-diagonal shares — the defensible chain is: total invariant
-[exact] + per-map S/N of nulled bins drops [by construction] + per-channel statistic loses 85%
-[measured]; the 'migration' sentence is connective intuition. Even at Gaussian level,
-SCALE-RESOLVED cross-spectra restore invariance in any basis — indicting the pixel product's
-scale-blending specifically.) Control: the BNT arm used a RE-FROZEN per-(channel,scale) sigma
-in the BNT basis (GATE A1b PASS), so the collapse cannot be blamed on mis-normalization — it
-isolates the statistic's inability to use cross-channel CORRELATION.
+(t(a kappa_i + b kappa_j) is not a function of t(kappa_i), t(kappa_j)). The defensible causal
+chain (each link derived in BNT_THEORY_DEEP_DIVE.md): total information invariant [exact,
+P1–P2]; per-channel statistics read only the per-(channel,scale) marginals [definition, P4b];
+signed mixing provably contracts the standardized cumulants of every mixed channel —
+Gaussianizing the per-map signal while the noise stays Gaussian [lemma F5, exact for
+independent components]; residual cross-channel signal response (the real B nulls KERNELS,
+not covariances) is invisible to any marginal reduction [F3.4]; and the theta-response of the
+SNR-binned datavector flattens against its fixed bin grid as per-channel S/N drops [F3.5].
+Measured: l1 on nulled autos 0.15x, sigma(sigma_8) doubles. IMPORTANT NEGATIVE RESULT
+(deep-dive F3, worked closed-form): the naive Gaussian one-point account — "per-map S/N drops
+and the noise becomes correlated, hence per-channel statistics fail" — does NOT survive
+honest analysis; in the idealized-nulling Gaussian toy the per-channel variances become MORE
+efficient in the nulled basis (nulling diagonalizes the signal covariance; I_diag^BNT ~
+I_full > I_diag^orig). The Gaussian-geometry story is therefore not the mechanism; the
+collapse lives in the non-Gaussian sector and the response structure. (Even at Gaussian
+level, SCALE-RESOLVED cross-spectra restore invariance in any basis — indicting the pixel
+product's scale-blending specifically.) Control: the BNT arm used a RE-FROZEN
+per-(channel,scale) sigma in the BNT basis (GATE A1b PASS), so the collapse cannot be blamed
+on mis-normalization — it isolates the statistic's inability to follow the channel mixing.
 
 ## Why appended quadratic channels recover only part (0.15x -> 0.22x)
 
@@ -175,94 +195,15 @@ phase-aware cross statistics, e.g. wavelet phase harmonics).
 
 
 ================================================================================
-## PART III — What would it take to fix per-channel statistics? (discussion material,
-## from Andreas's Q&A 2026-06-11)
+## PARTS III–IV — SUPERSEDED (2026-06-11)
 ================================================================================
 
-Q1 — completeness of "PDF" statistics:
-- Per-bin one-point PDFs are per-channel => BNT-fragile (Part II argument).
-- The MULTIVARIATE cross-bin one-point PDF P(kappa_1(p),...,kappa_N(p)) per smoothing scale is
-  BASIS-COVARIANT under pixelwise mixing: P'(k') = P(B^-1 k')|det B|^-1 — knowing it in one
-  basis = knowing it in any. The canonical 'normal' statistic inheriting the CNN's invariance.
-  Smoothing commutes with B => holds scale by scale.
-- It is NOT full information: one-point objects (even joint, even across a scale ladder)
-  discard spatial morphology/phase; full info = field level (what CNN+SBI approximates).
-  Ladder: per-bin PDFs < pairwise joint PDFs < N-dim joint PDF per scale < field level.
-- The product map's one-point PDF is a STRICT functional of the pairwise joint PDF (the law of
-  the product does not determine the joint) => the principled 'normal' upgrade over our
-  product channel is the pairwise joint PDF itself. Practical obstacle: curse of dim.
-
-Q2 — survey practice (cross catalogs) and data access:
-- A union-catalog map is a DETERMINISTIC count-weighted linear combination of the noisy
-  per-bin maps (same galaxies, same noise realizations regrouped). Catalogs add bookkeeping
-  (weights/masks/varying noise), not field information => THE INFLATION IS NOT A DATA-ACCESS
-  LIMITATION (auto maps suffice to build everything cross catalogs build).
-- The practice = feeding per-channel statistics LINEAR-combination channels (vs our QUADRATIC
-  product/conv). CRAMER-WOLD: the 1-d laws of ALL linear combinations t.kappa determine the
-  full multivariate law => per-channel one-point PDFs on a sufficiently rich family of
-  combination maps are EQUIVALENT to the joint cross-bin PDF (the BNT-robust object). Surveys'
-  pairwise equal-weight unions = a finite sample of directions => partial.
-- Constructive version: cum_k(w_i k_i + w_j k_j) is a polynomial in (w_i,w_j) with
-  binomial-weighted mixed-cumulant coefficients => k+1 weight ratios determine ALL pairwise
-  mixed cumulants of order k. >=3-bin mixed cumulants need >=3-bin unions (directions must
-  grow with the joint structure sought).
-- Basis-agnostic: w^T kappa' = (B^T w)^T kappa — the same combination family is constructible
-  from BNT maps; another face of 'the statistics basis is a free choice'.
-- Taxonomy of cross-map constructions for the paper: LINEAR (survey practice;
-  Cramer-Wold-complete in the limit) | QUADRATIC (our product/conv; specific mixed moments,
-  scale-blended) | LEARNED (CNN; adaptive, empirically sufficient). The measured inflation is
-  the bottom rung (zero cross channels, hostile basis), not a ceiling of map-level statistics.
-- Honesty cap: Cramer-Wold completeness is a ONE-POINT-level statement; full-field claims
-  still rest on the Part II field-level argument.
-
-
-================================================================================
-## PART IV — The point-cloud picture (pedagogical core; Andreas Q&A 2026-06-11)
-================================================================================
-
-THE PICTURE: smooth at scale s; each pixel = a 4-VECTOR => the map stack = a cloud of N_pix
-points in 4D. Per-channel PDF/l1 = axis SHADOWS of the cloud; joint PDF = the cloud's SHAPE;
-cross-correlations (all orders) = the ways the cloud is not the product of its shadows; BNT =
-a linear distortion of the cloud (info unchanged, axes changed); Martinet union map = a
-DIAGONAL shadow; product map = shadow of a quadratically WARPED cloud.
-
-WHERE THE INFO GOES UNDER BNT (geometric): the noise blob is spherical pre-BNT, an ELONGATED
-ELLIPSOID (sigma^2 B B^T) post-BNT; the signal directions are no longer axis-aligned while the
-noise is fat along the axes => every axis shadow is noise-dominated (the sigma8-flat histogram
-grid) even though in 4D the signal still stands out along directions where the noise is thin.
-2-bin toy: k2' = k2 - k1 = B + (n2 - n1): doubled noise, anti-correlated with channel 1.
-SHARP STATEMENT: BNT is pixelwise => everything it moves is at ZERO LAG and EQUAL SCALE; the
-per-scale joint ONE-POINT PDF captures in principle all BNT-displaced information (multi-point
-cross stats are not needed for BNT recovery). Non-Gaussian sector: post-BNT the surviving
-non-Gaussianity is in JOINT tail events (several maps simultaneously extreme in the right
-pattern vs noise coincidences) — invisible to any per-map histogram.
-HONESTY NOTE: in degenerate toys the diagonal of C can still determine the params and the loss
-is estimator INEFFICIENCY (noise-correlation inflates diag-estimator variance); in the real
-4-bin non-Gaussian case both effects act; 0.15x is the combined measurement; the whitening
-test separates the noise-geometry share.
-
-JOINT PDF, CONCRETELY: histogramdd of the per-pixel 4-vectors per smoothing scale (wavelet
-version: joint histogram of W_s kappa_1..4 = the strict joint generalization of l1). Classical
-obstacle (10^4-cell covariance) EVAPORATES IN SBI: coarse-bin (6^4 cells or 6 pairwise 15x15
-2D histograms ~ 1300 numbers, comparable to our 800-3200-d datavectors), feed to the same MAF.
-Basis-covariant => BNT-robust by construction (Part II). LDT lensing-PDF programme is moving
-toward joint tomographic PDFs at low order; the wavelet-domain joint version would be new.
-
-MARTINET MAPPING (exact): union-catalog map = count-weighted average of the bin maps, noise
-included: k_{i u j} = (n_i k_i + n_j k_j)/(n_i + n_j); pooled-noise variance identical either
-way => EVERYTHING Martinet extracts is extractable from the auto maps (catalogs add
-bookkeeping, not field information). What a union map adds vs per-channel-on-autos: ONE
-diagonal shadow; its k-th cumulant = binomial-weighted sum of order-k MIXED cumulants.
-COMPLETENESS = CRAMER-WOLD (CT-scan metaphor): 1-d laws along ALL directions reconstruct the
-joint law; per-channel = 4 axis projections; Martinet pairs = a few diagonal projections (a
-finite Radon sampling); more weight ratios pin individual mixed cumulants order-by-order;
-triplet unions reach 3-bin cumulants; the all-directions limit IS the joint PDF. Product maps
-= a different (nonlinear-warp) probe family; neither contains the other; both < joint PDF.
-
-HIERARCHY (one line): axis shadows (per-channel PDF/l1) < finitely many shadows (Martinet
-unions, products) < cloud shape (joint one-point PDF per scale) < full field (multi-point /
-field level). BNT-induced losses live entirely within level 3 (pixelwise transform).
-
-WHITENING TEST (running 2026-06-11, whiten_campaign/): per-channel L1 in Q = (BB^T)^-1/2 B
-(orthogonal; noise blob spherical again). Recovered fraction (whiten-BNT)/(noBNT-BNT)
-decomposes the inflation into noise-geometry vs irreducibly-joint components.
+The joint-PDF / Cramér–Wold / union-catalog discussion (former Part III) and the point-cloud
+picture with the sharp per-scale-joint-one-point statement (former Part IV) are absorbed,
+with full derivations and a claims ledger, into `BNT_THEORY_DEEP_DIVE.md`:
+- formal core (posterior/MI invariance, CNN class closure, configuration-preserving
+  information flow, joint one-point envelope, strict hierarchy, Gaussian-sector l1 lemma): L2;
+- worked Gaussian Fisher analysis incl. the F3 trap result, the F5 Gaussianization lemma, the
+  whitening (F4) pre-registered reading, and the sigma8/w0 anisotropy adjudication (F6): L3;
+- union-catalog identity, constructive order-by-order Cramér–Wold completeness, joint-PDF-as-
+  statistic design: L4. Git history retains the original Parts III–IV text.

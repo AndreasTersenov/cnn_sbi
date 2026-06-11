@@ -22,6 +22,32 @@ Each arm cross-gain over auto-only is measured AND calibration-validated (TARP/S
 ## Guardrails
 patch-local cross ONLY (never full-sphere = leakage); per-channel noise (not shared auto-sigma); never PCA L1; GPU 1 only; example-disjoint compressor/NDE split by perm; calibrate BEFORE contours; SAME auto channels across all arms; one apodized-circular convolution definition; do not relitigate the operator choice (notes S8-12).
 
+## Loop status (theory-deep-dive 2026-06-11 ~14:10 UTC)
+★ BNT THEORY DEEP-DIVE DELIVERED (Andreas-interviewed, plan signed off, no numerics, ≤400
+lines): BNT_THEORY_DEEP_DIVE.md is now the canonical treatment — claims ledger
+(PROVED/MEASURED/MECHANISM), L2 propositions WITH proofs (posterior/MI invariance; CNN class
+closure incl. preprocessing; P4a configuration-preserving info flow = the exact "where does it
+go" answer; P4b joint-one-point envelope; strict hierarchy w/ witnesses; P6 Gaussian-sector
+l1⟺variance), L3 closed-form Fisher analysis. ★ HEADLINE DERIVED RESULT (F3, "the trap"): in
+the honest zero-lag Gaussian toy with perfect nulling, per-channel variances become MORE
+efficient in the nulled basis (I_diag^BNT ≈ I_full > I_diag^orig, closed form) — the
+"suppressed S/N + correlated noise" story predicts the OPPOSITE of the measurement ⇒ the
+0.15× collapse must live in: F5 Gaussianization lemma (mixing contracts standardized
+cumulants, proved via ℓ^p-monotonicity; signed nulling rows cancel odd cumulants), F3.4
+residual joint response (B nulls kernels not covariances), F3.5 SNR-grid flattening. F4
+pre-registers the whitening reading (predict LOW-to-MID recovered; Q is still a mixing so F5
+damage survives whitening). F6 anisotropy adjudicated from artifacts: w0 is substantially
+PRIOR-CAPPED (max possible inflation 1.9× vs measured 1.32×; σ8 3.5× vs 2.15×) — all three
+params lose 61–78% of their available room; dumbbell ordering largely reflects room-to-lose +
+σ8's non-Gaussian-amplitude exposure. L4: union-catalog identity PROVED (count-weighted combo,
+same noise realizations ⇒ no data-access limitation); constructive Cramér–Wold: pairwise
+unions provably COMPLETE at order 2, INCOMPLETE at order 3 (k−1 weight ratios for order k;
+noise-bias-free for k≥3); M3 joint-PDF datavector design (~6.5k numbers, BNT-robust by P4b).
+PAPER DOC REVISED: Parts I–II mechanism corrected to the derived chain; Parts III–IV
+superseded/removed (git history retains). tomo4_bnt_v1 exact constants: noise corr ρ12=−0.707
+ρ23=−0.740 ρ34=−0.548; BB^T eigvals 0.088→5.60 (cond 63). Whiten campaign in flight
+(both_build DONE 3030s, l1_arms running, monitor armed).
+
 ## Loop status (session-handoff 2026-06-11 ~13:40 UTC)
 SESSION HANDOFF to the next Fable 5 session: HANDOFF_FABLE5_2026-06-11.md (repo root, the new
 entry point — supersedes the 06-10 handoff). ★ RUNNING: run_flatsky_whiten_campaign.py (pid
