@@ -1,5 +1,20 @@
 # PLAN — §5.4 one-extra-deep-channel test (GO from Andreas 2026-06-11)
 
+## ADDENDUM — two-deep-channel test (GO from Andreas 2026-06-11, after the 0.730 result)
+
+**Registered BEFORE any data:** 6-channel arm = 4 untouched BNT maps + the bin average +
+the deepest bin κ₄ alone (mix mode `deep2`). The span-calibrated account (deep-dive §5.3/5.4)
+predicts recovered_2 strictly between 0.73 and 1. Derived verdict ladder:
+- recovered_2 ≤ 0.75: a second depth-distinct deep direction adds ~nothing — the span
+  account is refuted at the margin (the residual 27% is NOT among-deep-kernel structure);
+- 0.75 < recovered_2 < 0.95: monotone span increment — account supported;
+- recovered_2 ≥ 0.95: two directions essentially span the usable signal-rich subspace.
+Same concat machinery (BNT 800 cols bit-identical; 2-channel deep block, 400 cols; all
+alignment hard-asserted); deep-block σ rows = √(Σⱼ Mᵢⱼ²σⱼ(s)²) from the verified no-BNT
+table (exact: avg row = ¼√Σσⱼ², e₄ row = σ₄). Output: `bntdeep2_campaign/`.
+NB the deep-channel ranges are recalibrated per arm (reservoir draws differ with 2 channels)
+— each arm is self-consistent; binning parity caveat carried as in the 1-channel test.
+
 **Pre-registered prediction** (BNT_THEORY_DEEP_DIVE.md §5.4, before any data): appending ONE
 deep channel — the plain bin average (κ₁+κ₂+κ₃+κ₄)/4 of the original noisy demeaned autos —
 to the four untouched BNT maps restores ≥ 0.8 of the L1's BNT loss:

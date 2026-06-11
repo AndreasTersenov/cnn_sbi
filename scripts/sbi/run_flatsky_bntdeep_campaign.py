@@ -20,18 +20,28 @@ REPO = "/mnt/home/tersenov/software/cnn_sbi"
 SBI = f"{REPO}/scripts/sbi"
 PY = "/home/tersenov/anaconda3/envs/jaxili/bin/python"
 BASE = f"{SBI}/results/exploratory/flatsky_cross_2026_06"
+VARIANT = "deep"                      # set in main() from --variant
 BD = f"{BASE}/bntdeep_campaign"
 LOGS = f"{BD}/logs"
 
 
+def _set_variant(v):
+    global VARIANT, BD, LOGS
+    VARIANT = v
+    BD = f"{BASE}/bnt{v}_campaign" if v != "deep" else f"{BASE}/bntdeep_campaign"
+    LOGS = f"{BD}/logs"
+
+
 def build_cmd(gpu):
-    return [PY, "build_flatsky_bntdeep_arm.py"]
+    return [PY, "build_flatsky_bntdeep_arm.py", "--deep-mode", VARIANT,
+            "--out-cache", f"{BD}/l1_matrix/l1_none_cache/flat_local_none_bnt{VARIANT}",
+            "--out-fid", f"{BD}/fiducial_summaries/fiducial_summaries_l1_none.npz"]
 
 
 def sweep_cmd(gpu):
     return [PY, "population_sweep_flatsky.py",
-            "--train-cache-dir", f"{BD}/l1_matrix/l1_none_cache/flat_local_none_bntdeep",
-            "--cache-prefix", "l1", "--arm-label", "bntdeep_l1_none",
+            "--train-cache-dir", f"{BD}/l1_matrix/l1_none_cache/flat_local_none_bnt{VARIANT}",
+            "--cache-prefix", "l1", "--arm-label", f"bnt{VARIANT}_l1_none",
             "--fiducial-summaries-npz", f"{BD}/fiducial_summaries/fiducial_summaries_l1_none.npz",
             "--output-dir", f"{BD}/population_sweep/l1_none",
             "--preproc-transform", "log1p-zscore", "--clip-value", "5",
@@ -66,34 +76,51 @@ def med(path):
 def write_result():
     nob = med(f"{BASE}/population_sweep/flat_none")
     bnt = med(f"{BASE}/bnt_campaign/population_sweep/l1_none")
-    d5 = med(f"{BD}/population_sweep/l1_none")
-    L = ["# §5.4 one-extra-deep-channel test — derived result", "",
-         "5-channel L1 = 4 untouched BNT maps + the plain bin average (deep channel).",
-         "Pre-registered (BNT_THEORY_DEEP_DIVE.md §5.4, before any data): recovered >= 0.8.",
+    dx = med(f"{BD}/population_sweep/l1_none")
+    d1 = med(f"{BASE}/bntdeep_campaign/population_sweep/l1_none")  # 1-deep rung, for ladder
+    nch = {"deep": "5ch: avg", "deep2": "6ch: avg + bin4"}[VARIANT]
+    L = [f"# §5.4 deep-channel test ({VARIANT}) — derived result", "",
+         f"L1 on 4 untouched BNT maps + deep block ({nch}).",
+         "Registered ladders: PLAN_BNTDEEP_TEST.md (deep: >=0.8; deep2: <=0.75 refutes-at-"
+         "margin / 0.75-0.95 span-supported / >=0.95 spanning).",
          "Pooled 3-MAF 9000-obs median FoM3; same MAF/sweep machinery as all arms.", ""]
-    if not (nob and bnt and d5):
+    if not (nob and bnt and dx):
         L += ["**INCOMPLETE** — missing median_summary.json: "
-              f"noBNT={bool(nob)} BNT={bool(bnt)} deep5={bool(d5)}"]
+              f"noBNT={bool(nob)} BNT={bool(bnt)} this-arm={bool(dx)}"]
     else:
-        rec = (d5["fom3"] - bnt["fom3"]) / (nob["fom3"] - bnt["fom3"])
+        rec = (dx["fom3"] - bnt["fom3"]) / (nob["fom3"] - bnt["fom3"])
         L += ["| arm | FoM3 | sigma(s8) | sigma(w0) |", "|---|---|---|---|",
               f"| L1 noBNT auto | {nob['fom3']:.0f} | {nob['sigma_s8']:.3f} | {nob['sigma_w0']:.3f} |",
-              f"| L1 BNT auto | {bnt['fom3']:.0f} | {bnt['sigma_s8']:.3f} | {bnt['sigma_w0']:.3f} |",
-              f"| L1 BNT + deep (5ch) | {d5['fom3']:.0f} | {d5['sigma_s8']:.3f} | {d5['sigma_w0']:.3f} |",
-              "", f"**recovered = (deep5 − BNT)/(noBNT − BNT) = {rec:.3f}**", ""]
-        if rec >= 0.8:
-            L += ["**Verdict: prediction PASSES (>= 0.8)** — the no-deep-direction account is "
-                  "supported: ONE fixed appended deep channel restores the bulk of the "
-                  "per-channel information while leaving the nulled maps untouched."]
-        elif rec >= 0.4:
-            L += ["**Verdict: PARTIAL (0.4-0.8)** — the deep direction carries a substantial "
-                  "share but the account is incomplete; the remainder lives in structure the "
-                  "single average does not expose."]
+              f"| L1 BNT auto | {bnt['fom3']:.0f} | {bnt['sigma_s8']:.3f} | {bnt['sigma_w0']:.3f} |"]
+        if VARIANT != "deep" and d1:
+            r1 = (d1["fom3"] - bnt["fom3"]) / (nob["fom3"] - bnt["fom3"])
+            L += [f"| L1 BNT + deep (5ch) | {d1['fom3']:.0f} | {d1['sigma_s8']:.3f} "
+                  f"| {d1['sigma_w0']:.3f} |"]
+        L += [f"| L1 BNT + {VARIANT} | {dx['fom3']:.0f} | {dx['sigma_s8']:.3f} "
+              f"| {dx['sigma_w0']:.3f} |",
+              "", f"**recovered = (arm − BNT)/(noBNT − BNT) = {rec:.3f}**", ""]
+        if VARIANT == "deep":
+            if rec >= 0.8:
+                L += ["**Verdict: prediction PASSES (>= 0.8).**"]
+            elif rec >= 0.4:
+                L += ["**Verdict: PARTIAL (0.4-0.8)** — dominant but incomplete."]
+            else:
+                L += ["**Verdict: prediction REFUTED (< 0.4).**"]
         else:
-            L += ["**Verdict: prediction REFUTED (< 0.4)** — the deep-direction account fails "
-                  "its decisive test; revisit §5.3."]
+            if d1:
+                L += [f"(1-deep rung: {r1:.3f})"]
+            if rec <= 0.75:
+                L += ["**Verdict: REFUTES-AT-MARGIN (<= 0.75)** — a second depth-distinct "
+                      "deep direction adds ~nothing; the residual is NOT among-deep-kernel "
+                      "structure; revisit §5.4's refinement."]
+            elif rec < 0.95:
+                L += ["**Verdict: SPAN-SUPPORTED (0.75-0.95)** — monotone increment with the "
+                      "second deep direction, as the span-calibrated account predicts."]
+            else:
+                L += ["**Verdict: SPANNING (>= 0.95)** — two deep directions essentially "
+                      "exhaust the usable signal-rich subspace."]
         L += ["", "NB mechanism test in the UNCUT information-accounting setting — not a "
-              "survey recipe (the deep channel would need conservative cuts; deep-dive "
+              "survey recipe (deep channels would need conservative cuts; deep-dive "
               "§1.7 item 2 caveat)."]
     Path(BD, "BNTDEEP_RESULT.md").write_text("\n".join(L) + "\n")
     print(f"wrote {BD}/BNTDEEP_RESULT.md", flush=True)
@@ -102,8 +129,10 @@ def write_result():
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--gpus", default="1")
+    ap.add_argument("--variant", choices=("deep", "deep2"), default="deep")
     ap.add_argument("--dry-run", action="store_true")
     a = ap.parse_args()
+    _set_variant(a.variant)
     gpu = a.gpus.split(",")[0]
     if a.dry_run:
         print("build:", " ".join(build_cmd(gpu)))

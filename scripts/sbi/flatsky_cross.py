@@ -83,6 +83,13 @@ def bnt_deep_matrix_np() -> np.ndarray:
     return np.concatenate([bnt_matrix_np(), deep_matrix_np()], axis=0)
 
 
+def deep2_matrix_np() -> np.ndarray:
+    """2x4 mix: the bin average + the deepest bin (kappa_4) alone — two depth-distinct
+    deep directions (the §5.4 two-channel rung; span-calibration of the deep account)."""
+    return np.array([[0.25, 0.25, 0.25, 0.25],
+                     [0.0, 0.0, 0.0, 1.0]], dtype=np.float32)
+
+
 def mix_matrix_np(mode) -> np.ndarray:
     """Channel-mix matrix for `mode`: True/'bnt' -> BNT; 'whiten' -> noise-whitened BNT;
     'deep' -> 1x4 bin average; 'bnt_deep' -> 5x4 [BNT; average]. Mixes need not be square:
@@ -93,9 +100,12 @@ def mix_matrix_np(mode) -> np.ndarray:
         return whiten_matrix_np()
     if mode == "deep":
         return deep_matrix_np()
+    if mode == "deep2":
+        return deep2_matrix_np()
     if mode == "bnt_deep":
         return bnt_deep_matrix_np()
-    raise ValueError(f"Unknown channel-mix mode {mode!r}; expected 'bnt'/'whiten'/'deep'/'bnt_deep'.")
+    raise ValueError(
+        f"Unknown channel-mix mode {mode!r}; expected 'bnt'/'whiten'/'deep'/'deep2'/'bnt_deep'.")
 
 
 def n_built_channels(nbins: int, op: str, mode=False) -> int:
