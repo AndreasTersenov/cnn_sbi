@@ -112,6 +112,19 @@ between the original bins, gets combined too: the nulled maps' noise is amplifie
 1.82, 1.62 — the row norms of B) and *correlated between maps* (e.g. −0.71 between maps 1
 and 2, because both contain bin-1's noise with opposite signs).
 
+*Why four or more bins?* The efficiency seen by a source plane at χ_s for a lens at χ_l is
+q ∝ 1 − χ_l/χ_s — a TWO-parameter family in lens distance (constant + slope). Nulling the
+whole foreground therefore imposes two conditions, Σp_j = 0 and Σp_j/χ_{s,j} = 0, so a fully
+nulled combination needs THREE bins; N bins give N−2 fully nulled maps. N = 3 yields one
+(legal but nearly pointless); **N = 4 is the first genuinely tomographic nulled set** — the
+origin of the "BNT needs ≥4 bins" folklore — and more bins mean thinner slices and a sharper
+ℓ↔k mapping. Honest detail of our own matrix: row 2 = (−1, 1, 0, 0) has only two
+coefficients, so it satisfies Σp = 0 but cannot satisfy the slope condition — it is a
+PARTIALLY nulled slice (rows 3–4 are the proper nulls; their coefficients sum to zero and
+encode the slope condition through the bin distances). So the nulled frame is precisely: one
+shallow map, one partially-nulled slice, two proper slices — "three thin slices" elsewhere in
+this document is shorthand for the latter three.
+
 ### 1.3 Why the l1 collapses — and what is conserved
 
 The l1 looks at one nulled map at a time. Each nulled map is a thin, signal-poor slice under
@@ -378,7 +391,12 @@ r = ∂θ diag(C) and M_ij = C_ij². **(F2)**
 **The 2-bin nulling toy and the trap. (F3)** Caricature of nested kernels: bin 2 sees bin 1's
 lenses plus an increment, κ₂ = κ₁ + β, with κ₁ ⊥ β, Var(κ₁) = Au, Var(β) = Av; A is an
 amplitude parameter (σ8-like). Nulling: B = [[1,0],[−1,1]], so the nulled pair is (κ₁, β) —
-the toy nuller exactly isolates the increment. Covariances:
+the toy nuller exactly isolates the increment. (Bin-count honesty: a pure difference enforces
+only the Σp = 0 condition, which acts as an exact nuller here ONLY because the toy's
+foreground is a one-parameter family — pure common mode. Real kernels are the two-parameter
+family of §1.2, which is why true nulling needs three bins per row and the folklore says BNT
+needs ≥4 bins overall; none of the toy's conclusions depend on this, since the toy's job is
+to test the Gaussian-geometry story, not the nulling construction.) Covariances:
 
   original C = [[Au+σ², Au],[Au, A(u+v)+σ²]]      nulled C' = [[Au+σ², −σ²],[−σ², Av+2σ²]]
 
