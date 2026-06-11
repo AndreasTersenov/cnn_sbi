@@ -22,6 +22,22 @@ Each arm cross-gain over auto-only is measured AND calibration-validated (TARP/S
 ## Guardrails
 patch-local cross ONLY (never full-sphere = leakage); per-channel noise (not shared auto-sigma); never PCA L1; GPU 1 only; example-disjoint compressor/NDE split by perm; calibrate BEFORE contours; SAME auto channels across all arms; one apodized-circular convolution definition; do not relitigate the operator choice (notes S8-12).
 
+## Loop status (OVERNIGHT-MENU-LAUNCHED 2026-06-11 ~22:30 UTC)
+★ OVERNIGHT SCREENING RUNNING (Andreas asleep; pre-sleep interview logged in
+PLAN_OVERNIGHT_MENU.md): 8 arms on GPUs 1,0,2 (slot workers, polite 40% caps, 12 GB foreign
+back-off — co-tenancy explicitly approved). ARMS: A1 = BNT-L1 + per-scale wavelet cov50
+(P7 Gaussian-share measurement, always escalated); A2 = BNT-L1 + unions6 L1 blocks (survey
+practice, M2); pair2d-K10 / full4d-K5 / jointl1-K10 (NEW joint wavelet l1: cells hold
+Σ(|uᵢ|+|uⱼ|)/2) × {noBNT, BNT} — full4d BNT/noBNT ratio = the EXACT P4b basis-covariance
+test; pair2d/jointl1 ratios = pairwise-approximation fragility. Screening 1 seed/3000 obs;
+auto-escalation ≥1680 FoM3 (pairs together) → 3 seeds/9000 obs re-sweeps. Fixed [−5,5] SNR
+range, K bins, clamp-to-edge; frozen σ per basis (both tables GATE A1b-passed); A1/A2
+theta-bit-equality asserted against the BNT cache. Unit-tested (count conservation, np.cov
+match, jointl1 totals, unions6 rows). VMIM-on-joint allowed ONLY last-if-warranted; doc
+writeups WAIT for morning (tables + HANDOFF_OVERNIGHT only). Code f527173 + 0a4b1a2;
+monitor armed. Skipped-as-resolved: §1.7 item 1 (rotate-back ≡ noBNT uncut; whiten was the
+nontrivial rotation), item 4 (product 0.22× measured).
+
 ## Loop status (bnt+deep2-SPANNING 2026-06-11 ~22:45 UTC)
 ★★★ §5.4 LADDER COMPLETE — deep2 (avg + bin4, 6ch) in 13 min, all asserts PASS:
 **recovered = 1.082 = the registered SPANNING branch (≥0.95).** FoM3 2573 (vs noBNT 2405);
