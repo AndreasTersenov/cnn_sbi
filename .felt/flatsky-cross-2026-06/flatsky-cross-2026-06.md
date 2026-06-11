@@ -22,6 +22,27 @@ Each arm cross-gain over auto-only is measured AND calibration-validated (TARP/S
 ## Guardrails
 patch-local cross ONLY (never full-sphere = leakage); per-channel noise (not shared auto-sigma); never PCA L1; GPU 1 only; example-disjoint compressor/NDE split by perm; calibrate BEFORE contours; SAME auto channels across all arms; one apodized-circular convolution definition; do not relitigate the operator choice (notes S8-12).
 
+## Loop status (deep-dive-v2 2026-06-11 ~16:00 UTC)
+★ DEEP-DIVE v2 (Andreas review response): single-scale throughout (wavelets dropped from all
+explanations), new plain-language layer §1 (cloud/shadows/CT-scan for directions; whitening
+explained simply; joint-PDF concrete + COMPUTABLE verdict: pairwise-2D 1350-d < L1-both
+3200-d, GPU-trivial, no covariance obstacle, ~3 h mini-campaign IF green-lit), walked proofs,
+practical 6-item rescue menu (§1.7) headed by cut-then-recombine + NEW cheap idea: append ONE
+deep channel (bin average) to the 4 untouched nulled maps. ★ CORRECTNESS RE-PASS FOUND v1
+POST-MORTEM WRONG: Q rows 2–4 are NOT same-sign (row4 = bin3−bin4 diff) and rows 3–4 lie
+95–99% INSIDE the nulled span ⇒ sign-structure story dead; alignment-angle story
+insufficient. SURVIVING ACCOUNT (with new F5b slice bound, Cauchy–Schwarz): BNT = the unique
+frame with NO deep direction (1 shallow bin-1 + 3 thin slices; deep non-Gaussian common
+structure removed from every channel); Q recovers via leading row ≈ deep common mode (70%
+outside nulled span); F3 toy was 'too kind' precisely because ITS nulled basis kept the deep
+direction. Full 3-stage post-mortem chain kept in §5 as journey material. ★ NEW P7 (proved):
+auto+cross 2nd moments transform invertibly (Ĉ'=BĈBᵀ) ⇒ 2-pt-with-crosses EXACTLY
+BNT-invariant — PREDICTS the reported literature result Andreas relayed (autos alone
+unprotected); practical corollary: +10 numbers restore the Gaussian sector free. ★ REGISTERED
+PREDICTION §5.4 (not run): 5-channel L1 (4 nulled + bin-average) ⇒ recovery ≥0.8 — would be a
+practical rescue PRESERVING per-slice cuts. Ripples: paper draft Part I+II rewritten (incl.
+P7 section), FLATSKY_BNT_RESULT.md whitening §, memory v2. Cap lifted by Andreas (554 lines).
+
 ## Loop status (WHITEN-RESULT 2026-06-11 ~15:00 UTC)
 ★★★ WHITENING TEST DONE (2h22m, zero failures, ahead of ETA) — **FULL RECOVERY**: recovered
 fraction (whiten−BNT)/(noBNT−BNT) = **1.06 (L1 auto: 2405→2524 vs BNT 364) / 1.01 (product:

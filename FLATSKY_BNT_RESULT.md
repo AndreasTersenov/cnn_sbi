@@ -59,18 +59,22 @@ the original basis (signal fully mixed, noise back to iid equal-variance). Poole
 | L1 +product | 2875 | 2897 | 637 | **1.01** |
 
 Recovery is complete marginal-by-marginal (whiten σ(σ8) 0.080/0.075 vs noBNT 0.082/0.075;
-σ(w0) 0.239/0.233 vs 0.245/0.238). Reading (full chain in `BNT_THEORY_DEEP_DIVE.md` L5.2):
+σ(w0) 0.239/0.233 vs 0.245/0.238). Reading (full chain in `BNT_THEORY_DEEP_DIVE.md` §5):
 the irreducibly-joint share of the L1's BNT loss is ≈ 0 — everything the per-channel
 statistic extracts in the original basis is available through single-channel marginals in
-ONE FIXED rotation of the nulled maps. The collapse is a property of the nulling FRAME
-(signal-poor, signed-differencing directions, which also cancel the non-Gaussian signal
-content), not of mixing per se, not of noise correlation (invisible to marginals), and not of
-noise amplification (the SNR normalization absorbs it). Diagnostic only: Q remixes the nulled
-kernels, so this is information accounting, not an analysis recipe — the practical statement
-stays "cleaning basis ≠ statistics basis." Note the pre-registered theory prediction
-(LOW-to-MID recovery) was falsified — honest post-mortem in the deep-dive; recovered values
-marginally above 1 are read as "complete to within a few percent" (re-train repeatability for
-pooled L1 arms not separately measured).
+ONE FIXED rotation of the nulled maps. The surviving account: BNT trades four deep,
+mutually-redundant lensing kernels for one shallow map + three thin lens-z slices — a frame
+with NO deep direction anywhere; each slice alone is signal-starved and carries little of the
+deep non-Gaussian structure (which nulling removes from every channel by design). Q recovers
+because its first row ≈ the deep common mode (70% outside the nulled span). Not noise
+correlation (invisible to marginals), not noise amplification (absorbed by the SNR
+normalization), not mixing per se. Diagnostic only: Q remixes the nulled kernels — the
+practical statement stays "cleaning basis ≠ statistics basis." Honesty trail: the
+pre-registered prediction (LOW-to-MID) was falsified AND the first post-mortem (sign
+structure) failed its own geometry check — both kept in the deep-dive §5 as journey material.
+Registered next test (§5.4, not run): append ONE deep channel (plain bin average) to the 4
+untouched nulled maps → predicted ≥0.8 recovery while preserving per-slice cuts. Recovered
+values marginally above 1 read as "complete to within a few percent."
 
 ## Caveats / validation (GATE C ran 2026-06-11 — pass WITH caveats; `bnt_campaign/gate_c/GATE_C_BNT.md`)
 

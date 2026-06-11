@@ -30,24 +30,25 @@ the transform acts pixel by pixel, everything it rearranges stays at zero lag an
 scale: information moves between what each map looks like on its own and how the maps relate
 jointly — never across scales or positions. A statistic computed map-by-map — the wavelet l1,
 peak counts, Minkowski functionals, any statistic that reduces each channel separately before
-comparison — keeps only the per-map share. Two effects then deplete that share. The familiar,
-geometric one: nulling leaves the nulled maps little signal over their amplified,
-inter-map-correlated noise. The decisive one is subtler: each nulled map is a signed mixture
-of several bins, and mixing drives the per-map distribution of the *signal* toward
-Gaussianity — a one-step central limit theorem — while the noise was Gaussian to begin with.
-The non-Gaussian features that make a higher-order statistic worth more than a power spectrum
-are exactly what mixing erases from every individual map. The geometric effect alone would
-not explain the measurement: an honest Gaussian accounting of map-by-map variances predicts
+comparison — keeps only the per-map share, and nulling minimizes exactly that share.
+Physically: the original bins are four deep, heavily overlapping lensing kernels — four maps
+that largely share their dominant structure. Nulling, by design, cancels the shared part,
+trading them for one shallow map (bin 1, untouched — the weakest of the four) plus three thin
+lens-redshift slices under amplified, inter-map-correlated noise. Each slice alone is
+signal-starved and carries little of the non-Gaussian structure — the features that make a
+higher-order statistic worth more than a power spectrum live in the deep common modes that
+nulling removes from every map simultaneously. The noise side of the story is, perhaps
+surprisingly, NOT sufficient: an honest Gaussian accounting of map-by-map variances predicts
 no collapse at all (in the idealized nulling limit it even favors the nulled basis; Appendix
-ref). The inflation is a collapse of the per-map *non-Gaussian* signal, and it is largest
-exactly when nulling works as designed. A whitening test makes the localization exact:
-re-analysing the nulled maps after one fixed orthogonal rotation — the noise-whitened BNT
-basis, no learning involved — returns the full no-BNT figure of merit (recovered fraction
-1.06 and 1.01 for the two l1 configurations), marginal by marginal. Nothing the statistic
-lost is irreducibly joint: the loss is a property of the nulled frame's directions —
-signal-poor, signed-differencing combinations that also cancel the coherent non-Gaussian
-content — and a same-sign rotation of identical mixedness gives it all back. (The rotation
-re-mixes the nulled kernels, so this is information accounting, not an analysis recipe.)
+ref). A whitening test localizes the damage exactly: re-analysing the nulled maps after one
+fixed orthogonal rotation — the noise-whitened BNT basis, which restores a deep direction,
+no learning involved — returns the full no-BNT figure of merit (recovered fractions 1.06 and
+1.01 for the two l1 configurations), marginal by marginal. Nothing the statistic lost is
+irreducibly joint: the collapse is entirely a property of the nulled frame — the unique
+frame, by construction, with no deep direction anywhere. (The rotation re-mixes the nulled
+kernels, so this is information accounting, not an analysis recipe; what it licenses is the
+separation of the cleaning basis from the statistics basis — and a cheaper fix still,
+appending a single deep combination map to the otherwise untouched nulled set.)
 
 A convolutional network fed the tomographic bins as input channels evades this for a simple,
 almost mechanical reason: the first operation of a multichannel CNN is a learned linear
@@ -120,12 +121,12 @@ residual: 0.93x (auto) / 0.88x (auto+product), within compressor-seed scatter.
 t_pc is NOT closed under mixing: marginal reductions do not commute with linear recombination
 (t(a kappa_i + b kappa_j) is not a function of t(kappa_i), t(kappa_j)). The defensible causal
 chain (each link derived in BNT_THEORY_DEEP_DIVE.md): total information invariant [exact,
-P1–P2]; per-channel statistics read only the per-(channel,scale) marginals [definition, P4b];
-signed mixing provably contracts the standardized cumulants of every mixed channel —
-Gaussianizing the per-map signal while the noise stays Gaussian [lemma F5, exact for
-independent components]; residual cross-channel signal response (the real B nulls KERNELS,
-not covariances) is invisible to any marginal reduction [F3.4]; and the theta-response of the
-SNR-binned datavector flattens against its fixed bin grid as per-channel S/N drops [F3.5].
+P1–P2]; per-channel statistics read only the per-channel marginals [definition, P4b]; the
+nulling rows remove the SHARED deep structure — the carrier of the signal's non-Gaussianity —
+from every channel simultaneously (differencing of strongly correlated maps; Gaussianization
+lemma F5 holds exactly for the independent caricature, and the slice bound F5b shows
+recombinations within the nulled span stay slice-like); and the theta-response of the
+SNR-binned datavector flattens against its fixed bin grid as per-channel S/N drops.
 Measured: l1 on nulled autos 0.15x, sigma(sigma_8) doubles. IMPORTANT NEGATIVE RESULT
 (deep-dive F3, worked closed-form): the naive Gaussian one-point account — "per-map S/N drops
 and the noise becomes correlated, hence per-channel statistics fail" — does NOT survive
@@ -152,6 +153,19 @@ is nonlinear per-channel. Losses in practice:
  (iii) noise standardisation: per-(channel,scale) scalar sigma_c(s) cannot represent the
       inter-channel covariance Sigma'.
 
+## The two-point sector is exactly protected once crosses are included (P7)
+
+The sample covariance of the maps transforms congruently and EXACTLY, realization by
+realization: C-hat' = B C-hat B^T (per ell-bin for spectra, verbatim). This map is invertible
+on symmetric matrices, so the BNT-basis auto+cross second-moment datavector is a lossless
+repackaging of the original — identical posteriors for any field, Gaussian or not (the
+summary-level instance of the data-level invariance). The autos alone are diag(B C-hat B^T):
+not invertible, no protection. This PREDICTS the reported result that BNT leaves
+power-spectrum contours unchanged when both auto- and cross-spectra are used [REF], and
+locates our measurement as the maximally exposed configuration (higher-order, autos-only).
+Practical corollary: appending the 10 auto+cross second moments to a BNT-basis datavector
+restores the complete Gaussian sector for free.
+
 ## Diagnostic decomposition (whitening identity) — DIAGNOSTIC ONLY, not a practical rescue
 
 Equal per-bin noise => M = (B B^T)^(-1/2) satisfies (M B)(M B)^T = I: noise-whitening the
@@ -173,11 +187,17 @@ paper-level point; state it as its own claim, not as a property of whitening.
 MEASURED OUTCOME (2026-06-11, whiten_campaign/): recovered fraction
 (whiten − BNT)/(noBNT − BNT) = 1.06 (auto) / 1.01 (+product) — FULL recovery, marginal by
 marginal. The irreducibly-joint component is ≈ 0: the l1's BNT loss is entirely a frame
-(direction-sampling) artifact. Mechanism resolution per BNT_THEORY_DEEP_DIVE.md L5.2: the
-contraction of non-Gaussian content depends on the SIGN STRUCTURE of the mixing — B's
-signed-differencing nulling rows cancel it, Q's same-sign rows preserve it; noise correlation
-is invisible to marginals and noise amplification is absorbed by the SNR normalization, so
-neither was ever a complete mechanism.
+artifact. Mechanism resolution per BNT_THEORY_DEEP_DIVE.md §5: the nulled frame is, by
+construction, the unique frame with no deep-kernel direction — per-channel signal and the
+deep non-Gaussian structure are minimized in every channel simultaneously; Q recovers because
+its leading row restores ≈ the deep common mode (70% of its power outside the nulled span,
+appendix table). Noise correlation is invisible to marginals and noise amplification is
+absorbed by the SNR normalization, so neither was ever a complete mechanism. (Two earlier
+explanations — the pre-registered partial-recovery expectation and a first post-mortem based
+on mixing sign structure — were falsified against the data and the transform's own geometry;
+the chain is preserved in deep-dive §5 as journey material. Registered next test, §5.4:
+appending ONE deep channel to the four untouched nulled maps should recover ≥0.8 — a
+practical rescue that, unlike whitening, preserves the nulled channels for per-slice cuts.)
 
 ## Interpretation (the two pillars as one statement)
 
