@@ -25,17 +25,21 @@ LOGS = f"{OM}/logs"
 NOBNT_FOM, BNT_FOM = 2405.0, 364.0
 # name -> (stat, k); all built with --dequantize. jointl1q/pair2dq pairs are appended at
 # launch time via --arms when the undequantized full sweeps fail (sparse-BNT seed lottery).
-ARM_SPECS = {"full4dq": ("full4d", 4), "jointl1q": ("jointl1", 10), "pair2dq": ("pair2d", 10)}
+ARM_SPECS = {"full4dq": ("full4d", 4), "jointl1q": ("jointl1", 10), "pair2dq": ("pair2d", 10),
+             "full4da": ("full4d", 4)}   # 4da = adaptive percentile grid (grid-transport test)
 ARMS = ["full4dq_nobnt", "full4dq_bnt"]
 
 
 def build_cmd(name):
     prefix, basis = name.split("_")
     stat, k = ARM_SPECS[prefix]
-    return [PY, "build_flatsky_joint_arm.py", "--stat", stat, "--basis", basis,
-            "--k", str(k), "--dequantize",
-            "--out-cache", f"{OM}/{name}/cache",
-            "--out-fid", f"{OM}/{name}/fiducial_summaries.npz"]
+    cmd = [PY, "build_flatsky_joint_arm.py", "--stat", stat, "--basis", basis,
+           "--k", str(k), "--dequantize",
+           "--out-cache", f"{OM}/{name}/cache",
+           "--out-fid", f"{OM}/{name}/fiducial_summaries.npz"]
+    if prefix == "full4da":
+        cmd.append("--adaptive-ranges")
+    return cmd
 
 
 def sweep_cmd(name, full):
@@ -145,7 +149,8 @@ def main():
         for tag in ("full", "screen"):
             x = res.get((f"{pref}_nobnt", tag)); y = res.get((f"{pref}_bnt", tag))
             if x and y:
-                note = " (P4b predicts ≈1)" if pref == "full4dq" else ""
+                note = " (P4b predicts ≈1)" if pref == "full4dq" else (
+                    " (grid-transport test: ≥0.75 supports, ≤0.55 refutes)" if pref == "full4da" else "")
                 lines.append(f"\n**{pref} basis-invariance ratio (BNT/noBNT, {tag}): "
                              f"{y['fom3']/x['fom3']:.3f}**{note}")
                 break
