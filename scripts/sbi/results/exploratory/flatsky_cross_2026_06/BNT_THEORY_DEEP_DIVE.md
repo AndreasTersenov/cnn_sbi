@@ -159,6 +159,15 @@ chosen so that the shape noise becomes again independent and equal between the f
 Algebra gives a bonus: this particular combination is exactly a pure *rotation* of the
 original (un-nulled) basis — mixed signal, but pristine noise.
 
+*Why not simply B⁻¹?* Good question with an instructive answer. ANY matrix W that restores
+independent equal noise to the nulled maps must make the net transform WB a pure rotation of
+the original maps — so the whiteners form a family, W = O·B⁻¹ over rotations O, and **B⁻¹
+itself is the member with O = I**: it lands exactly back on the original maps. Using it would
+have re-measured the no-BNT arm and proven nothing. Q is the symmetric member of the family,
+landing on a genuinely rotated frame (19°–37° from the original axes, all channels mixed) —
+which makes the test falsifiable: "is there anything special about the original axes, or
+does ANY clean-noise frame feed the l1?" Measured answer: any.
+
 *Why we ran it.* To split the l1's collapse into two conceptually different parts:
 (a) damage from the nulled frame's *geometry* (signal-starved axes, amplified/correlated
 noise) — which a change of frame can undo; and (b) information that genuinely requires
@@ -187,15 +196,25 @@ kept in §5, deliberately, as part of the paper's "journey" material.
 
 Ranked; "measured" = this campaign, "exact" = proved, "predicted" = registered, not yet run.
 
-1. **Decouple cleaning from measuring** (exact, free): apply BNT, make the nulling-informed
-   scale/redshift cuts, then rotate to any sane frame (B⁻¹ on the kept modes, or Q, or
-   anything fixed) and run the l1 there. Nulling keeps its systematics job; the statistic
-   eats in a frame where maps have signal. This is the paper-level recommendation.
+0. *The survey workflow these all live in:* BNT's purpose is that each nulled map sees a
+   thin lens slice, so ℓ ↔ k is sharp and k-cuts (where baryons/nonlinearity live) become
+   clean per-map ℓ-cuts with no leakage between scales. Every item below APPLIES THE CUTS IN
+   BNT SPACE FIRST; they differ only in where the statistic is then computed.
+1. **Decouple cleaning from measuring** (exact, free): null, make the nulling-informed cuts,
+   then rotate back (B⁻¹ on the cut maps — or any fixed rotation; post-cut they are all
+   information-equivalent) and run the l1 in the original frame. This null → cut → invert →
+   measure pipeline has been proposed in the literature [REF]; our results are its
+   quantitative justification for higher-order statistics: skipping the rotate-back step
+   costs 85% of the l1's FoM3 (measured), performing it costs nothing (measured, whitening),
+   and P1/P4b are the proof-level statements that the post-cut basis is a free choice.
 2. **Append ONE deep channel** (predicted near-full recovery; cheap decisive test, §5.4):
    keep the four nulled maps untouched — preserving per-slice cuts — and add the plain bin
    average (κ₁+κ₂+κ₃+κ₄)/4 as a fifth l1 channel. If the no-deep-direction account is right,
    most of the lost FoM3 returns with a single fixed extra channel and no re-mixing of the
    nulled maps. Not yet run; would be a ~3 h mini-campaign with existing machinery.
+   **Real-survey caveat:** the appended deep map is exactly the object with ℓ↔k leakage, so
+   in a cut analysis it must itself be cut conservatively — eroding its gain. It is the
+   right MECHANISM test (uncut, information-accounting setting), not a survey recipe.
 3. **Append the auto+cross second moments** (exact for the Gaussian sector): 10 numbers
    (the 4 variances + 6 covariances of the smoothed maps; per scale if multi-scale). By P7
    this restores the entire two-point content exactly, in any basis, for ~free. It cannot
@@ -233,7 +252,18 @@ product channels combined. Either variant is *smaller* than the L1-both datavect
 MAF already digests. There is NO covariance-matrix obstacle in SBI (the classical blocker for
 joint PDFs — inverting a 10³–10⁴-cell covariance — simply does not arise; the NDE consumes
 the vector directly). Sparse counts just mean noisy features, which SBI tolerates; coarser
-binning trades resolution for stability. **Verdict: yes, we could just test it** — a
+binning trades resolution for stability.
+
+*Does it defeat BNT's purpose?* No — the opposite. The purpose of BNT is the sharp ℓ↔k
+mapping of thin lens slices, which makes per-map scale cuts physical. The joint PDF respects
+that completely: apply the per-slice cuts in BNT space exactly as designed, then histogram
+the CUT NULLED MAPS jointly — **you never leave BNT space at all**, because the joint
+histogram is frame-indifferent (P4b: same information in any invertibly-related frame). The
+cut structure stays manifest; only the basis-fragility of per-channel reductions evaporates.
+Survey practicality is that of any one-point statistic (masks = drop pixels; varying
+noise/depth = per-channel standardization — the l1's existing machinery applies verbatim).
+
+**Verdict: yes, we could just test it** — a
 third-pillar mini-campaign (build pass + slices + sweeps, the whiten-campaign template,
 ~2–3 h/arm) with pairwise-2-d as the default and full-4-d as a variant. Needs your explicit
 go; the interesting arms are (noBNT vs BNT) × (joint-hist vs l1) — the prediction is

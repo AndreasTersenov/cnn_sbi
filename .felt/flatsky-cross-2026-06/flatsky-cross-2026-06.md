@@ -22,6 +22,19 @@ Each arm cross-gain over auto-only is measured AND calibration-validated (TARP/S
 ## Guardrails
 patch-local cross ONLY (never full-sphere = leakage); per-channel noise (not shared auto-sigma); never PCA L1; GPU 1 only; example-disjoint compressor/NDE split by perm; calibrate BEFORE contours; SAME auto channels across all arms; one apodized-circular convolution definition; do not relitigate the operator choice (notes S8-12).
 
+## Loop status (whitening-vs-Binv + survey-workflow clarifications 2026-06-11 ~16:30 UTC)
+Andreas Q&A round 2: (1) Q vs B⁻¹ — clarified in doc §1.6: ALL noise-whiteners of the nulled
+maps form the family W = O·B⁻¹ (net transform = rotation); B⁻¹ is the O=I member (would have
+vacuously re-measured the no-BNT arm); Q is the symmetric member landing on a genuinely
+rotated frame ⇒ the test is falsifiable, and the null→cut→invert→measure pipeline Andreas
+says is PROPOSED in the literature [REF needed] = our §1.7 item 1 — our results are its
+quantitative justification for higher-order stats. (2) Survey-purpose check (his ℓ↔k-alignment
+framing adopted, §1.7 item 0): joint PDF does NOT defeat BNT — cuts in BNT space then joint
+histogram of the CUT NULLED MAPS directly (frame-indifferent, never leave BNT space); CNN
+likewise; L1-rotate-back fine post-cut. CASUALTY flagged honestly: the §5.4 +1-deep-channel
+idea is a mechanism test only — in a cut analysis the deep map reintroduces ℓ↔k leakage and
+must be conservatively cut, eroding the gain.
+
 ## Loop status (deep-dive-v2 2026-06-11 ~16:00 UTC)
 ★ DEEP-DIVE v2 (Andreas review response): single-scale throughout (wavelets dropped from all
 explanations), new plain-language layer §1 (cloud/shadows/CT-scan for directions; whitening
