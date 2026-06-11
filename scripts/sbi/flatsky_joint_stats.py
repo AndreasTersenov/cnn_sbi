@@ -58,9 +58,12 @@ def _snr_bins(wc: torch.Tensor, sigma: torch.Tensor, k: int):
     return u, bins
 
 
-def pair2d_features(wc, sigma, k: int, weighted: bool = False) -> torch.Tensor:
+def pair2d_features(wc, sigma, k: int, weighted: bool = False,
+                    dequant_gen=None) -> torch.Tensor:
     """(B,C,S,H,W) -> (B, npairs*S*k*k). weighted=False: counts (the joint PDF estimate);
-    weighted=True: cells hold sum (|u_i|+|u_j|)/2 (the joint wavelet l1)."""
+    weighted=True: cells hold sum (|u_i|+|u_j|)/2 (the joint wavelet l1).
+    dequant_gen: optional — U(0,1) noise per cell (kills the zero-point-mass of
+    rarely-occupied cells, which seed-dependently NaN the MAF in the sparse BNT basis)."""
     B, C, S, H, W = wc.shape
     P = H * W
     u, bins = _snr_bins(wc, sigma, k)
@@ -81,7 +84,11 @@ def pair2d_features(wc, sigma, k: int, weighted: bool = False) -> torch.Tensor:
             else:
                 h = torch.bincount(flat, minlength=B * ncell).to(torch.float64)
             out.append(h.view(B, ncell))
-    return torch.cat(out, dim=1)                                   # (B, npairs*S*k*k)
+    f = torch.cat(out, dim=1)                                      # (B, npairs*S*k*k)
+    if dequant_gen is not None:
+        f = f + torch.rand(f.shape, generator=dequant_gen,
+                           device=f.device, dtype=f.dtype)
+    return f
 
 
 def full4d_features(wc, sigma, k: int, dequant_gen=None) -> torch.Tensor:
@@ -116,9 +123,9 @@ def compute_features(autos_np, stat: str, basis, sigma, stats, k: int,
     if stat == "cov":
         f = cov_features(wc)
     elif stat == "pair2d":
-        f = pair2d_features(wc, sigma, k, weighted=False)
+        f = pair2d_features(wc, sigma, k, weighted=False, dequant_gen=dequant_gen)
     elif stat == "jointl1":
-        f = pair2d_features(wc, sigma, k, weighted=True)
+        f = pair2d_features(wc, sigma, k, weighted=True, dequant_gen=dequant_gen)
     elif stat == "full4d":
         f = full4d_features(wc, sigma, k, dequant_gen=dequant_gen)
     else:

@@ -23,13 +23,17 @@ BASE = f"{SBI}/results/exploratory/flatsky_cross_2026_06"
 OM = f"{BASE}/overnight_menu"
 LOGS = f"{OM}/logs"
 NOBNT_FOM, BNT_FOM = 2405.0, 364.0
+# name -> (stat, k); all built with --dequantize. jointl1q/pair2dq pairs are appended at
+# launch time via --arms when the undequantized full sweeps fail (sparse-BNT seed lottery).
+ARM_SPECS = {"full4dq": ("full4d", 4), "jointl1q": ("jointl1", 10), "pair2dq": ("pair2d", 10)}
 ARMS = ["full4dq_nobnt", "full4dq_bnt"]
 
 
 def build_cmd(name):
-    basis = name.split("_")[1]
-    return [PY, "build_flatsky_joint_arm.py", "--stat", "full4d", "--basis", basis,
-            "--k", "4", "--dequantize",
+    prefix, basis = name.split("_")
+    stat, k = ARM_SPECS[prefix]
+    return [PY, "build_flatsky_joint_arm.py", "--stat", stat, "--basis", basis,
+            "--k", str(k), "--dequantize",
             "--out-cache", f"{OM}/{name}/cache",
             "--out-fid", f"{OM}/{name}/fiducial_summaries.npz"]
 
@@ -76,10 +80,15 @@ def status(line):
 
 
 def main():
+    global ARMS
     import argparse, threading, queue as q_
     ap = argparse.ArgumentParser()
     ap.add_argument("--gpus", default="1,0")
+    ap.add_argument("--arms", default="full4dq_nobnt,full4dq_bnt",
+                    help="comma list of <prefix>_<basis> arms (prefixes: full4dq, "
+                         "jointl1q, pair2dq)")
     a = ap.parse_args()
+    ARMS = [x.strip() for x in a.arms.split(",") if x.strip()]
     gpus = [g for g in a.gpus.split(",") if g]
     t0 = time.time()
     status(f"## full4d retry started {time.strftime('%F %T')} (K=4, dequantized)")
@@ -131,13 +140,15 @@ def main():
         s, f = res.get((n, "screen")), res.get((n, "full"))
         lines.append(f"| {n} | {s['fom3']:.0f} | {f['fom3']:.0f} |" if s and f else
                      f"| {n} | {s['fom3']:.0f} | —" + " |" if s else f"| {n} | FAIL | — |")
-    fa, fb = res.get(("full4dq_nobnt", "full")), res.get(("full4dq_bnt", "full"))
-    sa, sb = res.get(("full4dq_nobnt", "screen")), res.get(("full4dq_bnt", "screen"))
-    for tag, x, y in (("full", fa, fb), ("screen", sa, sb)):
-        if x and y:
-            lines.append(f"\n**full4d basis-invariance ratio (BNT/noBNT, {tag}): "
-                         f"{y['fom3']/x['fom3']:.3f}** (P4b predicts ≈1)")
-            break
+    prefixes = sorted({n.split("_")[0] for n in ARMS})
+    for pref in prefixes:
+        for tag in ("full", "screen"):
+            x = res.get((f"{pref}_nobnt", tag)); y = res.get((f"{pref}_bnt", tag))
+            if x and y:
+                note = " (P4b predicts ≈1)" if pref == "full4dq" else ""
+                lines.append(f"\n**{pref} basis-invariance ratio (BNT/noBNT, {tag}): "
+                             f"{y['fom3']/x['fom3']:.3f}**{note}")
+                break
     with open(f"{OM}/OVERNIGHT_RESULT.md", "a") as fh:
         fh.write("\n".join(lines) + "\n")
     status(f"## full4d retry complete {time.strftime('%F %T')}")
