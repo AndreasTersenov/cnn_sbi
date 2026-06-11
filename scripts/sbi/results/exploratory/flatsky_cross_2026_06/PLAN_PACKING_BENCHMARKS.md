@@ -2,7 +2,9 @@
 
 **Date:** 2026-06-11. **Status:** DECIDED (Andreas, 2026-06-11): Q-1 = DEFER — run as the
 first phase of the next GPU campaign (joint-PDF pillar would be the first consumer), zero GPU
-spend today; Q-2 = land the FOOTGUN FIXES now (audit Tier-1 item 4 residue), scheduler/
+spend today; Q-2 = land the FOOTGUN FIXES now — VERIFIED 2026-06-11: all three are ALREADY fixed (the
+06-10 audit-fixes pass): repr-corners defaults `--gpus 1,2` (GPU 3 excluded), and both
+multiseed + fidsumm drivers carry SKIP-on-cmd-build-failure. Nothing to land; scheduler/
 preamble code waits for the measured table; Q-3 = 3-pack only (drop the 4-pack condition).
 Source spec: EFFICIENCY_AUDIT_2026-06-10.md §Measurement plans.
 **Objective:** replace the assumed per-phase packing table
