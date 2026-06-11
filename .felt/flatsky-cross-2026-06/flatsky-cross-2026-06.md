@@ -22,6 +22,23 @@ Each arm cross-gain over auto-only is measured AND calibration-validated (TARP/S
 ## Guardrails
 patch-local cross ONLY (never full-sphere = leakage); per-channel noise (not shared auto-sigma); never PCA L1; GPU 1 only; example-disjoint compressor/NDE split by perm; calibrate BEFORE contours; SAME auto channels across all arms; one apodized-circular convolution definition; do not relitigate the operator choice (notes S8-12).
 
+## Loop status (bnt+deep2-SPANNING 2026-06-11 ~22:45 UTC)
+★★★ §5.4 LADDER COMPLETE — deep2 (avg + bin4, 6ch) in 13 min, all asserts PASS:
+**recovered = 1.082 = the registered SPANNING branch (≥0.95).** FoM3 2573 (vs noBNT 2405);
+σ_s8 0.079 (vs 0.082), σ_w0 0.241 (vs 0.245) — EVERY marginal at or better than noBNT. ⇒
+The 1-deep residual (27%) WAS among-deep-kernel tomographic structure: the second
+depth-distinct direction retrieves all of it. SPAN CURVE FINAL: 0 deep directions → 0.00
+(the 0.15× collapse), 1 → 0.730, 2 → 1.082, orthonormal-4 (whiten) → 1.06. Per-channel-
+accessible info saturates at ~2 depth-distinct deep directions for these params. >1 values
+recur across two independent frames ⇒ the standard per-bin frame is itself a mildly
+suboptimal one-point direction sampling (stated, not over-read). PRACTICAL (uncut): BNT + 2
+fixed channels = complete per-channel recovery, nulled maps untouched; cut-analysis caveat
+carried. σ check: bin4 row = 2× avg row exactly (noise-halving of the average ✓). Folded
+into deep-dive (§0 ×2, ledger, §1.7 item 2, §5.3, §5.4 + span-curve table), FLATSKY_BNT_
+RESULT.md, paper drafts I+II, figure (5-bar ladder), memory. The §5 journey arc now: F4
+falsified → sign-structure dead → 1-deep below registration → 2-deep lands the registered
+SPANNING branch — the account CONVERGED under three corrections.
+
 ## Loop status (bnt+deep-§5.4-RESULT 2026-06-11 ~22:00 UTC)
 ★★ §5.4 DONE in 11 min (build 198s — TFDS hot — sweep 275s, zero failures, all alignment
 asserts PASS): **recovered = 0.730 — BELOW the registered 0.8 ⇒ PARTIAL.** deep5 FoM3 1854

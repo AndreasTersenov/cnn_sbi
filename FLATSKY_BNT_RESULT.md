@@ -72,13 +72,16 @@ normalization), not mixing per se. Diagnostic only: Q remixes the nulled kernels
 practical statement stays "cleaning basis ≠ statistics basis." Honesty trail: the
 pre-registered prediction (LOW-to-MID) was falsified AND the first post-mortem (sign
 structure) failed its own geometry check — both kept in the deep-dive §5 as journey material.
-§5.4 test (registered ≥0.8, MEASURED 0.730 — `bntdeep_campaign/BNTDEEP_RESULT.md`): ONE
-appended deep channel (plain bin average; 4 nulled maps untouched) recovers FoM3 364 → 1854
-of 2405, σ(σ8) 0.176 → 0.096 (vs 0.082), σ(w0) ≈ restored — below registration ⇒ the deep
-direction is the DOMINANT carrier but the single-direction strong form is refuted; the
-residual ~27% is tomographic structure among the four deep kernels (one average can't carry
-it). Recovered values marginally above 1 (whitening) read as "complete to within a few
-percent."
+§5.4 ladder (both rungs measured 2026-06-11; `bntdeep_campaign/` + `bntdeep2_campaign/`):
+ONE appended deep channel (bin average; 4 nulled maps untouched) recovers **0.730** (FoM3
+364 → 1854 of 2405; below the registered ≥0.8 ⇒ single-direction strong form refuted); TWO
+depth-distinct deep channels (average + deepest bin κ₄) recover **1.082** — the registered
+SPANNING branch: FoM3 2573, σ(σ8) 0.079 (vs noBNT 0.082), σ(w0) 0.241 (vs 0.245), every
+marginal at or better than noBNT. ⇒ The 1-deep residual was among-deep-kernel tomographic
+structure; per-channel-accessible information saturates at ~2 depth-distinct deep
+directions. Span curve: 0 → 0.00, 1 → 0.730, 2 → 1.082, orthonormal-4 (whiten) → 1.06.
+Values above 1 recur across two independent frames and read as "complete; the standard
+per-bin frame is itself a mildly suboptimal one-point direction sampling" — not over-read.
 
 ## Caveats / validation (GATE C ran 2026-06-11 — pass WITH caveats; `bnt_campaign/gate_c/GATE_C_BNT.md`)
 

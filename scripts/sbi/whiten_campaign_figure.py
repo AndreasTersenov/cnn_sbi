@@ -38,12 +38,15 @@ def main():
         w = fom3(WH / f"population_sweep/l1_{op}")
         b = fom3(FC / f"bnt_campaign/population_sweep/l1_{op}")
         arms.append((label, n, w, b, (w - b) / (n - b)))
-    # optional 4th bar (auto arm only): the §5.4 bnt+deep test
-    d5_file = FC / "bntdeep_campaign/population_sweep/l1_none/median_summary.json"
-    d5 = json.load(open(d5_file))["fom3"] if d5_file.exists() else None
+    # optional extra bars (auto arm only): the §5.4 deep-channel ladder
+    def opt_fom3(rel):
+        f = FC / rel
+        return json.load(open(f))["fom3"] if f.exists() else None
+    d5 = opt_fom3("bntdeep_campaign/population_sweep/l1_none/median_summary.json")
+    d6 = opt_fom3("bntdeep2_campaign/population_sweep/l1_none/median_summary.json")
 
     x = np.arange(len(arms))
-    width = 0.26 if d5 is None else 0.21
+    width = 0.26 if d5 is None else 0.18
     fig, ax = plt.subplots(figsize=(5.8, 3.8))
     for k, (vals, color, label) in enumerate((
             ([a[1] for a in arms], C_NOBNT, "no BNT"),
@@ -56,12 +59,16 @@ def main():
                 color=C_WHITEN)
         ax.text(xi + width, b * 1.3, f"{b/n:.2f}×", ha="center", fontsize=9,
                 color=C_BNT)
-    if d5 is not None:
-        n0, b0 = arms[0][1], arms[0][3]
-        ax.bar(0 + 2 * width, d5, width, color="#CC79A7", edgecolor="k", lw=0.5,
-               label="BNT + deep channel (§5.4)")
-        ax.text(2 * width, d5 * 1.15, f"recovered\n{(d5-b0)/(n0-b0):.2f}", ha="center",
-                fontsize=8, color="#CC79A7")
+    n0, b0 = arms[0][1], arms[0][3]
+    for k, (val, color, label) in enumerate((
+            (d5, "#CC79A7", "BNT + deep (avg)"),
+            (d6, "#E69F00", "BNT + deep2 (avg + bin4)"))):
+        if val is None:
+            continue
+        ax.bar((2 + k) * width, val, width, color=color, edgecolor="k", lw=0.5,
+               label=label)
+        ax.text((2 + k) * width, val * 1.15, f"rec.\n{(val-b0)/(n0-b0):.2f}", ha="center",
+                fontsize=8, color=color)
     ax.set_yscale("log")
     ax.set_ylim(top=max(a[1] for a in arms) * 4)
     ax.set_ylabel(r"FoM$_3$ (pooled 9000-obs median)")
