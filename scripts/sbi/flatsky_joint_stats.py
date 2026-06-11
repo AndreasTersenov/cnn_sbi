@@ -84,8 +84,11 @@ def pair2d_features(wc, sigma, k: int, weighted: bool = False) -> torch.Tensor:
     return torch.cat(out, dim=1)                                   # (B, npairs*S*k*k)
 
 
-def full4d_features(wc, sigma, k: int) -> torch.Tensor:
-    """(B,C,S,H,W) -> (B, S*k^C) full joint histogram counts (exactly basis-covariant)."""
+def full4d_features(wc, sigma, k: int, dequant_gen=None) -> torch.Tensor:
+    """(B,C,S,H,W) -> (B, S*k^C) full joint histogram counts (exactly basis-covariant).
+    dequant_gen: optional torch.Generator — adds U(0,1) dequantization noise to every cell
+    (the standard flows-on-count-data fix; quasi-discrete sparse cells NaN the MAF —
+    diagnosed 2026-06-11 night: median surviving dim had ~4 distinct values)."""
     B, C, S, H, W = wc.shape
     P = H * W
     _, bins = _snr_bins(wc, sigma, k)
@@ -100,10 +103,15 @@ def full4d_features(wc, sigma, k: int) -> torch.Tensor:
         flat = (cell + row).reshape(-1)
         h = torch.bincount(flat, minlength=B * ncell).to(torch.float64)
         out.append(h.view(B, ncell))
-    return torch.cat(out, dim=1)                                   # (B, S*k^C)
+    f = torch.cat(out, dim=1)                                      # (B, S*k^C)
+    if dequant_gen is not None:
+        f = f + torch.rand(f.shape, generator=dequant_gen,
+                           device=f.device, dtype=f.dtype)
+    return f
 
 
-def compute_features(autos_np, stat: str, basis, sigma, stats, k: int) -> np.ndarray:
+def compute_features(autos_np, stat: str, basis, sigma, stats, k: int,
+                     dequant_gen=None) -> np.ndarray:
     wc = wavelet_stack(autos_np, basis, stats)
     if stat == "cov":
         f = cov_features(wc)
@@ -112,7 +120,7 @@ def compute_features(autos_np, stat: str, basis, sigma, stats, k: int) -> np.nda
     elif stat == "jointl1":
         f = pair2d_features(wc, sigma, k, weighted=True)
     elif stat == "full4d":
-        f = full4d_features(wc, sigma, k)
+        f = full4d_features(wc, sigma, k, dequant_gen=dequant_gen)
     else:
         raise ValueError(f"unknown stat {stat!r}")
     return f.cpu().numpy()

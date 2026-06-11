@@ -41,7 +41,8 @@ def load_sigma(basis, dev):
     return torch.from_numpy(sig).to(dev, dtype=torch.float64)
 
 
-def dataset_pass(split, perm_lo, perm_hi, flip, seed, stat, basis_mix, sigma, stats, k):
+def dataset_pass(split, perm_lo, perm_hi, flip, seed, stat, basis_mix, sigma, stats, k,
+                 dq_gen=None):
     from tfds_cross_tfdata_loader import iter_cross_tfds_batches
     print(f"  [{stat}] features from cross TFDS [{split} perms {perm_lo}-{perm_hi} "
           f"flip={flip} basis={basis_mix}] ...", flush=True)
@@ -52,7 +53,8 @@ def dataset_pass(split, perm_lo, perm_hi, flip, seed, stat, basis_mix, sigma, st
             channel_slice=slice(0, 4), perm_lo=perm_lo, perm_hi=perm_hi, seed=seed):
         if np.isnan(autos_np).any():
             print("    [!] skipped batch with NaN autos"); continue
-        xs.append(fjs.compute_features(autos_np, stat, basis_mix, sigma, stats, k))
+        xs.append(fjs.compute_features(autos_np, stat, basis_mix, sigma, stats, k,
+                                       dequant_gen=dq_gen))
         th = theta_np.copy(); th[:, 3] = th[:, 3] / 100.0
         ths.append(th)
         n += autos_np.shape[0]
@@ -76,6 +78,8 @@ def main():
                          "(theta bit-equality asserted)")
     ap.add_argument("--append-fid", default=None,
                     help="parent fiducial npz (S concatenated; perm/patch asserted)")
+    ap.add_argument("--dequantize", action="store_true",
+                    help="add seeded U(0,1) dequantization noise to full4d counts")
     a = ap.parse_args()
 
     import torch
@@ -84,11 +88,16 @@ def main():
     stats = WLStatistics(n_scales=NS, device=dev, pixel_arcmin=RESO, dtype=torch.float64)
     sigma = load_sigma(a.basis, dev)
     basis_mix = False if a.basis == "nobnt" else "bnt"
+    dq_gen = None
+    if a.dequantize:
+        dq_gen = torch.Generator(device=dev); dq_gen.manual_seed(0xDEC0DE)
 
-    print(f"############ joint arm build: stat={a.stat} basis={a.basis} k={a.k} ############",
-          flush=True)
-    ds_tr = dataset_pass("train", 5, 6, True, 1001, a.stat, basis_mix, sigma, stats, a.k)
-    ds_va = dataset_pass("test", 0, 1, False, 2001, a.stat, basis_mix, sigma, stats, a.k)
+    print(f"############ joint arm build: stat={a.stat} basis={a.basis} k={a.k} "
+          f"dequantize={a.dequantize} ############", flush=True)
+    ds_tr = dataset_pass("train", 5, 6, True, 1001, a.stat, basis_mix, sigma, stats, a.k,
+                         dq_gen=dq_gen)
+    ds_va = dataset_pass("test", 0, 1, False, 2001, a.stat, basis_mix, sigma, stats, a.k,
+                         dq_gen=dq_gen)
     x_tr, th_tr = ds_tr["x"], ds_tr["theta"]
     x_va, th_va = ds_va["x"], ds_va["theta"]
 
@@ -108,6 +117,7 @@ def main():
     np.savez(a.out_cache + "/l1_train.npz", theta=th_tr, x=x_tr)
     np.savez(a.out_cache + "/l1_val.npz", theta=th_va, x=x_va)
     np.savez(a.out_cache + "/l1_cache_meta.npz", stat=a.stat, basis=a.basis, k=a.k,
+             dequantize=a.dequantize,
              snr_range=fjs.SNR_RANGE, append_to=str(a.append_to),
              note="overnight menu arm; PLAN_OVERNIGHT_MENU.md")
 
@@ -120,7 +130,8 @@ def main():
     for i, f in enumerate(files):
         zf = np.load(f)
         autos = zf["patches"][:, :, :, :4].astype(np.float32)
-        X.append(fjs.compute_features(autos, a.stat, basis_mix, sigma, stats, a.k))
+        X.append(fjs.compute_features(autos, a.stat, basis_mix, sigma, stats, a.k,
+                                      dequant_gen=dq_gen))
         p = int(zf["perm"]) if "perm" in zf.files else int(f.split("perm")[-1].split(".")[0])
         perms.append(np.full(X[-1].shape[0], p, np.int32))
         patches.append(np.arange(X[-1].shape[0], dtype=np.int32))
