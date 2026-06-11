@@ -172,3 +172,45 @@ phase-aware cross statistics, e.g. wavelet phase harmonics).
   network's 0.93x is the measured optimization residual.
 - Gaussian S'/Sigma' paragraph = mechanism intuition, flagged as such.
 - Whitening = pure rotation only for equal per-bin noise variance (true here; footnote else).
+
+
+================================================================================
+## PART III — What would it take to fix per-channel statistics? (discussion material,
+## from Andreas's Q&A 2026-06-11)
+================================================================================
+
+Q1 — completeness of "PDF" statistics:
+- Per-bin one-point PDFs are per-channel => BNT-fragile (Part II argument).
+- The MULTIVARIATE cross-bin one-point PDF P(kappa_1(p),...,kappa_N(p)) per smoothing scale is
+  BASIS-COVARIANT under pixelwise mixing: P'(k') = P(B^-1 k')|det B|^-1 — knowing it in one
+  basis = knowing it in any. The canonical 'normal' statistic inheriting the CNN's invariance.
+  Smoothing commutes with B => holds scale by scale.
+- It is NOT full information: one-point objects (even joint, even across a scale ladder)
+  discard spatial morphology/phase; full info = field level (what CNN+SBI approximates).
+  Ladder: per-bin PDFs < pairwise joint PDFs < N-dim joint PDF per scale < field level.
+- The product map's one-point PDF is a STRICT functional of the pairwise joint PDF (the law of
+  the product does not determine the joint) => the principled 'normal' upgrade over our
+  product channel is the pairwise joint PDF itself. Practical obstacle: curse of dim.
+
+Q2 — survey practice (cross catalogs) and data access:
+- A union-catalog map is a DETERMINISTIC count-weighted linear combination of the noisy
+  per-bin maps (same galaxies, same noise realizations regrouped). Catalogs add bookkeeping
+  (weights/masks/varying noise), not field information => THE INFLATION IS NOT A DATA-ACCESS
+  LIMITATION (auto maps suffice to build everything cross catalogs build).
+- The practice = feeding per-channel statistics LINEAR-combination channels (vs our QUADRATIC
+  product/conv). CRAMER-WOLD: the 1-d laws of ALL linear combinations t.kappa determine the
+  full multivariate law => per-channel one-point PDFs on a sufficiently rich family of
+  combination maps are EQUIVALENT to the joint cross-bin PDF (the BNT-robust object). Surveys'
+  pairwise equal-weight unions = a finite sample of directions => partial.
+- Constructive version: cum_k(w_i k_i + w_j k_j) is a polynomial in (w_i,w_j) with
+  binomial-weighted mixed-cumulant coefficients => k+1 weight ratios determine ALL pairwise
+  mixed cumulants of order k. >=3-bin mixed cumulants need >=3-bin unions (directions must
+  grow with the joint structure sought).
+- Basis-agnostic: w^T kappa' = (B^T w)^T kappa — the same combination family is constructible
+  from BNT maps; another face of 'the statistics basis is a free choice'.
+- Taxonomy of cross-map constructions for the paper: LINEAR (survey practice;
+  Cramer-Wold-complete in the limit) | QUADRATIC (our product/conv; specific mixed moments,
+  scale-blended) | LEARNED (CNN; adaptive, empirically sufficient). The measured inflation is
+  the bottom rung (zero cross channels, hostile basis), not a ceiling of map-level statistics.
+- Honesty cap: Cramer-Wold completeness is a ONE-POINT-level statement; full-field claims
+  still rest on the Part II field-level argument.
