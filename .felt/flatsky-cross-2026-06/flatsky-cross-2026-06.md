@@ -22,6 +22,20 @@ Each arm cross-gain over auto-only is measured AND calibration-validated (TARP/S
 ## Guardrails
 patch-local cross ONLY (never full-sphere = leakage); per-channel noise (not shared auto-sigma); never PCA L1; GPU 1 only; example-disjoint compressor/NDE split by perm; calibrate BEFORE contours; SAME auto channels across all arms; one apodized-circular convolution definition; do not relitigate the operator choice (notes S8-12).
 
+## Loop status (SESSION-HANDOFF 2026-06-12)
+SESSION CLOSED at Andreas's request (context 74%); next Fable 5 session entry point =
+**HANDOFF_FABLE5_2026-06-12.md** (repo root; supersedes 06-11). NO jobs running; GPUs
+released; everything committed+pushed through this commit. NEXT ACTIONS (priority, gates in
+handoff §4): (1) GATE C (TARP+SBC) on pair2dq_nobnt/jointl1q_nobnt — REQUIRED before any
+joint-stat contour enters the paper [needs go]; (2) paper assembly /paper-draft [Andreas's
+call; journey-narrative memory applies; open decisions: joint-PDF as third pillar?, quote
+38% Gaussian share?, two [REF]s to pin — ask before fetching]; (3) optional cheap unrun
+tests (pair2da, K-scaling, BNT-adaptive-pairwise) [need go]; (4) packing benchmarks ride
+the next real campaign. Session total 2026-06-11→12: whitening (1.06/1.01 full recovery),
+deep-dive v1→v2→v2.1, §5.4 ladder (0.730/1.082), overnight menu (16 arms: joint stats ≈
+l1+product from autos; Gaussian share 0.38; unions 1.178; grid-transport 0.45→0.70 + P4c),
+corners ×2, datavector figures, 3 falsified registered predictions kept as journey material.
+
 ## Loop status (morning-session 2026-06-12 ~late-morning UTC)
 ★ MORNING DELIVERABLES (Andreas awake, reviewed): overnight figures (rescue_ladder /
 fom3_joint_stats / invariance_ratios), typical-obs CORNERS both bases (3-seed retrain-pooled
