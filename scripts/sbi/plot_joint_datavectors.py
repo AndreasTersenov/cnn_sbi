@@ -109,6 +109,7 @@ def main():
                        f"{pretty} vs $\\sigma_8$ — 16 levels, {basis.upper()} basis "
                        f"(dequantized training cache)")
     fig_heatmaps("pair2dq")
+    fig_heatmaps("jointl1q")
 
 
 if __name__ == "__main__":
