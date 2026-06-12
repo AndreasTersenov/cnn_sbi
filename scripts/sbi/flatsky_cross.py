@@ -39,12 +39,27 @@ from __future__ import annotations
 
 import numpy as np
 
-CROSS_OPS = ("none", "conv", "product", "both")
+CROSS_OPS = ("none", "conv", "product", "both", "product3")
 
 
 def cross_pairs(nbins: int) -> list[tuple[int, int]]:
     """Ordered upper-triangular bin pairs (i<j). For nbins=4 -> 6 pairs."""
     return [(i, j) for i in range(nbins) for j in range(i + 1, nbins)]
+
+
+def cross_triples(nbins: int) -> list[tuple[int, ...]]:
+    """Ordered bin triples (i<j<k) plus the single all-bins tuple — the 'product3'
+    channels (order-3 closure test, PLAN_OVERNIGHT_MENU_2.md lane D). nbins=4 -> 5."""
+    triples = [(i, j, k) for i in range(nbins) for j in range(i + 1, nbins)
+               for k in range(j + 1, nbins)]
+    return triples + [tuple(range(nbins))]
+
+
+def _mix_requested(mode) -> bool:
+    """True when a channel mix should be applied. `mode` may be False/None (no mix),
+    a registered mode string / True, or a raw (rows, nbins) ndarray — the ndarray
+    form is what the post-cut builders use (`if mode:` would be ambiguous for arrays)."""
+    return mode is not None and mode is not False
 
 
 # ---------------------------------------------------------------------------
@@ -104,8 +119,13 @@ def unions6_matrix_np() -> np.ndarray:
 def mix_matrix_np(mode) -> np.ndarray:
     """Channel-mix matrix for `mode`: True/'bnt' -> BNT; 'whiten' -> noise-whitened BNT;
     'deep' -> 1x4 bin average; 'deep2' -> 2x4 [average; e4]; 'bnt_deep' -> 5x4
-    [BNT; average]; 'unions6' -> 6x4 pair averages. Mixes need not be square:
-    output channels = rows."""
+    [BNT; average]; 'unions6' -> 6x4 pair averages; a raw (rows, 4) ndarray is passed
+    through (the post-cut builders' custom per-scale-masked rows). Mixes need not be
+    square: output channels = rows."""
+    if isinstance(mode, np.ndarray):
+        if mode.ndim != 2:
+            raise ValueError(f"ndarray mix mode must be 2-D (rows, nbins); got {mode.shape}")
+        return mode.astype(np.float32)
     if mode is True or mode == "bnt":
         return bnt_matrix_np()
     if mode == "whiten":
@@ -125,8 +145,8 @@ def mix_matrix_np(mode) -> np.ndarray:
 
 def n_built_channels(nbins: int, op: str, mode=False) -> int:
     """Channel count build_channels_* actually emits: the mix (if any) sets the auto count
-    (= mix rows), and the cross pairs are built from the MIXED channels."""
-    m = mix_matrix_np(mode).shape[0] if mode else nbins
+    (= mix rows), and the cross pairs/triples are built from the MIXED channels."""
+    m = mix_matrix_np(mode).shape[0] if _mix_requested(mode) else nbins
     npairs = len(cross_pairs(m))
     if op == "none":
         return m
@@ -134,6 +154,8 @@ def n_built_channels(nbins: int, op: str, mode=False) -> int:
         return m + npairs
     if op == "both":
         return m + 2 * npairs
+    if op == "product3":
+        return m + len(cross_triples(m))
     raise ValueError(f"Unknown cross op={op!r}; expected one of {CROSS_OPS}")
 
 
@@ -171,6 +193,8 @@ def n_output_channels(nbins: int, op: str) -> int:
         return nbins + npairs
     if op == "both":
         return nbins + 2 * npairs
+    if op == "product3":
+        return nbins + len(cross_triples(nbins))
     raise ValueError(f"Unknown cross op={op!r}; expected one of {CROSS_OPS}")
 
 
@@ -217,13 +241,24 @@ def _product_np(autos_b: np.ndarray) -> np.ndarray:
     return np.stack([autos_b[..., i] * autos_b[..., j] for i, j in pairs], axis=-1).astype(np.float32)
 
 
+def _product3_np(autos_b: np.ndarray) -> np.ndarray:
+    n = autos_b.shape[-1]
+    out = []
+    for tup in cross_triples(n):
+        m = autos_b[..., tup[0]].copy()
+        for t in tup[1:]:
+            m = m * autos_b[..., t]
+        out.append(m)
+    return np.stack(out, axis=-1).astype(np.float32)
+
+
 def build_channels_np(autos: np.ndarray, op: str, roll_frac: float = 0.10,
                       bnt: bool = False) -> np.ndarray:
     """autos: (H,W,n) or (B,H,W,n) RAW auto maps. Returns RAW autos + cross channels.
     bnt=True applies the nulling transform to the autos FIRST (auto + cross channels
     then all live in BNT space)."""
     autos_b, was_batched = _as_batched(np.asarray(autos, dtype=np.float32))
-    if bnt:
+    if _mix_requested(bnt):
         autos_b = apply_bnt_np(autos_b, mode=bnt)
     npix = autos_b.shape[1]
     parts = [autos_b]
@@ -231,6 +266,8 @@ def build_channels_np(autos: np.ndarray, op: str, roll_frac: float = 0.10,
         parts.append(_conv_np(autos_b, apod_window_np(npix, roll_frac)))
     if op in ("product", "both"):
         parts.append(_product_np(autos_b))
+    if op == "product3":
+        parts.append(_product3_np(autos_b))
     if op not in CROSS_OPS:
         raise ValueError(f"Unknown cross op={op!r}; expected one of {CROSS_OPS}")
     out = np.concatenate(parts, axis=-1)
@@ -264,13 +301,25 @@ def _product_torch(autos_b):
     return torch.stack([autos_b[..., i] * autos_b[..., j] for i, j in pairs], dim=-1)
 
 
+def _product3_torch(autos_b):
+    import torch
+    n = autos_b.shape[-1]
+    out = []
+    for tup in cross_triples(n):
+        m = autos_b[..., tup[0]]
+        for t in tup[1:]:
+            m = m * autos_b[..., t]
+        out.append(m)
+    return torch.stack(out, dim=-1)
+
+
 def build_channels_torch(autos, op, roll_frac: float = 0.10, bnt: bool = False):
     """autos: torch tensor (H,W,n) or (B,H,W,n) RAW autos on the target device.
     bnt=True applies the nulling transform to the autos first."""
     import torch
     was_batched = autos.ndim == 4
     autos_b = autos if was_batched else autos.unsqueeze(0)
-    if bnt:
+    if _mix_requested(bnt):
         autos_b = apply_bnt_torch(autos_b, mode=bnt)
     npix = autos_b.shape[1]
     parts = [autos_b]
@@ -279,6 +328,8 @@ def build_channels_torch(autos, op, roll_frac: float = 0.10, bnt: bool = False):
         parts.append(_conv_torch(autos_b, W))
     if op in ("product", "both"):
         parts.append(_product_torch(autos_b))
+    if op == "product3":
+        parts.append(_product3_torch(autos_b))
     if op not in CROSS_OPS:
         raise ValueError(f"Unknown cross op={op!r}; expected one of {CROSS_OPS}")
     out = torch.cat(parts, dim=-1)
@@ -307,13 +358,25 @@ def _product_jax(autos_b):
     return jnp.stack([autos_b[..., i] * autos_b[..., j] for i, j in pairs], axis=-1)
 
 
+def _product3_jax(autos_b):
+    import jax.numpy as jnp
+    n = autos_b.shape[-1]
+    out = []
+    for tup in cross_triples(n):
+        m = autos_b[..., tup[0]]
+        for t in tup[1:]:
+            m = m * autos_b[..., t]
+        out.append(m)
+    return jnp.stack(out, axis=-1)
+
+
 def build_channels_jax(autos, op, roll_frac: float = 0.10, bnt: bool = False):
     """autos: jax array (H,W,n) or (B,H,W,n) RAW autos.
     bnt=True applies the nulling transform to the autos first."""
     import jax.numpy as jnp
     was_batched = autos.ndim == 4
     autos_b = autos if was_batched else autos[None]
-    if bnt:
+    if _mix_requested(bnt):
         autos_b = apply_bnt_jax(autos_b, mode=bnt)
     npix = autos_b.shape[1]
     parts = [autos_b]
@@ -322,6 +385,8 @@ def build_channels_jax(autos, op, roll_frac: float = 0.10, bnt: bool = False):
         parts.append(_conv_jax(autos_b, W))
     if op in ("product", "both"):
         parts.append(_product_jax(autos_b))
+    if op == "product3":
+        parts.append(_product3_jax(autos_b))
     if op not in CROSS_OPS:
         raise ValueError(f"Unknown cross op={op!r}; expected one of {CROSS_OPS}")
     out = jnp.concatenate(parts, axis=-1)

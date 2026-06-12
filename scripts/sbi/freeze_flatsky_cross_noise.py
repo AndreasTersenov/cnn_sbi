@@ -104,16 +104,27 @@ def _noise_patches_worker(r, C, seed_base):
     return _roundtrip_to_patches([noise_sphere[b] for b in range(bx.N_AUTO)], C)
 
 
-def _channel_names(nbins=4):
+def _channel_names(nbins=4, op="both"):
     pairs = fx.cross_pairs(nbins)
     names = [f"auto_bin{b+1}" for b in range(nbins)]
-    names += [f"conv_{i+1}{j+1}" for i, j in pairs]
-    names += [f"prod_{i+1}{j+1}" for i, j in pairs]
+    if op in ("conv", "both"):
+        names += [f"conv_{i+1}{j+1}" for i, j in pairs]
+    if op in ("product", "both"):
+        names += [f"prod_{i+1}{j+1}" for i, j in pairs]
+    if op == "product3":
+        names += [f"prod3_{''.join(str(t+1) for t in tup)}"
+                  for tup in fx.cross_triples(nbins)]
     return names
 
 
 def main():
     ap = argparse.ArgumentParser()
+    ap.add_argument("--op", choices=("both", "product3"), default="both",
+                    help="Channel build to freeze: 'both' (the original 16-channel "
+                         "auto+conv+product table) or 'product3' (4 auto + 4 triple-"
+                         "product + 1 quadruple channels; lane D of "
+                         "PLAN_OVERNIGHT_MENU_2.md). Output stem gains an _<op> suffix "
+                         "for non-default ops.")
     ap.add_argument("--n-real", type=int, default=48)
     ap.add_argument("--n-scales", type=int, default=5)
     ap.add_argument("--workers", type=int, default=32)
@@ -165,14 +176,14 @@ def main():
     # ---- GPU wavelet accumulation (online sum / sumsq across r) ----
     dev = "cuda" if torch.cuda.is_available() else "cpu"
     stats = WLStatistics(n_scales=S_ns, device=dev, pixel_arcmin=C["reso_arcmin"], dtype=torch.float64)
-    n_ch = fx.n_output_channels(4, "both")                   # 16
+    n_ch = fx.n_output_channels(4, args.op)                  # both: 16; product3: 9
     acc_sum = torch.zeros((n_ch, S_ns, n_patches, npix, npix), dtype=torch.float64, device=dev)
     acc_sq = torch.zeros_like(acc_sum)
     S_t = torch.from_numpy(S).to(dev, dtype=torch.float64)
     print(f"  wavelet pass over r (device={dev}, accumulators {tuple(acc_sum.shape)})...")
     for r in range(R):
         data_r = S_t + torch.from_numpy(N_list[r]).to(dev, dtype=torch.float64)  # demean(S)+demean(N)
-        chans = fx.build_channels_torch(data_r, "both", bnt=(mode or False))  # (180,80,80,16)
+        chans = fx.build_channels_torch(data_r, args.op, bnt=(mode or False))
         for c in range(n_ch):
             stats.compute_wavelet_transform(chans[..., c], 1.0, subtract_coarse_mean=True)
             wc = stats.wavelet_coeffs                         # (180, S_ns, H, W)
@@ -187,7 +198,7 @@ def main():
     var_pix = (acc_sq - R * mean * mean) / (R - 1)            # (n_ch, S_ns, 180, H, W)
     sigma = torch.sqrt(var_pix.mean(dim=(2, 3, 4))).cpu().numpy()  # (n_ch, S_ns)
 
-    names = _channel_names(4)
+    names = _channel_names(4, args.op)
     print("\n  Frozen per-(channel, scale) NOISE sigma:")
     print("    " + "channel".ljust(11) + "".join(f"  scale{s}".rjust(11) for s in range(S_ns)))
     for c in range(n_ch):
@@ -204,14 +215,15 @@ def main():
     provenance = ("frozen at fiducial; fixed deterministic normalization (does not bias SBI); "
                   "cross-noise is mildly signal-dependent via S(x)N so most exact near fiducial")
     out_dir.mkdir(parents=True, exist_ok=True)
-    _stem = "flatsky_cross_noise_sigma" + (f"_{mode}" if mode else "")
+    _stem = ("flatsky_cross_noise_sigma" + (f"_{mode}" if mode else "")
+             + (f"_{args.op}" if args.op != "both" else ""))
     npz_path = out_dir / f"{_stem}.npz"
     np.savez(npz_path, sigma=sigma, channel_names=np.array(names), n_scales=S_ns,
              white_per_scale=white_scale, sigma_pix=sig_pix, n_real=R,
              nside=C["nside"], lmax=C["lmax"], sigma_e=C["sigma_e"],
              galaxy_density=C["galaxy_density"], reso_arcmin=C["reso_arcmin"],
              field_npix=npix, seed_base=args.seed_base, provenance=provenance,
-             bnt=(mode == 'bnt'), mode=(mode or 'none'))
+             bnt=(mode == 'bnt'), mode=(mode or 'none'), op=args.op)
     print(f"\nwrote {npz_path}")
 
     # ---- GATE A1b checks ----
@@ -241,16 +253,25 @@ def main():
     def norm_profile(v):
         v = np.asarray(v, float); return v / v.sum()
     white_prof = norm_profile(white_scale)
-    conv_prof = norm_profile(sigma[4:10].mean(0))   # avg over 6 conv channels
-    prod_prof = norm_profile(sigma[10:16].mean(0))  # avg over 6 product channels
-    l1dist_conv = float(np.abs(conv_prof - white_prof).sum())
-    l1dist_prod = float(np.abs(prod_prof - white_prof).sum())
-    print("  per-scale NORMALIZED profile (white vs conv vs product) — cross must DEPART:")
-    print(f"    white  : {' '.join(f'{x:.3f}' for x in white_prof)}")
-    print(f"    conv   : {' '.join(f'{x:.3f}' for x in conv_prof)}  (L1 dist from white {l1dist_conv:.3f})")
-    print(f"    product: {' '.join(f'{x:.3f}' for x in prod_prof)}  (L1 dist from white {l1dist_prod:.3f})")
-    cross_ok = (l1dist_conv > 0.1) or (l1dist_prod > 0.1)
-    print(f"    --> cross departs from white: {'PASS' if cross_ok else 'FAIL (looks white?!)'}")
+    if args.op == "both":
+        conv_prof = norm_profile(sigma[4:10].mean(0))   # avg over 6 conv channels
+        prod_prof = norm_profile(sigma[10:16].mean(0))  # avg over 6 product channels
+        l1dist_conv = float(np.abs(conv_prof - white_prof).sum())
+        l1dist_prod = float(np.abs(prod_prof - white_prof).sum())
+        print("  per-scale NORMALIZED profile (white vs conv vs product) — cross must DEPART:")
+        print(f"    white  : {' '.join(f'{x:.3f}' for x in white_prof)}")
+        print(f"    conv   : {' '.join(f'{x:.3f}' for x in conv_prof)}  (L1 dist from white {l1dist_conv:.3f})")
+        print(f"    product: {' '.join(f'{x:.3f}' for x in prod_prof)}  (L1 dist from white {l1dist_prod:.3f})")
+        cross_ok = (l1dist_conv > 0.1) or (l1dist_prod > 0.1)
+        print(f"    --> cross departs from white: {'PASS' if cross_ok else 'FAIL (looks white?!)'}")
+    else:  # product3: same departure check over the 5 triple/quad channels
+        p3_prof = norm_profile(sigma[4:].mean(0))
+        l1dist_p3 = float(np.abs(p3_prof - white_prof).sum())
+        print("  per-scale NORMALIZED profile (white vs product3) — cross must DEPART:")
+        print(f"    white   : {' '.join(f'{x:.3f}' for x in white_prof)}")
+        print(f"    product3: {' '.join(f'{x:.3f}' for x in p3_prof)}  (L1 dist from white {l1dist_p3:.3f})")
+        cross_ok = l1dist_p3 > 0.1
+        print(f"    --> product3 departs from white: {'PASS' if cross_ok else 'FAIL (looks white?!)'}")
 
     inter_ok = abs(inter) < 0.02
     print(f"  inter-bin noise independence: {'PASS' if inter_ok else 'FAIL'} ({inter:+.4f})")
@@ -261,7 +282,7 @@ def main():
     json_path = out_dir / f"{_stem}.json"
     json_path.write_text(json.dumps({
         "provenance": provenance,
-        "bnt": (mode == "bnt"), "mode": (mode or "none"),
+        "bnt": (mode == "bnt"), "mode": (mode or "none"), "op": args.op,
         "channel_names": names,
         "n_scales": S_ns, "n_real": R, "sigma_pix": sig_pix,
         "constants": {k: C[k] for k in ("nside", "lmax", "sigma_e", "galaxy_density",

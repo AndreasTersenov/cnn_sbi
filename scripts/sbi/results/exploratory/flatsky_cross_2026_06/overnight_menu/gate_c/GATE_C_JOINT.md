@@ -69,3 +69,18 @@ of ~4% on sigma_s8 and +16% FoM3 (~5%/axis) — same order as the claim. The "eq
 than l1+product" headline does NOT survive; "joint stats reach at least the l1-auto level
 and are broadly comparable to l1+product, with mild over-confidence concentrated in their
 tightest posteriors" is what the artifacts support.
+
+## Addendum 2 — pooled-estimator TARP (A3, PLAN_OVERNIGHT_MENU_2.md; derived from the same dumps)
+
+The gate verdicts above are worst-seed; the QUOTED posterior pools the 3
+seeds. Pooled (N, 3M) TARP per tercile (dim-3, signed max ECP − α):
+
+| arm | HIGH | MID | LOW |
+|---|---|---|---|
+| pair2dq_nobnt | -0.106 | -0.037 | -0.049 |
+| jointl1q_nobnt | -0.079 | -0.036 | +0.066 |
+| pair2dq_bnt | -0.035 | +0.051 | -0.051 |
+| jointl1q_bnt | -0.049 | +0.034 | -0.061 |
+
+- pair2dq_nobnt: pooled HIGH -0.106 ≤ −0.05 — **over-confidence survives pooling; the verdict stands for the quoted estimator.**
+- jointl1q_nobnt: pooled HIGH -0.079 ≤ −0.05 — **over-confidence survives pooling; the verdict stands for the quoted estimator.**

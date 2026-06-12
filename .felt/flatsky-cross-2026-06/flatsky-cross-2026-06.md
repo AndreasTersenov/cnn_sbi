@@ -22,6 +22,23 @@ Each arm cross-gain over auto-only is measured AND calibration-validated (TARP/S
 ## Guardrails
 patch-local cross ONLY (never full-sphere = leakage); per-channel noise (not shared auto-sigma); never PCA L1; GPU 1 only; example-disjoint compressor/NDE split by perm; calibrate BEFORE contours; SAME auto channels across all arms; one apodized-circular convolution definition; do not relitigate the operator choice (notes S8-12).
 
+## Loop status (OVERNIGHT-MENU-2-LAUNCHING 2026-06-12 ~23:30 UTC)
+★ MENU-2 BUILD DONE, LAUNCHING (Andreas asleep; signed off "do all that autonomously",
+20° lane dropped; PLAN_OVERNIGHT_MENU_2.md rev 2 = branch-sentence filter + fences).
+PRE-LAUNCH RESULT: **A3 RESOLVED — pooled-estimator TARP HIGH −0.106/−0.079 (pair2d/
+jointl1 noBNT) ⇒ over-confidence SURVIVES pooling, gate verdict stands for the quoted
+estimator** (GATE_C_JOINT.md Addendum 2; CPU, zero GPU). MACHINERY BUILT+verified:
+fx ndarray-mix + product3 op (3-backend unit tests PASS), mask_flatsky_cache (B0 560-col/
+B3 320-col caches BUILT, theta bit-equal), build_flatsky_postcut_arm (per-scale masked
+rows via wavelet linearity; cutsum6 26 blocks/9 uniques, cutdeep2 10/8; uncut limit ≡
+deep2 asserted), vmim_from_cache (CPU smoke e2e PASS; tfp-substrates import fix),
+freeze --op product3, run_overnight_menu_2 driver (bench-on-real-workload phase 0,
+always-escalate, 07:00 UTC deadline, A1 110-min time-box, auto-gates A1/A2/C2 + K-trend,
+branch-sentence template fill ONLY). Arms: A1 vmim / A2 K8 / B0-B3 post-cut (schedule M,
+comparator U) / C1 bnt-ar / C2 K15 / C3 K15-bnt-ar / D1 product3. Deviations logged in
+plan §8 addenda (C2 gate added for K-trend; thread caps 5; B2/B3 compressor bench
+deferred). GPUs at launch-check: see driver tenant probes.
+
 ## Loop status (DEEP-DIVE-v2.2 2026-06-12 ~10:40 UTC)
 ★ Theory-discussion folds (Andreas authorized): deep-dive v2.1→v2.2 — (1) GATE-C verdict
 folded everywhere the stale "GATE C NOT yet run" caveat lived (header, §0 ledger row,
