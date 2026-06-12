@@ -22,6 +22,25 @@ Each arm cross-gain over auto-only is measured AND calibration-validated (TARP/S
 ## Guardrails
 patch-local cross ONLY (never full-sphere = leakage); per-channel noise (not shared auto-sigma); never PCA L1; GPU 1 only; example-disjoint compressor/NDE split by perm; calibrate BEFORE contours; SAME auto channels across all arms; one apodized-circular convolution definition; do not relitigate the operator choice (notes S8-12).
 
+## Loop status (OVERNIGHT-COMPLETE 2026-06-12 ~00:10 UTC)
+★★★ NIGHT DONE (16 arms total, zero unresolved failures; all numbers full-rigor 3-seed/
+9000-obs unless noted). HEADLINES: (1) JOINT STATS WORK — pair2d joint PDF 2794 ≈ joint
+wavelet l1 2788 vs l1-auto 2405 (+16%) ≈ l1+product 2875, NO cross-maps needed; counts ≈
+l1-weighting (info = joint occupancy). (2) RESCUE MENU CLOSED — unions6 1.18 (survey
+practice = full rescue, matches span story); A1 cov50: **Gaussian share of the l1 BNT loss
+= 38%** (⇒ 62% non-Gaussian — sharpens F5). (3) MAIN THEORY OUTPUT: "joint PDF BNT-robust
+by construction" needs the GRID-TRANSPORT qualifier — P4b covariance is of the
+DISTRIBUTION; binned estimators: fixed noise-scaled grid ratio 0.45 → axis-adapted
+percentile grid 0.70 (registered bands ≥0.75/≤0.55: between, toward support) → exact
+transport needs SHEARED cells (B-images = parallelepipeds) impossible for axis-aligned
+histograms; the CNN's first layer implements exactly that shear. (4) ENGINEERING:
+count-histograms NaN the MAF on quasi-discrete sparse cells — dequantization (+U(0,1))
+fixed it 3×; no dim-limitation up to 3200 ⇒ VMIM not warranted, NOT run (per registered
+rule). Skipped (think-first): pair2da, K=15 scaling. All registered predictions + bands in
+PLAN_OVERNIGHT_MENU.md (2 night addenda registered BEFORE runs); synthesis in
+OVERNIGHT_RESULT.md; morning brief HANDOFF_OVERNIGHT_2026-06-12.md. Doc folds intentionally
+left for the morning session (Andreas's call). GPUs released.
+
 ## Loop status (OVERNIGHT-MENU-LAUNCHED 2026-06-11 ~22:30 UTC)
 ★ OVERNIGHT SCREENING RUNNING (Andreas asleep; pre-sleep interview logged in
 PLAN_OVERNIGHT_MENU.md): 8 arms on GPUs 1,0,2 (slot workers, polite 40% caps, 12 GB foreign
