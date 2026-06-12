@@ -22,6 +22,23 @@ Each arm cross-gain over auto-only is measured AND calibration-validated (TARP/S
 ## Guardrails
 patch-local cross ONLY (never full-sphere = leakage); per-channel noise (not shared auto-sigma); never PCA L1; GPU 1 only; example-disjoint compressor/NDE split by perm; calibrate BEFORE contours; SAME auto channels across all arms; one apodized-circular convolution definition; do not relitigate the operator choice (notes S8-12).
 
+## Loop status (GATE-C-JOINT 2026-06-12 ~08:00 UTC)
+★★ JOINT-ARM GATE C DONE (22 min, 4 arms × TARP-600/3-seed + SBC-1800, GPUs 1+2 packed
+2/GPU, zero failures; bands registered BEFORE data in PLAN_GATE_C_JOINT.md; report
+overnight_menu/gate_c/GATE_C_JOINT.md). VERDICTS: **pair2dq_nobnt FAIL** (tightest-tercile
+TARP signed dev −0.134, SEED-ROBUST −0.092/−0.108/−0.134); jointl1q_nobnt PASS-with-caveat
+(HIGH −0.080 seed-robust); pair2dq_bnt / jointl1q_bnt PASS-with-caveat (0.075/0.066). All
+four arms SBC std 0.298–0.309 ⇒ ~4–6% global under-coverage. REGISTERED COMPARATIVE
+DOWNGRADE TRIGGERED: over-confidence concentrates in the TIGHTEST posteriors and is the
+same order as the claimed edge (σ_s8 0.072-vs-0.075, +16% FoM3 ≈ 5%/axis) ⇒ joint-stat
+headline is now "reach at least l1-auto, broadly comparable to l1+product" — NEVER
+"equal-or-better". P-G1 (noBNT clean) FALSIFIED = 4th falsified registered prediction
+(journey material); P-G2 HOLDS. Invariance ratios less affected (same-direction errors)
+but pair2d's denominator is FAIL-grade — flag carried. Directional theory point (joint
+occupancy carries the product's one-point info) STANDS. Folds: OVERNIGHT_RESULT.md GATE C
+section, FLATSKY_BNT_RESULT.md overnight stanza, plan adjudication, memory + index.
+Paper-posture decision (third pillar vs discussion section) → Andreas, next.
+
 ## Loop status (SESSION-HANDOFF 2026-06-12)
 SESSION CLOSED at Andreas's request (context 74%); next Fable 5 session entry point =
 **HANDOFF_FABLE5_2026-06-12.md** (repo root; supersedes 06-11). NO jobs running; GPUs

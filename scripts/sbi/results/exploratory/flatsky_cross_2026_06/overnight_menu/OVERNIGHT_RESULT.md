@@ -85,3 +85,27 @@ NaN/failure notes and logs: overnight_menu/logs/.
 
 Not run (judged diminishing-returns; cheap if wanted): pair2da (decompose the pairwise 0.52
 into grid vs incompleteness); K=15 pair2d resolution scaling; VMIM-compressed variants.
+
+## GATE C (2026-06-12; `gate_c/GATE_C_JOINT.md`, bands registered in `../PLAN_GATE_C_JOINT.md`)
+
+TARP (600 val pts, FoM3 terciles, 3 seeds) + SBC (n=1800) on the four q-arms:
+
+| arm | worst tercile dev (dim-3) | SBC std (sci params) | verdict |
+|---|---|---|---|
+| pair2dq_nobnt | **−0.134 HIGH** (seed-robust −0.092/−0.108/−0.134) | 0.300–0.305 | **FAIL** |
+| jointl1q_nobnt | −0.080 HIGH (seed-robust) | 0.299–0.307 | PASS-with-caveat |
+| pair2dq_bnt | +0.075 MID | 0.298–0.309 | PASS-with-caveat |
+| jointl1q_bnt | −0.066 LOW | 0.298–0.306 | PASS-with-caveat |
+
+**Consequence for conclusion 1 above (registered comparative check — TRIGGERED):** both
+noBNT joint arms are mildly over-confident, concentrated in their TIGHTEST posteriors
+(~4–6% global under-coverage by SBC; ECP deficit up to 0.13 in the HIGH tercile), while the
+l1/l1+product comparators were gated at |dev| ≤ 0.037. The over-confidence is the same
+order as the claimed edge (σ_s8 0.072 vs 0.075; +16% FoM3 ≈ 5%/axis). **Downgrade:**
+"marginals equal-or-better than l1+product" → "reach at least the l1-auto level and are
+broadly comparable to l1+product"; the +16%-over-auto FoM3 edge is partly calibration,
+quote only with this caveat. The directional theory point (joint occupancy carries the
+product's one-point information) stands; the quantitative parity claim is not
+calibration-clean. Basis-invariance RATIOS (0.52/0.54): both numerator and denominator err
+in the same direction (over-confident), so the ratios are less affected, but pair2d's uses
+a FAIL-grade denominator — carry the flag.

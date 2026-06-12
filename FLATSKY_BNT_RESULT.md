@@ -84,15 +84,21 @@ Values above 1 recur across two independent frames and read as "complete; the st
 per-bin frame is itself a mildly suboptimal one-point direction sampling" — not over-read.
 
 Overnight extensions (2026-06-12, `overnight_menu/OVERNIGHT_RESULT.md`; full-rigor pooled
-medians, GATE C NOT yet run on these arms): six survey-practice union channels recover
-**1.178** (survey practice fully rescues); the complete two-point sector (50 wavelet
-(co)variances, exact by deep-dive P7) recovers only **0.38** ⇒ ~62% of the l1's BNT loss is
-non-Gaussian content. Joint one-point statistics measured both bases: pairwise joint PDF /
-joint wavelet l1 reach the l1+product level from autos alone in the original basis
-(marginals equal-or-better; FoM3 2794/2788 vs 2875) but are NOT BNT-invariant as binned
-estimators (ratios 0.52/0.54; full-4D 0.45 fixed grid → 0.70 adaptive grid) — the
-grid-transport result, deep-dive P4c: the joint LAW is basis-covariant, an axis-aligned
-binning of it is not. Canonical treatment: `BNT_THEORY_DEEP_DIVE.md` v2.1 §4.3/§5.6.
+medians): six survey-practice union channels recover **1.178** (survey practice fully
+rescues); the complete two-point sector (50 wavelet (co)variances, exact by deep-dive P7)
+recovers only **0.38** ⇒ ~62% of the l1's BNT loss is non-Gaussian content. Joint one-point
+statistics measured both bases: pairwise joint PDF / joint wavelet l1 reach the l1+product
+level from autos alone in the original basis (FoM3 2794/2788 vs 2875) but are NOT
+BNT-invariant as binned estimators (ratios 0.52/0.54; full-4D 0.45 fixed grid → 0.70
+adaptive grid) — the grid-transport result, deep-dive P4c: the joint LAW is basis-covariant,
+an axis-aligned binning of it is not. Canonical treatment: `BNT_THEORY_DEEP_DIVE.md` v2.1
+§4.3/§5.6. **GATE C on the joint q-arms (2026-06-12, `overnight_menu/gate_c/GATE_C_JOINT.md`):
+pair2dq_nobnt FAILS its registered band** (tightest-tercile TARP −0.134, seed-robust);
+jointl1q_nobnt + both BNT-side arms PASS-with-caveat; both noBNT arms ~4–6% over-confident
+(SBC std 0.30–0.31) ⇒ the registered comparative downgrade TRIGGERED: "marginals
+equal-or-better than l1+product" → "broadly comparable" (the claimed ~4–5% edge is the same
+order as the miscalibration). Rescue-ladder arms (unions6/cov50) remain ungated ratio
+measurements, per precedent.
 
 ## Caveats / validation (GATE C ran 2026-06-11 — pass WITH caveats; `bnt_campaign/gate_c/GATE_C_BNT.md`)
 

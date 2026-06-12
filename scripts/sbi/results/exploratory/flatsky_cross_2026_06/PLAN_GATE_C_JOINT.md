@@ -95,6 +95,15 @@ Verdict bands (per arm, derived):
 - **FAIL** — |dev| > 0.10 or SBC std off by ≥ 0.02: contour does NOT enter the paper;
   investigate before any rerun.
 
+**ADJUDICATION (2026-06-12, gate complete in 22 min; `overnight_menu/gate_c/GATE_C_JOINT.md`):**
+- **P-G1 FALSIFIED** — pair2dq_nobnt **FAIL** (HIGH tercile −0.134, seed-robust:
+  −0.092/−0.108/−0.134); jointl1q_nobnt PASS-with-caveat (HIGH −0.080, seed-robust).
+  Fourth falsified registered prediction of the campaign — journey material.
+- **P-G2 HOLDS** — both BNT-side arms PASS-with-caveat (worst 0.075/0.066).
+- **Comparative downgrade TRIGGERED for both noBNT arms** (registered sensitivity note):
+  "marginals equal-or-better than l1+product" downgrades to "broadly comparable"; the
+  ~4–5% claimed edge is the same order as the measured over-confidence.
+
 ## 6. Cost and GPU plan (measured anchor, not guessed)
 
 Measured: in the BNT gate, each L1-type TARP arm (2000-dim, same row counts, same recipe)
