@@ -22,6 +22,22 @@ Each arm cross-gain over auto-only is measured AND calibration-validated (TARP/S
 ## Guardrails
 patch-local cross ONLY (never full-sphere = leakage); per-channel noise (not shared auto-sigma); never PCA L1; GPU 1 only; example-disjoint compressor/NDE split by perm; calibrate BEFORE contours; SAME auto channels across all arms; one apodized-circular convolution definition; do not relitigate the operator choice (notes S8-12).
 
+## Loop status (morning-session 2026-06-12 ~late-morning UTC)
+★ MORNING DELIVERABLES (Andreas awake, reviewed): overnight figures (rescue_ladder /
+fom3_joint_stats / invariance_ratios), typical-obs CORNERS both bases (3-seed retrain-pooled
+100k samples; jaxili reload gotcha sidestepped; --replot-only path; full truth crosshairs
+after Andreas caught missing horizontals), σ8-coded JOINT DATAVECTOR figures (curve grids +
+native 2D heatmaps both stats × bases; jointl1 2D shows the weighting just amplifies the
+joint-tail corners counts already record ⇒ explains counts≈weighting). DOC FOLD (Andreas
+authorized): deep-dive v2.1 — new P4c (grids transport only diagonally; 0.45→0.70 measured),
+§1.7 menu items MEASURED, §1.8 results table (marginals-first reading: pair2d σs8 0.072 ≤
+l1+product 0.075, FoM3 −3% = fragility), §4.3 both registered predictions adjudicated
+(invariance-as-operationalized FALSIFIED → P4c), §5.4 ladder + Gaussian-share line, new
+§5.6 synthesis; FLATSKY_BNT_RESULT.md overnight stanza + figure inventory; NEW memory
+project_joint_onepoint_stats_and_grid_transport. BNT corner reading logged: offsets at this
+obs = ridge-slide of wide posteriors, NOT bias (l1 arms GATE-C'd; joint arms UNCALIBRATED —
+GATE C required before paper use). Commits → 41745ed + this.
+
 ## Loop status (OVERNIGHT-COMPLETE 2026-06-12 ~00:10 UTC)
 ★★★ NIGHT DONE (16 arms total, zero unresolved failures; all numbers full-rigor 3-seed/
 9000-obs unless noted). HEADLINES: (1) JOINT STATS WORK — pair2d joint PDF 2794 ≈ joint

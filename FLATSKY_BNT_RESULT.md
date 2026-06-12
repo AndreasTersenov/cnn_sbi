@@ -83,6 +83,17 @@ directions. Span curve: 0 → 0.00, 1 → 0.730, 2 → 1.082, orthonormal-4 (whi
 Values above 1 recur across two independent frames and read as "complete; the standard
 per-bin frame is itself a mildly suboptimal one-point direction sampling" — not over-read.
 
+Overnight extensions (2026-06-12, `overnight_menu/OVERNIGHT_RESULT.md`; full-rigor pooled
+medians, GATE C NOT yet run on these arms): six survey-practice union channels recover
+**1.178** (survey practice fully rescues); the complete two-point sector (50 wavelet
+(co)variances, exact by deep-dive P7) recovers only **0.38** ⇒ ~62% of the l1's BNT loss is
+non-Gaussian content. Joint one-point statistics measured both bases: pairwise joint PDF /
+joint wavelet l1 reach the l1+product level from autos alone in the original basis
+(marginals equal-or-better; FoM3 2794/2788 vs 2875) but are NOT BNT-invariant as binned
+estimators (ratios 0.52/0.54; full-4D 0.45 fixed grid → 0.70 adaptive grid) — the
+grid-transport result, deep-dive P4c: the joint LAW is basis-covariant, an axis-aligned
+binning of it is not. Canonical treatment: `BNT_THEORY_DEEP_DIVE.md` v2.1 §4.3/§5.6.
+
 ## Caveats / validation (GATE C ran 2026-06-11 — pass WITH caveats; `bnt_campaign/gate_c/GATE_C_BNT.md`)
 
 - **Headline-safe:** all calibration deviations are at the ~5–10% credible-width level vs the
@@ -109,8 +120,13 @@ per-bin frame is itself a mildly suboptimal one-point direction sampling" — no
   partial cross-channel rescue in one figure.
 - GATE C: `tarp_bnt_colored_dim{3,6}` (campaign colors, 16–84% bands), `sbc_bnt_ranks`,
   `lc2st_bnt_cnn`.
-- `../whiten_campaign/figures/fom3_whiten_decomposition` — noBNT/whitened/BNT bars with
-  recovered fractions (`whiten_campaign_figure.py`).
+- `../whiten_campaign/figures/fom3_whiten_decomposition` — noBNT/whitened/BNT/deep-ladder
+  bars with recovered fractions (`whiten_campaign_figure.py`).
+- `../overnight_menu/figures/` — `rescue_ladder` (all rescue routes on one axis),
+  `fom3_joint_stats` + `invariance_ratios` (joint statistics & grid transport),
+  `corner_joint_vs_l1product[_bnt]` (typical-obs contours), `jointdv_*` (σ8-coded joint
+  datavectors + native 2D heatmaps) — `overnight_menu_figures.py`,
+  `corner_overnight_joint.py`, `plot_joint_datavectors.py`.
 
 ## Reproduce
 
