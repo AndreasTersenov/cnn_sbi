@@ -55,6 +55,8 @@ def main():
     import argparse
     ap = argparse.ArgumentParser()
     ap.add_argument("--variant", choices=("nobnt", "bnt"), default="nobnt")
+    ap.add_argument("--replot-only", action="store_true",
+                    help="load saved pooled samples from corners/ and just re-render")
     a = ap.parse_args()
     from train_jaxili_from_compressed import setup_env
     setup_env(os.environ.get("CUDA_VISIBLE_DEVICES", "1"))
@@ -66,8 +68,15 @@ def main():
     OUT.mkdir(parents=True, exist_ok=True); FIGS.mkdir(parents=True, exist_ok=True)
     results = {}
     truth = None
+    def sample_file(label):
+        return OUT / (label.replace(' ', '_').replace('$', '').replace('\\\\', '') + ".npy")
+
     for label, cache, S, perm, patch, tr_truth in arm_inputs(a.variant):
         truth = tr_truth
+        if a.replot_only:
+            results[label] = np.load(sample_file(label))
+            print(f"[{label}] loaded {results[label].shape} (replot-only)", flush=True)
+            continue
         idx = np.where((perm == TYP_PERM) & (patch == TYP_PATCH))[0]
         assert idx.size == 1, f"typical obs not found for {label}"
         tr = np.load(Path(cache) / "l1_train.npz")
@@ -102,7 +111,7 @@ def main():
                   flush=True)
         ps = np.concatenate(pooled, 0)
         results[label] = ps
-        np.save(OUT / f"{label.replace(' ', '_').replace('$', '').replace('\\\\', '')}.npy", ps)
+        np.save(sample_file(label), ps)
         print(f"[{label}] pooled {ps.shape}", flush=True)
 
     # ---- GetDist corner (science params) ----
@@ -127,10 +136,15 @@ def main():
     g = plots.get_subplot_plotter(width_inch=6.0)
     g.settings.legend_fontsize = 10
     g.triangle_plot(mcs, filled=filled, contour_colors=colors, legend_loc="upper right")
-    for i, nm in enumerate(names):
-        for ax in g.subplots[:, i].ravel():
-            if ax is not None:
-                ax.axvline(truth[i], color="k", lw=0.8, ls=":")
+    n = len(names)
+    for r in range(n):
+        for c in range(n):
+            ax = g.subplots[r][c]
+            if ax is None:
+                continue
+            ax.axvline(truth[c], color="k", lw=0.8, ls=":")
+            if r != c:
+                ax.axhline(truth[r], color="k", lw=0.8, ls=":")
     stem = "corner_joint_vs_l1product" + ("_bnt" if a.variant == "bnt" else "")
     for ext in ("png", "pdf"):
         g.export(str(FIGS / f"{stem}.{ext}"))
