@@ -22,6 +22,21 @@ Each arm cross-gain over auto-only is measured AND calibration-validated (TARP/S
 ## Guardrails
 patch-local cross ONLY (never full-sphere = leakage); per-channel noise (not shared auto-sigma); never PCA L1; GPU 1 only; example-disjoint compressor/NDE split by perm; calibrate BEFORE contours; SAME auto channels across all arms; one apodized-circular convolution definition; do not relitigate the operator choice (notes S8-12).
 
+## Loop status (CONV-THEORY-ACCOUNT 2026-06-12 ~10:00 UTC)
+★ Andreas theory session: WHY-CONV-ADDS-NOTHING account assembled + folded into
+FLATSKY_CROSS_RESULT.md (paper-bound section, Andreas requested): (1) conv map = lag-space
+empirical cross-correlation map (pixel p = Σₓκᵢκⱼ(p−x) ≈ N_pix·ξ̂ᵢⱼ(p)) ⇒ one-point stats
+of it re-encode 2-pt info; product = local ⇒ joint moments = non-Gaussian (matches +4% vs
++20% and pair2d≈l1+product); (2) CLT compression → few effective dof at 10° (also explains
+seed-fragility); (3) ZÜRCHER RE-READ (authorized; arXiv:2206.01450 Table 3+§5.5): their
+cross-bin gain is DOMINATED by IA self-calibration (σ(A_IA) −104%..−430% w/o cross-bins;
+cosmology hit via A_IA–S8 degeneracy) — our forecast has NO IA ⇒ dominant literature
+channel absent by construction; footprints 5000/14300 deg² vs our 100 deg² patches; their
+Eq.12 = √âᵢ√âⱼ GEOMETRIC MEAN, ours = plain product (same global-support family, honest
+def. difference noted). BNT corollary: conv rescue bounded by cov50's 0.38 (P7 invariance;
+62% of loss non-Gaussian); measured BNT both=751 single-run ≈ product 637 (no rescue).
+Registered-not-run: conv gain should grow with patch size (20° TFDS exists).
+
 ## Loop status (GATE-C-JOINT 2026-06-12 ~08:00 UTC)
 ★★ JOINT-ARM GATE C DONE (22 min, 4 arms × TARP-600/3-seed + SBC-1800, GPUs 1+2 packed
 2/GPU, zero failures; bands registered BEFORE data in PLAN_GATE_C_JOINT.md; report

@@ -41,6 +41,56 @@ haircut" and hits the seed-fragile conv hardest; (2) a mildly favorable patch. T
 product (local, scale-preserving, = ξᵢⱼ) carries the robust cross-info. **Lead with the population
 median, not single-obs.**
 
+## Why the convolution operator adds so little — theory account (2026-06-12, paper-bound)
+
+Three stacked reasons, ordered by how much they explain; the literature reconciliation
+(Zürcher et al. 2023, MNRAS 525, 761; arXiv:2206.01450 — re-read 2026-06-12) is part 3.
+
+1. **The conv map's one-point content is two-point information.** The flat-sky conv map is
+   `ifft(fft(κᵢ)·fft(κⱼ))`: the pixel at lag **p** is Σₓ κᵢ(**x**)κⱼ(**p**−**x**) — a sum
+   over the whole patch. Up to a reflection, the conv map IS the lag-space empirical
+   cross-correlation map: pixel p ≈ N_pix·ξ̂ᵢⱼ(**p**), so its spatial structure is the
+   *shape of ξᵢⱼ* — a Gaussian-sector quantity. One-point statistics (l1, PDF) of this map
+   re-encode two-point information (plus estimator noise; trispectrum enters only through
+   the estimator covariance). The pointwise product is the local complement: its one-point
+   moments are the joint moments ⟨κᵢⁿκⱼⁿ⟩ at zero lag — genuinely non-Gaussian cross
+   information. This asymmetry is the measured +4% (conv) vs +20% (product), and is
+   consistent with pair2d ≈ l1+product (the product's information is joint one-point
+   occupancy; `overnight_menu/OVERNIGHT_RESULT.md`).
+2. **CLT compression.** Each conv pixel is a patch-wide sum of ~N_pix products → the
+   pixel distribution is strongly Gaussianized and pixels are highly correlated across
+   lags; the effective dof ≈ the number of independent cross-spectrum bands the patch
+   resolves — a handful at 10°. The autos already pin the Gaussian sector, so the marginal
+   value is small. Hence also the conv arm's seed-fragility (few effective numbers).
+3. **Reconciliation with Zürcher et al. (2023).** (a) *Footprint*: their statistics are
+   computed on contiguous 5,000 deg² (stage 3) / 14,300 deg² (stage 4) footprints — the
+   large-scale coherent cross modes that carry conv-type information exist in their data
+   vector; our 100 deg² patches excise them, and the full-sphere construction that does
+   access them is, for a patch-based forecast, leakage (measured: ≈99% of this operator's
+   full-sphere gain). The two results are consistent: conv-style cross information lives
+   at scales a 10° patch barely samples. (b) *What their cross-bins actually buy* (their
+   §5.5 + Table 3): the gain is dominated by **galaxy-IA self-calibration** — removing
+   cross-bins degrades σ(A_IA) by ×2–×5.3 (peaks −104%, C_ℓ −430%) and the cosmology hit
+   (FoM −41% to −47%) comes largely through the A_IA–S8 degeneracy. **Our forecast has no
+   IA**, so the dominant literature channel for cross-map gains is absent here by
+   construction. (c) *Definitional note*: their Eq. 12 builds cross-alms as √âᵢ·√âⱼ
+   (geometric mean, units of κ); our harmonic route used the plain product âᵢâⱼ and the
+   flat-sky conv is its Fourier-product analog. Same global-support family — the locality
+   and CLT arguments apply to both variants — but they are not identical operators.
+
+**Corollary for the BNT basis** (why conv channels can't rescue the BNT-l1 collapse
+either): the complete per-scale second-moment sector (cov50: all 10 channel-pair
+covariances × 5 scales), appended to BNT-l1, recovers only **0.38** of the loss (overnight
+A1) — 62% of what per-channel analysis loses under nulling is non-Gaussian. The 2-pt
+sector is exactly frame-invariant (deep-dive P7), so nothing two-point is *more* accessible
+in either basis; conv maps are a CLT-compressed lag-space encoding of a subset of that same
+sector ⇒ their rescue is bounded by 0.38 and realizes less. Measured indication: the BNT
+`both` arm (conv+product) lands at FoM3 751 (single run, never population-swept) vs
+product-only 637 pooled — same collapsed ballpark, no rescue.
+
+Registered-not-run corollary test: conv gain should grow with patch size (20° dataset
+exists: `grid_20deg_160px`) while the product gain stays ~stable.
+
 ## Calibration (GATE C)
 
 - **TARP-DRP ✓** — all arms incl. the tight HIGH-FoM3 tercile on the diagonal (calibrated/mildly
