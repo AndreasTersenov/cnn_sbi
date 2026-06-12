@@ -23,17 +23,28 @@ TYP_PERM, TYP_PATCH = 16, 23
 M_PER_SEED, SEEDS = 33334, (41, 42, 43)
 
 
-def arm_inputs():
+def arm_inputs(variant):
     import flatsky_cross_l1 as fxl
-    fb = np.load(FC / "fiducial_both_datavectors.npz")
-    cols = fxl.op_feature_columns("product", 4, 200)
-    arms = [
-        ("wavelet $\\ell_1$ auto+product",
-         FC / "l1_matrix/l1_product_cache/flat_local_product",
-         fb["x"][:, cols], fb["perm"], fb["patch"], fb["truth"]),
-    ]
-    for label, name in (("joint PDF (pairwise 2D)", "pair2dq_nobnt"),
-                        ("joint wavelet $\\ell_1$", "jointl1q_nobnt")):
+    if variant == "nobnt":
+        fb = np.load(FC / "fiducial_both_datavectors.npz")
+        cols = fxl.op_feature_columns("product", 4, 200)
+        arms = [
+            ("wavelet $\\ell_1$ auto+product",
+             FC / "l1_matrix/l1_product_cache/flat_local_product",
+             fb["x"][:, cols], fb["perm"], fb["patch"], fb["truth"]),
+        ]
+        joint = (("joint PDF (pairwise 2D)", "pair2dq_nobnt"),
+                 ("joint wavelet $\\ell_1$", "jointl1q_nobnt"))
+    else:
+        bz = np.load(FC / "bnt_campaign/fiducial_summaries/fiducial_summaries_l1_product.npz")
+        arms = [
+            ("BNT wavelet $\\ell_1$ auto+product",
+             FC / "bnt_campaign/l1_matrix/l1_product_cache/flat_local_product_bnt",
+             bz["S"], bz["perm"], bz["patch"], bz["truth"]),
+        ]
+        joint = (("BNT joint PDF (pairwise 2D)", "pair2dq_bnt"),
+                 ("BNT joint wavelet $\\ell_1$", "jointl1q_bnt"))
+    for label, name in joint:
         fz = np.load(OM / name / "fiducial_summaries.npz")
         arms.append((label, OM / name / "cache", fz["S"], fz["perm"], fz["patch"],
                      fz["truth"]))
@@ -41,6 +52,10 @@ def arm_inputs():
 
 
 def main():
+    import argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--variant", choices=("nobnt", "bnt"), default="nobnt")
+    a = ap.parse_args()
     from train_jaxili_from_compressed import setup_env
     setup_env(os.environ.get("CUDA_VISIBLE_DEVICES", "1"))
     import jax, jax.numpy as jnp
@@ -51,7 +66,7 @@ def main():
     OUT.mkdir(parents=True, exist_ok=True); FIGS.mkdir(parents=True, exist_ok=True)
     results = {}
     truth = None
-    for label, cache, S, perm, patch, tr_truth in arm_inputs():
+    for label, cache, S, perm, patch, tr_truth in arm_inputs(a.variant):
         truth = tr_truth
         idx = np.where((perm == TYP_PERM) & (patch == TYP_PATCH))[0]
         assert idx.size == 1, f"typical obs not found for {label}"
@@ -100,16 +115,26 @@ def main():
     mcs = [MCSamples(samples=ps[:, :3], names=names, labels=labels_g, label=lbl,
                      settings={"smooth_scale_2D": 0.35, "smooth_scale_1D": 0.35})
            for lbl, ps in results.items()]
+    filled = [True] * len(mcs)
+    if a.variant == "bnt":
+        ref = OUT / "wavelet_\\ell_1_auto+product.npy"
+        if ref.exists():
+            mcs.append(MCSamples(samples=np.load(ref)[:, :3], names=names, labels=labels_g,
+                                 label="no-BNT $\\ell_1$ auto+product (ref)",
+                                 settings={"smooth_scale_2D": 0.35, "smooth_scale_1D": 0.35}))
+            colors.append("#999999")
+            filled.append(False)
     g = plots.get_subplot_plotter(width_inch=6.0)
     g.settings.legend_fontsize = 10
-    g.triangle_plot(mcs, filled=True, contour_colors=colors, legend_loc="upper right")
+    g.triangle_plot(mcs, filled=filled, contour_colors=colors, legend_loc="upper right")
     for i, nm in enumerate(names):
         for ax in g.subplots[:, i].ravel():
             if ax is not None:
                 ax.axvline(truth[i], color="k", lw=0.8, ls=":")
+    stem = "corner_joint_vs_l1product" + ("_bnt" if a.variant == "bnt" else "")
     for ext in ("png", "pdf"):
-        g.export(str(FIGS / f"corner_joint_vs_l1product.{ext}"))
-    print(f"wrote {FIGS}/corner_joint_vs_l1product.png", flush=True)
+        g.export(str(FIGS / f"{stem}.{ext}"))
+    print(f"wrote {FIGS}/{stem}.png", flush=True)
 
 
 if __name__ == "__main__":

@@ -1,4 +1,13 @@
-# BNT and per-channel statistics: where the information goes — the deep-dive (v2, 2026-06-11)
+# BNT and per-channel statistics: where the information goes — the deep-dive (v2.1, 2026-06-12)
+
+**v2.1 (overnight-menu fold, 2026-06-12):** the §1.7 rescue menu and the §1.8/§4.3 joint-PDF
+program are now MEASURED (16 arms; PLAN_OVERNIGHT_MENU.md has every registered prediction,
+overnight_menu/OVERNIGHT_RESULT.md the derived tables). Three additions: the joint one-point
+statistics results (§1.8, §4.3), the Gaussian-share decomposition of the l1's BNT loss
+(§5.4), and a new geometric remark P4c — binned joint estimators are only as basis-invariant
+as their grid is transported, and axis-aligned grids cannot transport under B. Calibration
+caveat carried throughout: the overnight arms are constraining-power comparisons; GATE C
+(TARP/SBC) has NOT yet been run on them.
 
 Canonical theory treatment for paper pillar 2. **v2** after Andreas's review of v1: single
 smoothing scale throughout (no wavelet machinery — the pipeline applies the same logic per
@@ -75,7 +84,10 @@ but not derived end-to-end):
 | l1 collapse 0.15×/0.22×; CNN 0.93×/0.88×; whitening recovers 1.06/1.01 | MEASURED | campaign |
 | σ8 hit hardest / w0 mildest: w0's room capped by the prior (max 1.9× vs measured 1.32×) | MEASURED+derived | F6 |
 | The no-deep-direction account of the collapse (dominant; span-calibrated) | MECHANISM | §5 |
-| §5.4 ladder: +1 deep → 0.730 (registered ≥0.8 refuted); +2 deep → 1.082 (SPANNING branch) | MEASURED | §5.4 |
+| §5.4 ladder: +1 deep → 0.730 (registered ≥0.8 refuted); +2 deep → 1.082; +6 unions → 1.178 | MEASURED | §5.4 |
+| Gaussian (two-point) share of the l1's BNT loss = 0.38 (P7 block appended; rest is non-Gaussian) | MEASURED | §5.4 |
+| Joint one-point statistics ≈ l1+product on autos alone (marginals equal-or-better; no cross-maps) | MEASURED | §4.3 |
+| Binned joint estimators: invariance requires grid TRANSPORT; axis-aligned grids cannot transport under B | PROVED (geometry) + MEASURED (0.45→0.70) | P4c, §4.3 |
 
 ================================================================================
 ## §1 — The story in plain language
@@ -236,17 +248,22 @@ Ranked; "measured" = this campaign, "exact" = proved, "predicted" = registered, 
    **Real-survey caveat:** the appended deep map is exactly the object with ℓ↔k leakage, so
    in a cut analysis it must itself be cut conservatively — eroding its gain. It is the
    right MECHANISM test (uncut, information-accounting setting), not a survey recipe.
-3. **Append the auto+cross second moments** (exact for the Gaussian sector): 10 numbers
-   (the 4 variances + 6 covariances of the smoothed maps; per scale if multi-scale). By P7
-   this restores the entire two-point content exactly, in any basis, for ~free. It cannot
-   restore non-Gaussian information.
+3. **Append the auto+cross second moments** (MEASURED 2026-06-12: recovers 0.38): the 50
+   per-scale wavelet (co)variances appended to the BNT-l1 give FoM3 364 → 1134 of 2405.
+   By P7 these restore the entire two-point content exactly, in any basis — so this number
+   doubles as a measurement: **38% of what the l1 loses under BNT is Gaussian (two-point)
+   content; the remaining 62% is non-Gaussian** (the F5/§5 sector). By construction it can
+   do no more.
 4. **Append product maps** κ'ᵢκ'ⱼ (measured: 0.15× → 0.22× only): specific quadratic
    combinations; partial by construction (§4.2 says exactly which orders they carry).
-5. **Append more linear-combination channels** (union-style, several weight ratios): each
-   new direction adds shadows; M2 quantifies exactly which mixed cumulants each ratio pins
-   down. Diminishing returns per channel; the limit of all directions is item 6.
-6. **Pairwise joint histograms** (the principled completion at one-point level; §1.8/§4.3):
-   replaces shadows by 2-d views; basis-covariant, hence BNT-robust by construction.
+5. **Append more linear-combination channels** (MEASURED 2026-06-12: recovers 1.178): the
+   six equal-weight pair averages (κᵢ+κⱼ)/2 — the survey-practice union-map analogs, M2 —
+   appended to the BNT-l1 give FoM3 2768 (σ(σ8) 0.078 vs noBNT 0.082): full rescue,
+   consistent with the §5.4 span account (six deep-ish directions over-span the signal-rich
+   subspace). Survey practice, validated.
+6. **Joint histograms** (MEASURED 2026-06-12, §1.8/§4.3): as STATISTICS they reach the
+   l1+product level from the auto maps alone; as BNT-robust objects they carry the P4c
+   caveat — the law is basis-covariant, a fixed binning of it is not.
 
 ### 1.8 The joint PDF, in plain language — and can we actually use it?
 
@@ -284,11 +301,28 @@ cut structure stays manifest; only the basis-fragility of per-channel reductions
 Survey practicality is that of any one-point statistic (masks = drop pixels; varying
 noise/depth = per-channel standardization — the l1's existing machinery applies verbatim).
 
-**Verdict: yes, we could just test it** — a
-third-pillar mini-campaign (build pass + slices + sweeps, the whiten-campaign template,
-~2–3 h/arm) with pairwise-2-d as the default and full-4-d as a variant. Needs your explicit
-go; the interesting arms are (noBNT vs BNT) × (joint-hist vs l1) — the prediction is
-BNT-invariance of the joint-hist arms.
+**TESTED (overnight 2026-06-12; full rigor = 3 MAF seeds, 9000-obs pooled medians;
+calibration NOT yet run on these arms — constraining-power comparison only):**
+
+| statistic (original basis) | FoM3 | σ(σ8) | σ(w0) | σ(Ωm) |
+|---|---|---|---|---|
+| wavelet l1, autos | 2405 | 0.082 | 0.245 | 0.053 |
+| wavelet l1, autos + product map | 2875 | 0.075 | 0.238 | 0.048 |
+| pairwise joint PDF (K=10, autos only) | 2794 | 0.072 | 0.228 | 0.045 |
+| joint wavelet l1 (K=10, autos only) | 2788 | 0.072 | 0.229 | 0.045 |
+| full-4D joint PDF (K=4) | 2401 | 0.081 | 0.231 | 0.050 |
+
+Three findings. (i) *The joint statistics work:* from the auto maps alone — no cross-map
+construction — the pairwise joint PDF matches the l1+product arm: every science marginal
+equal or tighter (σ(σ8) 0.072 vs 0.075, σ(w0) 0.228 vs 0.238, σ(Ωm) 0.045 vs 0.048), FoM3
+−3% (within the statistic's known correlation-structure sensitivity — read the marginals).
+This is the constructive endpoint of the P5 hierarchy, measured. (ii) *Counts suffice:* the
+joint wavelet l1 (amplitude-weighted cells) is statistically identical to plain counts —
+the information is in joint occupancy. (iii) *Resolution beats joint order at fixed
+budget:* the full-4D histogram at K=4 lands exactly on the marginal-l1 baseline; K=10
+pairwise wins. Practicalities: count features REQUIRE dequantization (+U(0,1), seeded) or
+the MAF NaNs on quasi-discrete sparse cells; in the BNT basis the same statistics carry the
+P4c grid-transport caveat (measured ratios 0.45 fixed-grid → 0.70 axis-adapted; §4.3).
 
 ================================================================================
 ## §2 — Formal core (single scale; proofs walked through)
@@ -340,6 +374,22 @@ per-channel statistic extracts in ANY basis is computable from P, whose informat
 is basis-independent. ∎
 *In words:* the joint histogram is an information envelope over the whole per-channel family
 — the "fixed statistic that survives BNT" of §1.8.
+
+**P4c (remark: estimators inherit only as much invariance as their grid transports). NEW
+v2.1.** P4b is a statement about the DISTRIBUTION P. A practical estimator is a histogram
+T_G(x) = (counts of x(p) in the cells of a fixed partition G). T_G in the new basis carries
+the same information as T_G' in the old iff G' = B⁻¹G (the transported partition) — but the
+B-image of an axis-aligned cell is a sheared parallelepiped, and axis-aligned partitions are
+closed only under DIAGONAL channel maps. So per-channel rescaling of the grid (our adaptive
+percentile ranges) implements exactly the diagonal part of the transport and no axis-aligned
+grid can implement the rest. ∎ (geometry)
+*Measured (overnight, full-4D joint histogram, dequantized, identical treatment per basis):*
+fixed noise-scaled grid — BNT/noBNT FoM3 ratio **0.45**; per-axis adapted grid — **0.70**;
+the residual is the un-implementable shear plus finite-resolution effects. The learned
+compressor's first layer applies precisely this shear (P3) — the basis-adaptivity advantage,
+visible at the estimator level. *In words:* even the canonical invariant object is only as
+basis-free as its reduction; "BNT-robust by construction" holds for the joint LAW, not
+automatically for any fixed binning of it.
 
 **P5 (the hierarchy is strict).** marginals < finitely many directions < joint one-point <
 full field. *Witnesses for each gap:* (a) two correlated-vs-uncorrelated bivariate Gaussians
@@ -508,18 +558,36 @@ the limit of all directions is the joint PDF (Cramér–Wold, §1.1). Two useful
 noise has no cumulants beyond k = 2, so order-≥3 mixed cumulants from combination maps are
 noise-bias-free in expectation; and w·κ' = (Bᵀw)·κ — the same combination family is
 constructible from BNT maps (another face of "the statistics basis is free").
+*Empirical anchor (2026-06-12):* the six equal-weight pair averages appended to the BNT-l1
+recover 1.178 of (noBNT − BNT) — survey practice fully rescues the per-channel statistic in
+the nulled basis (§1.7 item 5).
 
-### 4.3 The joint PDF as a statistic — design sheet (M3)
+### 4.3 The joint PDF as a statistic — design sheet (M3), MEASURED 2026-06-12
 
-§1.8 gives the plain-language version and the computability verdict (yes; pairwise-2-d
-default at 6 pairs × 15×15 = 1350 numbers, full-4-d 5⁴ = 625 as variant; GPU-trivial; same
-MAF; no covariance obstacle in SBI). Design choices if/when tested: channel standardization
-by known noise σ_c (matrix whitening by Σ'^{1/2} optional in the BNT basis); frozen
-percentile bin edges (the l1's convention); counts vs counts-of-|value| (plain counts =
-the PDF; the l1-analogue weighting is also available). Prediction to register at launch:
-joint-hist arms are BNT-invariant up to estimator noise (P4b); pairwise-2-d on no-BNT maps
-≥ l1+product (it strictly contains the product's information at one point, §4.2). Status:
-NOT launched; needs explicit go (third pillar).
+Built and measured overnight (per-scale joint histograms of the wavelet coefficients in SNR
+units; both registered predictions adjudicated honestly):
+
+- *Registered:* "pairwise-2-d on no-BNT maps ≥ l1+product (strict information containment
+  at one point)." *Measured:* every science marginal equal or tighter (σ(σ8) 0.072 vs
+  0.075, σ(w0) 0.228 vs 0.238, σ(Ωm) 0.045 vs 0.048); FoM3 2794 vs 2875 (−3%). Verdict: a
+  statistical tie read on the marginals — consistent with strict containment minus
+  finite-binning losses; the FoM3 deficit is within that statistic's correlation-structure
+  sensitivity and should not be over-read in either direction.
+- *Registered:* "joint-hist arms are BNT-invariant up to estimator noise (P4b)." *Measured:
+  FALSIFIED as operationalized* — full-4D BNT/noBNT ratio 0.45 on the fixed noise-scaled
+  grid, 0.70 with per-axis adapted (percentile) grids. Resolution: P4b covariance is a
+  property of the LAW; the binned estimator inherits it only through grid transport, and
+  axis-aligned grids cannot implement the sheared part of B (P4c, proved). The adapted-grid
+  measurement isolates the diagonal part of the transport (0.45 → 0.70); the residual is the
+  shear (plus finite resolution). The basis-adaptive (learned) reduction is the object that
+  closes this gap — P3's first-layer mix is exactly the missing shear.
+- Design lessons for any future deployment: dequantize count features (+U(0,1), seeded;
+  three MAF-NaN incidents diagnosed to quasi-discrete sparse cells); prefer pairwise K=10
+  over full-4D K=4 at fixed feature budget (resolution beats joint order: full-4D landed on
+  the marginal-l1 baseline); plain counts ≈ amplitude-weighted cells; grids in a nulled
+  basis must be adapted at minimum, learned ideally.
+- Calibration (TARP/SBC/L-C2ST) has not been run on these arms; all numbers are
+  constraining-power comparisons at matched pipeline rigor.
 
 ### 4.4 The practical menu
 
@@ -616,6 +684,13 @@ measured 0.15× arm, theta/perm/patch alignment hard-asserted):
   | 1 (+ average) | 0.730 |
   | 2 (+ average + κ₄) | 1.082 |
   | 4 (orthonormal Q) | 1.06 |
+  | 6 (+ pairwise unions; overnight) | 1.178 |
+
+  Orthogonal calibration of what the ladder measures (overnight, not a direction count):
+  appending the COMPLETE two-point sector instead of directions (the 50 per-scale wavelet
+  (co)variances, exact by P7) recovers only **0.38** — so the directions are carrying
+  predominantly NON-Gaussian information: ~62% of the l1's BNT loss lies beyond the entire
+  Gaussian sector, quantifying F5.
 
   Values above 1 (deep2, whiten) read as "complete, plausibly a mildly better-conditioned
   frame than the original bins" — the standard per-bin frame is itself not an optimal
@@ -635,6 +710,23 @@ measured residual 0.93×/0.88×. The 2-pt sector is provably frame-immune once c
 included (P7 — matching the reported literature result), and the practical resolution for
 everything above 2-pt is the decoupling: **null to clean, then measure in a frame with deep
 directions** — or hand the statistic the one deep channel it is missing (§5.4).
+
+### 5.6 The overnight completion (2026-06-12)
+
+Three threads closed at once. (i) The per-channel family's constructive endpoint is
+measured: joint one-point histograms reach the l1+product level from the auto maps alone —
+the cross-map construction was, in retrospect, a workaround for not histogramming jointly.
+(ii) The BNT loss is decomposed by sector: 38% Gaussian (recoverable by 50 appended
+covariance numbers, exact by P7), 62% non-Gaussian (recoverable only through signal-rich
+directions or joint structure — the F5 sector, now quantified). (iii) The basis-adaptivity
+story closes at the estimator level (P4c): even the provably covariant joint law loses
+invariance through any fixed axis-aligned binning, because grids do not transport under B's
+shear — per-axis adaptation buys 0.45 → 0.70, and only a learned linear front-end (P3)
+implements the rest. One sentence for the paper: *per-channel statistics fail under nulling
+because they cannot follow the basis; joint histograms fail more subtly because their grids
+cannot either; the learned compressor is the unique member of this family whose reduction
+transports.* (Calibration caveat: overnight arms are constraining-power results; GATE C
+pending.)
 
 ================================================================================
 ## Appendix — exact constants of tomo4_bnt_v1 (derived from B; GATE A1b verified the
