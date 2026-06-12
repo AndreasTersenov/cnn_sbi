@@ -77,6 +77,14 @@ Three stacked reasons, ordered by how much they explain; the literature reconcil
    (geometric mean, units of κ); our harmonic route used the plain product âᵢâⱼ and the
    flat-sky conv is its Fourier-product analog. Same global-support family — the locality
    and CLT arguments apply to both variants — but they are not identical operators.
+   Impact assessment (2026-06-12): none expected on any conclusion. Mode-by-mode the GM
+   alms are √(product alms) — a deterministic invertible remap of each mode (up to the
+   complex-sqrt branch sign), so the two constructions carry identical information; only
+   what a FIXED real-space statistic extracts differs in detail, and both variants are
+   CLT-Gaussianized global mixes ⇒ one-point content ≈ second-moment sector either way.
+   The branch ambiguity (principal-branch sign flips where the phase sum crosses ±π)
+   arguably makes the GM the less well-defined operator of the two. Units (κ vs κ²) are
+   absorbed by the per-(channel,scale) σ standardization.
 
 **Corollary for the BNT basis** (why conv channels can't rescue the BNT-l1 collapse
 either): the complete per-scale second-moment sector (cov50: all 10 channel-pair

@@ -22,6 +22,21 @@ Each arm cross-gain over auto-only is measured AND calibration-validated (TARP/S
 ## Guardrails
 patch-local cross ONLY (never full-sphere = leakage); per-channel noise (not shared auto-sigma); never PCA L1; GPU 1 only; example-disjoint compressor/NDE split by perm; calibrate BEFORE contours; SAME auto channels across all arms; one apodized-circular convolution definition; do not relitigate the operator choice (notes S8-12).
 
+## Loop status (DEEP-DIVE-v2.2 2026-06-12 ~10:40 UTC)
+★ Theory-discussion folds (Andreas authorized): deep-dive v2.1→v2.2 — (1) GATE-C verdict
+folded everywhere the stale "GATE C NOT yet run" caveat lived (header, §0 ledger row,
+§1.8 TESTED block + new verdict para, §5.6) with the downgrade language; (2) NEW §1.8 tilt
+picture (P4c in one paragraph: checkerboard → slanted parallelograms; ranges fix stretch
+0.45→0.70, no upright grid reproduces tilt; pairwise needs other channels ⇒ only full joint
+can be exact); (3) §1.7 item-2 caveat resolved by CUT-THEN-MIX (sums of cut BNT channels
+reconstruct deep directions via B⁻¹ rows, inherit per-slice cleaning; span ≠ rescue
+sharpening) + NEW item 7 = post-cut frontier experiment design (a/b/c/d arms, needs
+Andreas's cut schedule); (4) FLATSKY_CROSS_RESULT.md GM-vs-product impact assessment
+(invertible per-mode remap ⇒ identical info ceiling; branch ambiguity makes GM less
+well-defined; no conclusion affected). Q2 answered from existing artifacts: full4d WAS run
+(2401 = l1-auto at K=4; resolution beats joint order; occupancy/calibration worsen with
+dimension) — no doc change needed beyond §1.8 already covering it.
+
 ## Loop status (CONV-THEORY-ACCOUNT 2026-06-12 ~10:00 UTC)
 ★ Andreas theory session: WHY-CONV-ADDS-NOTHING account assembled + folded into
 FLATSKY_CROSS_RESULT.md (paper-bound section, Andreas requested): (1) conv map = lag-space
