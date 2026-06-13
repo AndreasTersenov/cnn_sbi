@@ -437,12 +437,27 @@ def write_result(results):
     print(f"wrote {OM2}/OVERNIGHT2_RESULT.md", flush=True)
 
 
+def regen_from_disk():
+    """Rebuild the results dict from on-disk median jsons + gate curves and rewrite
+    OVERNIGHT2_RESULT.md (idempotent; used after the K=15 reruns land)."""
+    results = {n: {} for n in ARMS}
+    for n in ARMS:
+        for tag, sub in (("screen", "population_sweep"), ("full", "population_sweep_full")):
+            results[n][tag] = med(f"{arm_dir(n)}/{sub}")
+    write_result(results)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--gpus", default="1,0,2")
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--regen-only", action="store_true",
+                    help="rebuild OVERNIGHT2_RESULT.md from on-disk artifacts and exit")
     a = ap.parse_args()
     gpus = [g.strip() for g in a.gpus.split(",") if g.strip()]
+    if a.regen_only:
+        regen_from_disk()
+        return 0
     if a.dry_run:
         for k, cmd in PRELUDES.items():
             print(f"{k}: {' '.join(cmd)}")
