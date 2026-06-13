@@ -43,6 +43,15 @@ Recommendation: **M′** — it's the survey-relevant stress test and the most l
 ask. On go I build the masked caches + recombination arms for the 2nd schedule and gate them
 the same way; M4 is then "robust across {M, M′}" or honestly "schedule-dependent".
 
+**DECIDED (Andreas 2026-06-13): L, not M′** — a real BNT analysis applies *scale cuts*
+(remove finest/high-k scales, graduated by depth), it does NOT delete whole nulled maps;
+M′ is past the realistic end. So {M (moderate), L (light)} brackets the realistic regime.
+**L definition (built):** BNT keep `1,2,3,4;1,2,3,4;0,1,2,3,4;0,1,2,3,4` (drop only the
+finest scale of the two shallow channels); uniform comparator U_L = drop finest from all 4
+maps (`1,2,3,4` ×4). Caches B0L (720-d) / B3L (640-d) built (CPU); B1L/B2L recombinations +
+sweeps + GATE C run on GPU 2 via `run_laneB_L.py` (self-waits for the M gate). Report:
+`gate_c_laneB_L/M_VS_L_ROBUSTNESS.md`.
+
 ## Folds (post-gate)
 GATE_C_LANEB.md (derived); fold verdict into PAPER_MESSAGES.md M4 + a felt stanza; commit by
 path (report + coverage figs; never dumps/.npz).
