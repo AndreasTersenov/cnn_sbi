@@ -30,3 +30,9 @@
 - [f2] fiducial corner [typical] std: A1=[0.042 0.06  0.214] l1=[0.041 0.067 0.241] l1=[0.04  0.068 0.229]
 - [f2] fiducial corner [favorable] std: A1=[0.043 0.06  0.225] l1=[0.04  0.08  0.222] l1=[0.04  0.081 0.236]
 ## followups2 complete 2026-06-13 11:09:57 (1.9 h)
+## lane-B schedule-L started 2026-06-13 12:38:28 (GPU 2; after M gate)
+- [L] B0L_bntcut_l1 FoM3 350
+- [L] B1L_bntcut_sums FoM3 1286
+- [L] B2L_bntcut_deep2 FoM3 2007
+- [L] B3L_nobnt_unicut FoM3 1880
+## lane-B schedule-L complete 2026-06-13 14:26:34 (1.8 h)

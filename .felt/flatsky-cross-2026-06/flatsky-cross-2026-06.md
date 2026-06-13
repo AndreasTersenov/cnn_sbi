@@ -22,6 +22,24 @@ Each arm cross-gain over auto-only is measured AND calibration-validated (TARP/S
 ## Guardrails
 patch-local cross ONLY (never full-sphere = leakage); per-channel noise (not shared auto-sigma); never PCA L1; GPU 1 only; example-disjoint compressor/NDE split by perm; calibrate BEFORE contours; SAME auto channels across all arms; one apodized-circular convolution definition; do not relitigate the operator choice (notes S8-12).
 
+## Loop status (M4 GATED + SCHEDULE-TESTED 2026-06-13 ~14:30 UTC)
+★★ M4 (BNT post-cut rescue) RESOLVED across 2 cut schedules + GATE C (GPU 2, per Andreas).
+CALIBRATION: all 4 L arms PASS clean (net bias ≤0.04, SBC std 0.286-0.305); M rescue arms
+B1/B2 PASS-with-caveat; B3-M gate INCOMPLETE (NDE sampled all-NaN at prior-edge val pts =
+near-prior-flat over-cut regime; FoM3 337 valid from sweep, calibrated-by-inference from
+B3L's clean PASS). So the gain is NOT over-confidence (contrast A1). MAGNITUDE strongly
+SCHEDULE-DEPENDENT (FoM3 ratio vs uniform-cut noBNT): B2/B3 = 1.82× at moderate cut M →
+**1.07× at the realistic light cut L** (B1/B3: 1.77×→0.68×). Mechanism: light cut barely
+hurts the uniform noBNT analysis (B3L 1880 ≈78% of uncut 2405), little to win back; M's big
+advantage was M cratering the uniform analysis to 337. "Plain sums suffice" = moderate-cut
+ARTIFACT: at L reconstructed-deep (2007) ≫ sums (1286, below uniform). HONEST M4 MESSAGE:
+B⁻¹-reconstructed-deep recombination rescues cut-BNT L1 from collapse (0.19×→1.07×) to ~the
+standard uniform-cut level WHILE keeping BNT's clean per-slice cuts — BNT's value is the
+clean cuts not a raw FoM3 win; schedule-robust in DIRECTION not MAGNITUDE. Andreas's
+insistence on L (realistic) over M′ was decisive — it shrank the headline from 1.8× to ~1.07×.
+Folds: PAPER_MESSAGES.md M4, M_VS_L_ROBUSTNESS.md combined verdict, GATE_C_LANEB.md. GPU 2
+released. (CNN-optimization runs on its own [[cnn-optimization-2026-06]] fiber — not this one.)
+
 ## Loop status (LANE-A-ADJUDICATED + FOLLOWUPS2 DONE 2026-06-13 ~11:10 UTC)
 ★★ Andreas skepticism PROVED RIGHT; "A1 = new best / third pillar" RETRACTED. followups2
 (aggressive 3-GPU co-resident, 1.9h, no-politeness per Andreas) delivered: (1) VMIM

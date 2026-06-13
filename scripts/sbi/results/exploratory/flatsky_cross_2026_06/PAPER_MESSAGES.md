@@ -34,13 +34,24 @@ one fixed rotation of the nulled maps recovers the full no-BNT FoM (1.06/1.01) �
 irreducibly-joint loss; the collapse is a per-channel-shadow / no-deep-direction frame
 artifact. Backing: FLATSKY_BNT_RESULT.md, BNT_THEORY_DEEP_DIVE.md (proofs P1–P7, P4c).
 
-## M4 — Make L1 work in BNT space via map combinations, no loss. [OPEN — the live work HERE]
+## M4 — Make L1 work in BNT space via map combinations. [GATED + schedule-tested 2026-06-13]
 Rescue ladder (uncut): +deep 0.73, +deep2 1.08, +unions6 1.18, whiten 1.06. Post-cut frontier
-(overnight-2 lane B, schedule-conditional, NOT yet gated): cut-BNT + linear recombinations of
-kept channels ≈ 1.8× the uniform-cut no-BNT analysis; plain pairwise sums ≈ B⁻¹-reconstructed
-deep. **To make it a message:** GATE C (TARP+SBC) on the winning post-cut arms + robustness
-across ≥2 cut schedules. This is the next compute in THIS session. Backing: lane B in
-OVERNIGHT2_RESULT.md, BNT_THEORY_DEEP_DIVE.md §1.7 item 7.
+(lane B), now GATE-C'd and tested across two cut schedules (M moderate, L light/realistic):
+- Per-channel L1 in cut-BNT space COLLAPSES (B0: 0.79× the uniform-cut noBNT analysis at M,
+  0.19× at L). Adding two B⁻¹-reconstructed deep channels (cut-then-mix, preserves the
+  per-slice cuts) RESCUES it — calibration-clean (all L arms PASS; M rescue arms PASS-w-caveat).
+- BUT the ADVANTAGE over a standard uniform-cut analysis is schedule-dependent: B2/B3 = 1.82×
+  at the aggressive cut M (which craters the uniform analysis to 337), only **1.07× at the
+  realistic light cut L** (uniform analysis = 1880 ≈ 78% of uncut, little to win back).
+  The strong "~1.8×" does NOT generalize.
+- "Plain sums suffice" was a moderate-cut artifact: at L, reconstructed-deep (2007) ≫ plain
+  sums (1286, BELOW the uniform analysis) — the reconstruction matters, not generic sums.
+**Honest message:** the reconstructed-deep recombination rescues the cut-BNT L1 from collapse
+to ~the standard uniform-cut level (within ~10%) WHILE preserving BNT's clean per-slice
+systematics control — BNT's value is the clean cuts, not a raw FoM3 win; schedule-robust in
+direction (rescue works), not in magnitude. The gain is NOT over-confidence (gated clean,
+contrast M5/A1). Backing: gate_c_laneB/GATE_C_LANEB.md, gate_c_laneB_L/M_VS_L_ROBUSTNESS.md,
+PLAN_M4_GATE_C.md, BNT_THEORY_DEEP_DIVE.md §1.7 item 7.
 
 ## M5 — Joint one-point statistics (A1 etc.) — keep in mind, NOT priority. [parked]
 Defensible version: pairwise joint PDF of wavelet coefficients reaches ~l1+product level
