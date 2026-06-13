@@ -22,6 +22,14 @@ Each arm cross-gain over auto-only is measured AND calibration-validated (TARP/S
 ## Guardrails
 patch-local cross ONLY (never full-sphere = leakage); per-channel noise (not shared auto-sigma); never PCA L1; GPU 1 only; example-disjoint compressor/NDE split by perm; calibrate BEFORE contours; SAME auto channels across all arms; one apodized-circular convolution definition; do not relitigate the operator choice (notes S8-12).
 
+## Loop status (M4 PARKED 2026-06-13 ~14:40 UTC)
+Andreas: M4 result is modest in the realistic regime (1.07×) — "not super interesting for
+now." DECISION: record it (done: PAPER_MESSAGES.md M4 re-tagged PARKED, M_VS_L_ROBUSTNESS.md,
+[[project_flatsky_bnt_losslessness]] memory addendum), keep in back of mind, do NOT write into
+the paper yet, do NOT point compute at this direction now. No M4 jobs queued; GPU released.
+Session is between directions — awaiting Andreas's next focus (paper assembly of the locked
+messages M2/M3, or other). CNN-side M1 work continues on [[cnn-optimization-2026-06]].
+
 ## Loop status (M4 GATED + SCHEDULE-TESTED 2026-06-13 ~14:30 UTC)
 ★★ M4 (BNT post-cut rescue) RESOLVED across 2 cut schedules + GATE C (GPU 2, per Andreas).
 CALIBRATION: all 4 L arms PASS clean (net bias ≤0.04, SBC std 0.286-0.305); M rescue arms

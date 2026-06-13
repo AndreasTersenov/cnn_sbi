@@ -34,7 +34,15 @@ one fixed rotation of the nulled maps recovers the full no-BNT FoM (1.06/1.01) �
 irreducibly-joint loss; the collapse is a per-channel-shadow / no-deep-direction frame
 artifact. Backing: FLATSKY_BNT_RESULT.md, BNT_THEORY_DEEP_DIVE.md (proofs P1–P7, P4c).
 
-## M4 — Make L1 work in BNT space via map combinations. [GATED + schedule-tested 2026-06-13]
+## M4 — Make L1 work in BNT space via map combinations. [PARKED 2026-06-13 — NOT in paper for now]
+**Decision (Andreas 2026-06-13):** result is gated + schedule-tested but modest in the
+realistic regime (B2/B3 ≈ 1.07× at the light cut) — not interesting enough to feature yet.
+Keep it in the back of the mind (the one nugget worth recalling: per-channel L1 collapses
+under cut-BNT and the B⁻¹-reconstructed-deep recombination restores it to ~the standard
+uniform-cut level while PRESERVING clean cuts — i.e. BNT's value is the clean cuts, not a
+FoM3 win). Do NOT write into the paper or point compute here for now. Full record below +
+M_VS_L_ROBUSTNESS.md. Memory: [[project_flatsky_bnt_losslessness]] addendum.
+
 Rescue ladder (uncut): +deep 0.73, +deep2 1.08, +unions6 1.18, whiten 1.06. Post-cut frontier
 (lane B), now GATE-C'd and tested across two cut schedules (M moderate, L light/realistic):
 - Per-channel L1 in cut-BNT space COLLAPSES (B0: 0.79× the uniform-cut noBNT analysis at M,
