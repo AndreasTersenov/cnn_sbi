@@ -321,7 +321,10 @@ def write_result(results):
          "|---|---|---|---|---|---|"]
     for n in ARMS:
         m = sig[n]
-        L.append(f"| {n} | {scr[n]:.0f}" if scr[n] else f"| {n} | FAIL")
+        # screening col: number if present; '—' if absent but full ran (e.g. K=15 reruns
+        # went straight to full rigor); only 'FAIL' if BOTH absent
+        scr_cell = (f"{scr[n]:.0f}" if scr[n] else ("—" if fom[n] else "FAIL"))
+        L.append(f"| {n} | {scr_cell}")
         L[-1] += (f" | {fom[n]:.0f}" if fom[n] else " | —")
         for k in ("sigma_Om", "sigma_s8", "sigma_w0"):
             v = m.get(k)
@@ -400,11 +403,19 @@ def write_result(results):
                     "incompleteness, not placement, dominates."))
     if fom["C2_pair2d_k15"]:
         rel = fom["C2_pair2d_k15"] / PAIR2D_K10 - 1.0
+        if abs(rel) <= 0.05:
+            c2read = "K=10 is the saturated regime; the parity comparison is resolution-robust."
+        elif rel < -0.05:
+            c2read = ("finer binning gives LOWER FoM3 — the curse-of-dimensionality / "
+                      "NDE-estimation artifact (more cells = sparser = harder for the MAF), "
+                      "NOT a lower physical ceiling (a K=15 grid refines K=10, so by the "
+                      "data-processing inequality it contains >= the information). The FoM3 "
+                      "ladder here tracks estimator difficulty, not information content.")
+        else:
+            c2read = ("the joint-stat ceiling is higher than quoted; revisit parity upward "
+                      "(lane-A calibration applies to this arm next).")
         L.append(f"- **C2** K=15 noBNT: {fom['C2_pair2d_k15']:.0f} ({rel:+.1%} vs K=10) -> "
-                 + ("K=10 is the saturated regime; the parity comparison is "
-                    "resolution-robust." if abs(rel) <= 0.05 else
-                    "the joint-stat ceiling is higher than quoted; revisit parity upward "
-                    "(lane-A calibration applies to this arm next)."))
+                 + c2read)
     if fom["C3_pair2d_k15_bnt_ar"] and fom["C2_pair2d_k15"] and fom["C1_pair2d_bnt_ar"]:
         r3 = fom["C3_pair2d_k15_bnt_ar"] / fom["C2_pair2d_k15"]
         r1 = fom["C1_pair2d_bnt_ar"] / PAIR2D_K10

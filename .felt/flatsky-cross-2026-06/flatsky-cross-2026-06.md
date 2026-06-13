@@ -22,6 +22,26 @@ Each arm cross-gain over auto-only is measured AND calibration-validated (TARP/S
 ## Guardrails
 patch-local cross ONLY (never full-sphere = leakage); per-channel noise (not shared auto-sigma); never PCA L1; GPU 1 only; example-disjoint compressor/NDE split by perm; calibrate BEFORE contours; SAME auto channels across all arms; one apodized-circular convolution definition; do not relitigate the operator choice (notes S8-12).
 
+## Loop status (LANE-A-ADJUDICATED + FOLLOWUPS2 DONE 2026-06-13 ~11:10 UTC)
+★★ Andreas skepticism PROVED RIGHT; "A1 = new best / third pillar" RETRACTED. followups2
+(aggressive 3-GPU co-resident, 1.9h, no-politeness per Andreas) delivered: (1) VMIM
+3-seed band FoM3 41/42/43 = 3822/3441/3408 (mean 3557±188, 5%; seed-41 was the favorable
+draw) — robustly > l1+product 2875, BUT TARP net bias +0.021/+0.009/−0.022 seed-dependent,
+NOT reliably conservative ⇒ registered calibration condition FAILS. (2) FIDUCIAL corner
+(canonical perm16/patch23, apples-to-apples replacing the off-center val-point one): A1 vs
+l1+product marginals TIED σ(Ωm), ~10% σ(σ8), ~11% σ(w0) — modest; ×1.33 FoM3 was fragility
+amplification. (3) DPI SMOKING GUN: A1 = deterministic compression of pair2d ⇒ can't have
+MORE info, yet FoM3(A1 3.5k) > FoM3(pair2d-raw 2794) ⇒ the gain is NDE-estimation-path, not
+physics; corroborated by K-trend K=8/10/15 = 2874/2794/2455 (FoM3 DECREASES as grid refines
+= curse-of-dim in the MAF). ROBUST CORE: l1+product (clean) > CNN (~2300) ⇒ our CNN is
+genuinely SUBOPTIMAL (unstable RealNVP companion; the real issue to fix). Lane C closed:
+C2 K=15 noBNT 2455, C3 K=15-bnt-adaptive r=0.55 (vs K=10 0.53, <+0.05) ⇒ shear K-stubborn
+(P4c holds). Conclusion doc LANE_A_CONCLUSION.md. NEXT (Andreas's idea, the adjudicator,
+parked for his go): the 2×2 {pair2d,l1+product}×{raw→MAF,VMIM→MAF} — fill the l1+product+VMIM
+cell, gate it, read the PATTERN. Deeper: fix ONE NDE+budget+convergence-check before ranking
+any statistic by FoM3 (current 20-30% gaps ≈ estimator quality). Result doc regen'd (fixed
+the mis-routed K-trend auto-verdict + cosmetic K=15 'FAIL'→'—'). GPUs released.
+
 ## Loop status (OVERNIGHT-MENU-2-COMPLETE 2026-06-13 ~03:47 UTC, reported ~07:30)
 ★★ MENU-2 DONE in 4.9 h (OVERNIGHT2_RESULT.md; full-rigor 3-seed/9000-obs). HEADLINES:
 (1) **LANE A — joint-stat miscalibration is NOT a feature-encoding artifact** (decides
