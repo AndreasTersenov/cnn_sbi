@@ -16,6 +16,11 @@ def main():
         p.add_argument(f"--{k}", required=True)
     p.add_argument("--seeds", default="41,42,43"); p.add_argument("--m-samples", type=int, default=4000)
     p.add_argument("--cuda-visible-devices", default="1")
+    # preproc flags (default = the historical log1p-zscore/clip5/min-var1e-5 behaviour;
+    # A1's compressed cache needs none/0/1e-12 — compressed features can be negative)
+    p.add_argument("--preproc-transform", default="log1p-zscore")
+    p.add_argument("--clip-value", type=float, default=5.0)
+    p.add_argument("--min-feature-variance", type=float, default=1e-5)
     a = p.parse_args()
     sys.path.insert(0, REPO); sys.path.insert(0, SBI)
     from train_jaxili_from_compressed import setup_env
@@ -27,18 +32,20 @@ def main():
     cdir = Path(a.train_cache_dir)
     tr = np.load(cdir / "l1_train.npz"); va = np.load(cdir / "l1_val.npz")
     theta_tr = tr["theta"].astype(np.float32); x_tr_raw = tr["x"].astype(np.float64)
+    clipv = a.clip_value if a.clip_value > 0 else None
     tr_p, _, _, mean, std = preprocess_summaries(x_tr_raw, va["x"][:1].astype(np.float64),
                                                  va["x"][:1].astype(np.float64),
-                                                 summary_transform="log1p-zscore", clip_value=5.0)
-    mask, _ = filter_zero_variance_bins(tr_p, min_variance=1e-5, verbose=False)
+                                                 summary_transform=a.preproc_transform,
+                                                 clip_value=clipv)
+    mask, _ = filter_zero_variance_bins(tr_p, min_variance=a.min_feature_variance, verbose=False)
     x_tr = tr_p[:, mask].astype(np.float32)
     fz = np.load(a.fiducial_summaries_npz); S = fz["S"].astype(np.float64)
     rows = []
     for pm, pa, _ in OBS:
         rows.append(int(np.where((fz["perm"] == pm) & (fz["patch"] == pa))[0][0]))
     _, _, fid_p, _, _ = preprocess_summaries(x_tr_raw, va["x"][:1].astype(np.float64), S[rows],
-                                             summary_transform="log1p-zscore", clip_value=5.0,
-                                             mean=mean, std=std)
+                                             summary_transform=a.preproc_transform,
+                                             clip_value=clipv, mean=mean, std=std)
     x_obs = fid_p[:, mask].astype(np.float32)
     params = jnp.asarray(theta_tr); data = jnp.asarray(x_tr)
     posts = []
