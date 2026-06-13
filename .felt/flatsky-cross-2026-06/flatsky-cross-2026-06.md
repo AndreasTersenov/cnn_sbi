@@ -22,6 +22,33 @@ Each arm cross-gain over auto-only is measured AND calibration-validated (TARP/S
 ## Guardrails
 patch-local cross ONLY (never full-sphere = leakage); per-channel noise (not shared auto-sigma); never PCA L1; GPU 1 only; example-disjoint compressor/NDE split by perm; calibrate BEFORE contours; SAME auto channels across all arms; one apodized-circular convolution definition; do not relitigate the operator choice (notes S8-12).
 
+## Loop status (OVERNIGHT-MENU-2-COMPLETE 2026-06-13 ~03:47 UTC, reported ~07:30)
+★★ MENU-2 DONE in 4.9 h (OVERNIGHT2_RESULT.md; full-rigor 3-seed/9000-obs). HEADLINES:
+(1) **LANE A — joint-stat miscalibration is NOT a feature-encoding artifact** (decides
+3rd-pillar↓→discussion). VMIM-compress pair2d 3000→10d: FoM3 3822 (TIGHTER than parent
+2794) but SBC std 0.317/0.325 (>0.289) = MORE over-confident than raw pair2d (0.30); K=8
+(denser cells) HIGH-tercile −0.070 vs K=10 −0.134 = milder. Synthesis: removing sparse
+cells (VMIM) WORSENS over-confidence while coarsening (K=8) eases it ⇒ sparsity is a
+contributor, not the root; the statistic exposes power the NDE renders over-confidently,
+and a learned compressor amplifies it. Joint one-point stat CANNOT be calibration-clean at
+full power here — discussion-section confirmed w/ mechanism. NB the driver's 1-line A1
+verdict ("pathology-not-dimensionality") is right but the SBC/sign structure is the real
+content. (2) **LANE B — post-cut frontier: cut-BNT + cleaned recombinations beat the
+uniform-cut noBNT analysis ~1.8×** (B2/B3=1.82, B1/B3=1.77, every science marginal tighter;
+B0 per-channel=0.79×B3 loses; B1≈B2 ⇒ plain sums suffice, no B⁻¹ needed). UNCUT l1-auto
+2405 → uniform-cut 337 (0.14×) = uniform cut brutal. CAVEATS: schedule-conditional (toy
+M/U), tiny absolute FoM3 (fragile regime), and NOT GATE-C'd (constraining-power only — the
+exact trap from lane A). (3) **LANE C — C1 BNT-adaptive pairwise r=0.532 (vs fixed 0.522)**
+⇒ adaptive placement buys pairwise ~nothing (vs full4d 0.45→0.70) = pairwise structurally
+basis-fragile (marginal incompleteness, not placement). FAILURES (resource/infra, not
+science): freeze_p3 DEADLOCKED in Pool(32) noise gen (1.7h, 0 reals) ⇒ D1 product3
+auto-skipped; C2/C3 K=15 OOM at mem-frac 0.45 (need ~32GB) ⇒ K-trend has K=8/K=10 only,
+staircase test C3 unrun. A3 resolved pre-launch (pooled TARP, over-confidence survives).
+Packing bench: 3-pack REJECTED (1.4× agg vs 0.9×3 bar) ⇒ sweeps stay 1/GPU (measured
+default for the audit). PENDING (need free GPU / Andreas): rerun C2/C3 K=15 sole-tenant;
+fix freeze Pool deadlock for D1. Doc folds (deep-dive/FLATSKY) WAIT for Andreas per
+convention. Machinery commit 7d39d6f.
+
 ## Loop status (OVERNIGHT-MENU-2-LAUNCHING 2026-06-12 ~23:30 UTC)
 ★ MENU-2 BUILD DONE, LAUNCHING (Andreas asleep; signed off "do all that autonomously",
 20° lane dropped; PLAN_OVERNIGHT_MENU_2.md rev 2 = branch-sentence filter + fences).
