@@ -34,6 +34,14 @@ def parse_args():
     p.add_argument("--dense-width", type=int, default=256)
     p.add_argument("--pool-window", type=int, default=16)
     p.add_argument("--pool-stride", type=int, default=8)
+    # arch support (default plain = unchanged behaviour) — for the Phase-2 arch sweep
+    p.add_argument("--compressor-arch", default="plain")
+    p.add_argument("--resnet-small-channels", default="64,128,256")
+    p.add_argument("--resnet-small-blocks", default="2,2,2")
+    p.add_argument("--resnet-head-width", type=int, default=256)
+    p.add_argument("--resnet-v2", action="store_true")
+    p.add_argument("--attn-layers", type=int, default=1)
+    p.add_argument("--attn-heads", type=int, default=4)
     p.add_argument("--perms", default="0-199")
     p.add_argument("--regime", default="nobnt")
     p.add_argument("--cosmo-id", default="cosmo_fiducial")
@@ -156,10 +164,12 @@ def main():
 
     conv = tuple(int(c) for c in a.conv_channels.split(","))
     _, comp_eval = build_compressors(
-        dim=a.dim, arch="plain", conv_channels=conv, dense_width=a.dense_width,
+        dim=a.dim, arch=a.compressor_arch, conv_channels=conv, dense_width=a.dense_width,
         pool_window=a.pool_window, pool_stride=a.pool_stride,
-        resnet_small_channels=(64, 128, 256), resnet_small_blocks=(2, 2, 2),
-        resnet_head_width=256, resnet_v2=False,
+        resnet_small_channels=tuple(int(c) for c in a.resnet_small_channels.split(",")),
+        resnet_small_blocks=tuple(int(c) for c in a.resnet_small_blocks.split(",")),
+        resnet_head_width=a.resnet_head_width, resnet_v2=a.resnet_v2,
+        attn_layers=a.attn_layers, attn_heads=a.attn_heads,
     )
     params, state = load_compressor_params(a.params_pkl, a.state_pkl)
 
