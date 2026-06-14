@@ -13,6 +13,20 @@ created-at: 2026-06-13T11:45:00.000000000Z
 outcome: 'OPEN (opened 2026-06-13). OBJECTIVE: make the CNN-VMIM compressor reach — and ideally exceed — the best analytical result (L1+product FoM3 2875, gate-C clean) on the de-leaked flat-local data, with CLEAN calibration, so paper message M1 ("the CNN does not underperform L1") is defended against the "your CNN is undertrained" referee attack. Current flat-local CNN: auto-only best 2620 / mean 2457 (TIE with L1-auto 2405), +product mean 2191 (BEHIND L1+product 2875; product channels HURT the CNN), seed-fragile (auto 2620/2364/2387) = optimization instability, not data scarcity. DATA IS NOT THE BOTTLENECK (checked): 323640 patch examples / 899 cosmologies / 360 patches per cosmo. LEVERS in priority order: (1) NDE flow on CNN summaries — Andreas suspects jaxili MAF is poor here, RealNVP did better in the 20deg analysis [highest-leverage, cheapest: retrain NDE only]; (2) CNN architecture/capacity (--compressor-arch resnet*, GN variants; watch over-capacity vs 899 cosmos); (3) VMIM companion flow (sbi_lens RealNVP, documented unstable); (4) convergence discipline (training curves, best-val ckpts, no last-step bug). Entry point: HANDOFF_CNN_OPTIMIZATION.md (repo root). SCOPE: CNN side ONLY — L1/BNT/joint-stat work stays on [[flatsky-cross-2026-06]]. Continues the CNN thread from [[definitive-l1-vs-cnn-10deg-2026-06]] and [[cnn-auto-push-18-20-2026]].'
 ---
 
+## 2026-06-14 ~20:30 UTC — BNT test of the BEST pipeline: resnet18+RealNVP is BNT-LOSSLESS (M3 holds+strengthens)
+Andreas asked: did we run the best CNN (resnet18) + best NDE (RealNVP) for BNT? We hadn't (whole session
+was noBNT). Ran it: matched recipe = exact arch-sweep resnet18 cmd + `--flatsky-bnt` (only diff = BNT) →
+BNT fidsumm (G1-validated, max|Δ| 2–3e-4) → RealNVP readout, 3 compressor seeds. Result BNT/noBNT:
+s41 3186/3326=0.958×, s42 3164/3314=0.955×, s43 3240/3273=0.990× ⇒ **mean 3197/3304 = 0.97×** — the CNN
+loses only ~3% under BNT (even BETTER than old plain-CNN+MAF 0.93×), while L1 collapses to 0.15×. So M3
+("CNN lossless under BNT, L1 collapses") HOLDS + strengthens with the upgraded pipeline: in BNT space
+CNN ≈3197 vs L1 ≈0.15×2875≈430 (~7×). Script: run_resnet18_bnt.sh; results bnt_resnet18_2026_06_14/.
+GATE C on BNT-CNN (tarp_stratified_val_nde, RealNVP, 3 seeds): HIGH net-bias dim3 **+0.005** (≈ noBNT
++0.004) / dim6 −0.016 — CALIBRATED (within band), so the BNT result is gate-clean like the noBNT.
+Paper figure `corner_cnn_bnt_vs_nobnt.{png,pdf}` (figs/): CNN posterior with vs without BNT at the
+fiducial vector — contours nearly COINCIDE (noBNT 3243 / BNT 3127 = 0.96×) = the lossless story in one
+plot. Andreas: skip talk-handoff M3 edit; wanted the gate + the corner (both done).
+
 ## 2026-06-14 ~01:15 UTC — Phase-2 DONE: architecture is a SECONDARY lever (~+6%); resnet18 calibrated win
 All 4 archs trained (rc=0) + read out (RealNVP fixed), all fidsumm G1-validated. Full-config 3-seed/9000:
 **resnet18 3326 (+6% vs plain 3139, SAME-seed ⇒ clean arch effect), GATE-C CLEAN (HIGH net-bias dim3
