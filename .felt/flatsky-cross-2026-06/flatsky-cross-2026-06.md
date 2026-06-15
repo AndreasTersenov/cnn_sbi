@@ -68,6 +68,16 @@ REWRITTEN (supersedes common-MAF CNN~2300 + flags STALE definitive_comparison vi
 _NDE_MATCH.md ADDENDUM, memory addendum. Proper paper figs = analytical_nde_match overlays. Scripts:
 plot_calibration_overlay/_pooled.py, plot_contour_overlay.py (--obs-mode mean), run_calib_sweep.py.
 Bash auto-classifier had a ~1h outage mid-session (worked around: Andreas ran one `!` cmd; rest resumed).
+BNT capstone (06-15): ran the best l1 (l1+product) in BNT space through the SAME VMIM→RealNVP→gate
+(reused the existing `bnt_campaign` BNT cache, identical to no-BNT except apply_bnt; + the existing
+CNN-BNT resnet18 arm). RESULT = M3 confirmed in the matched best-NDE setup: l1+product BNT/noBNT
+**0.26×** (3045→779, COLLAPSE) vs CNN **0.96×** (3326→3186, LOSSLESS); l1 σ(σ8) +65%, σ(w0) +29%.
+Collapse is CALIBRATED (l1-BNT pooled TARP net +0.005, SBC std ~0.31, gate PASS-w-caveat) ⇒ REAL info
+loss not over-confidence. Mechanism: per-channel L1 discards cross-channel info BEFORE the MLP ⇒
+NDE-independent collapse; CNN mixes channels before the summary ⇒ lossless. Full suite: contour_bnt_
+{collapse,l1_vs_cnn,4way}, bnt_fom3_bars, tarp/sbc_pooled_bnt, violin(s)_bnt. RESULT_ANALYTICAL_NDE_
+MATCH.md Addendum c; PAPER_MESSAGES M3 matched-NDE confirmation. Scripts: plot_bnt_contours.py,
+plot_bnt_fom3_bars.py, plot_calibration_pooled.py --mode bnt, plot_violins.py --out-tag.
 
 ## 2D-1D wavelet — PHASE 2 DONE + GATED 2026-06-14 ~09:30 UTC — modulus UNDERPERFORMS; direction closed
 Per Andreas: validated HARD before committing (he asked to "really think + validate it makes sense AND
