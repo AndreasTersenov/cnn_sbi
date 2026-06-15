@@ -19,14 +19,26 @@ ROOT = "/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flat
 HERE = Path(ROOT) / "analytical_nde_match"
 PARAMS = [r"$\Omega_m$", r"$\sigma_8$", r"$w_0$"]
 
-ARMS = {
-    "l1+product → RealNVP (FoM3 3270)": dict(
-        color="#d62728",
-        dumps=f"{HERE}/gate_l1product_rnvp/tarp_drp/dumps/l1product_rnvp_*/seed_*/n*_m*/posterior_samples.npz"),
-    "CNN ResNet18 → RealNVP (FoM3 3293)": dict(
-        color="#1f77b4",
-        dumps=f"{ROOT}/cnn_phase/arch_sweep_2026_06_13/gate_c_resnet18/dumps/resnet18_rnvp_*/seed_*/n*_m*/posterior_samples.npz"),
-}
+import argparse
+_MODE = (lambda p: p.parse_args().mode)(
+    (lambda ap: (ap.add_argument("--mode", choices=["nobnt", "bnt"], default="nobnt"), ap)[1])(
+        argparse.ArgumentParser()))
+SUFFIX = "" if _MODE == "nobnt" else "_bnt"
+_T = "" if _MODE == "nobnt" else " (BNT space)"
+if _MODE == "nobnt":
+    ARMS = {
+        "l1+product → RealNVP": dict(color="#d62728",
+            dumps=f"{HERE}/gate_l1product_rnvp/tarp_drp/dumps/l1product_rnvp_*/seed_*/n*_m*/posterior_samples.npz"),
+        "CNN ResNet18 → RealNVP": dict(color="#1f77b4",
+            dumps=f"{ROOT}/cnn_phase/arch_sweep_2026_06_13/gate_c_resnet18/dumps/resnet18_rnvp_*/seed_*/n*_m*/posterior_samples.npz"),
+    }
+else:
+    ARMS = {
+        "l1+product BNT → RealNVP": dict(color="#d62728",
+            dumps=f"{HERE}/gate_l1product_bnt_rnvp/tarp_drp/dumps/l1product_bnt_rnvp_*/seed_*/n*_m*/posterior_samples.npz"),
+        "CNN ResNet18 BNT → RealNVP": dict(color="#1f77b4",
+            dumps=f"{ROOT}/cnn_phase/bnt_resnet18_2026_06_14/gate_c_bnt/dumps/bnt_resnet18_rnvp_*/seed_*/n*_m*/posterior_samples.npz"),
+    }
 
 
 def pool(pattern):
@@ -66,8 +78,8 @@ ax.set_title("TARP-DRP coverage (pooled over all terciles+seeds)\n"
              "on diagonal = calibrated · below = over-confident", fontsize=10.5)
 fig.tight_layout()
 for ext in ("png", "pdf"):
-    fig.savefig(HERE / f"tarp_pooled_l1_vs_cnn.{ext}", dpi=150, bbox_inches="tight")
-print("wrote tarp_pooled_l1_vs_cnn.png")
+    fig.savefig(HERE / f"tarp_pooled{SUFFIX}_l1_vs_cnn.{ext}", dpi=150, bbox_inches="tight")
+print(f"wrote tarp_pooled{SUFFIX}_l1_vs_cnn.png")
 plt.close(fig)
 
 
@@ -90,5 +102,5 @@ fig.suptitle("SBC rank histograms (pooled over all terciles+seeds): l1+product v
              "uniform rank-std = 0.289", fontsize=10)
 fig.tight_layout(rect=[0, 0, 1, 0.92])
 for ext in ("png", "pdf"):
-    fig.savefig(HERE / f"sbc_pooled_l1_vs_cnn.{ext}", dpi=150, bbox_inches="tight")
-print("wrote sbc_pooled_l1_vs_cnn.png")
+    fig.savefig(HERE / f"sbc_pooled{SUFFIX}_l1_vs_cnn.{ext}", dpi=150, bbox_inches="tight")
+print(f"wrote sbc_pooled{SUFFIX}_l1_vs_cnn.png")

@@ -19,9 +19,12 @@ HERE = Path(ROOT) / "analytical_nde_match"
 ap = argparse.ArgumentParser()
 ap.add_argument("--l1", default=f"{HERE}/l1product_rnvp_s41_n9000/per_patch_metrics.npz")
 ap.add_argument("--cnn", default=f"{ROOT}/cnn_phase/arch_sweep_2026_06_13/cnn_resnet18_s41/readout_full/per_patch_metrics.npz")
+ap.add_argument("--out-tag", default="")
+ap.add_argument("--l1-label", default="l1+product → RealNVP")
+ap.add_argument("--cnn-label", default="CNN ResNet18 → RealNVP")
 a = ap.parse_args()
 
-ARMS = [("l1+product → RealNVP", a.l1, "#d62728"), ("CNN ResNet18 → RealNVP", a.cnn, "#1f77b4")]
+ARMS = [(a.l1_label, a.l1, "#d62728"), (a.cnn_label, a.cnn, "#1f77b4")]
 data = []
 for label, path, color in ARMS:
     d = np.load(path)
@@ -57,8 +60,8 @@ fig.suptitle(f"Per-patch distributions over the fiducial population: l1+product 
              fontsize=11)
 fig.tight_layout(rect=[0, 0, 1, 0.92])
 for ext in ("png", "pdf"):
-    fig.savefig(HERE / f"violins_l1_vs_cnn.{ext}", dpi=150, bbox_inches="tight")
-print("wrote violins_l1_vs_cnn.png")
+    fig.savefig(HERE / f"violins{a.out_tag}_l1_vs_cnn.{ext}", dpi=150, bbox_inches="tight")
+print(f"wrote violins{a.out_tag}_l1_vs_cnn.png")
 plt.close(fig)
 
 # ---- standalone FoM3-only violin ----
@@ -84,5 +87,5 @@ axf.set_title(f"Per-patch FoM3 over the fiducial population (N={data[0]['n']})\n
 axf.grid(axis="y", alpha=0.3)
 figf.tight_layout()
 for ext in ("png", "pdf"):
-    figf.savefig(HERE / f"violin_fom3_l1_vs_cnn.{ext}", dpi=150, bbox_inches="tight")
-print("wrote violin_fom3_l1_vs_cnn.png")
+    figf.savefig(HERE / f"violin_fom3{a.out_tag}_l1_vs_cnn.{ext}", dpi=150, bbox_inches="tight")
+print(f"wrote violin_fom3{a.out_tag}_l1_vs_cnn.png")
