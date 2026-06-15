@@ -69,6 +69,13 @@ L1-auto BNT/noBNT 0.15× (collapse); CNN 0.93× (lossless within seed scatter). 
 one fixed rotation of the nulled maps recovers the full no-BNT FoM (1.06/1.01) ⇒ no
 irreducibly-joint loss; the collapse is a per-channel-shadow / no-deep-direction frame
 artifact. Backing: FLATSKY_BNT_RESULT.md, BNT_THEORY_DEEP_DIVE.md (proofs P1–P7, P4c).
+**Matched best-NDE confirmation (2026-06-15):** in the M1 setup (VMIM→sbi_lens RealNVP, gated),
+l1+product BNT/no-BNT = **0.26×** (COLLAPSE; 779 vs 3045, calibrated — pooled TARP net +0.005, SBC
+std ~0.31, so the wide BNT contours are a REAL info loss not over-confidence) while CNN ResNet18
+BNT/no-BNT = **0.96×** (LOSSLESS, 3186 vs 3326). The collapse is NDE-independent: the per-channel L1
+discards the cross-channel info BEFORE the VMIM MLP, so even the CNN's own NDE can't recover it; the
+channel-mixing CNN mixes channels before the summary. Figures: analytical_nde_match/contour_bnt_*,
+bnt_fom3_bars_l1_vs_cnn, tarp_pooled_bnt_l1_vs_cnn. RESULT_ANALYTICAL_NDE_MATCH.md Addendum c.
 
 ## M4 — Make L1 work in BNT space via map combinations. [PARKED 2026-06-13 — NOT in paper for now]
 **Decision (Andreas 2026-06-13):** result is gated + schedule-tested but modest in the

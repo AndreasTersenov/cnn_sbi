@@ -159,3 +159,29 @@ definitive_comparison violin/FoM3-bar figures; audit `figs/` for any CNN<2900 ba
 `PLAN_ANALYTICAL_NDE_MATCH.md`; scripts `gate_verdict.py`, `plot_calibration_overlay.py`,
 `plot_calibration_pooled.py`, `plot_contour_overlay.py`, `run_calib_sweep.py`, `make_matrix_figure.py`.
 Compressed caches: `l1product_vmim_s4{1,2,3}/`, `l1none_vmim_s41/` (+ reused `overnight_menu_2/A1_*`).
+
+## ADDENDUM 2026-06-15c — BNT in the matched best-NDE setup (M3, confirmed + gated)
+Andreas: "get the corresponding BNT contours for the best l1, same setup, with all plots/diagnostics."
+Ran the BNT l1+product (cache `bnt_campaign/.../flat_local_product_bnt`, identical to the no-BNT cache
+except `apply_bnt`) through the SAME VMIM→sbi_lens RealNVP→gate pipeline; compared to the existing
+CNN-BNT ResNet18 arm (`bnt_resnet18_2026_06_14`).
+
+| arm | no-BNT FoM3 | BNT FoM3 | BNT/noBNT | σ(Ωm,σ8,w0) BNT | BNT gate |
+|---|---|---|---|---|---|
+| **l1+product → RealNVP** | 3045 (n9000) | **779** (n9000; 771 n1000; 651 mean-obs) | **0.26× (COLLAPSE)** | 0.071/0.127/0.296 | PASS-w-caveat, pooled TARP net **+0.005**, SBC std 0.31 |
+| **CNN ResNet18 → RealNVP** | 3326 | **3186** (s41; 3164/3240 s42/s43) | **0.96× (LOSSLESS)** | 0.045/0.073/0.230 | calibrated, pooled net +0.038 |
+
+- **Per-channel wavelet ℓ1 COLLAPSES under BNT (0.26×) even given the CNN's own NDE**; the
+  channel-mixing CNN is **lossless (0.96×)**. σ(σ8) for l1 grows 0.077→0.127 (+65%), σ(w0) 0.229→0.296.
+- **The collapse is CALIBRATED** (l1-BNT pooled TARP net +0.005, within ±0.05; SBC std ~0.31; gate
+  net −0.003) ⇒ a REAL information loss, the wide BNT contours honestly report it — NOT over-confidence.
+- **Mechanism (confirms M3 in the matched setup):** the per-channel L1 discards the cross-channel
+  information BEFORE the VMIM MLP, so the MLP cannot recover it — the collapse is intrinsic to
+  per-channel L1, independent of the downstream NDE. The CNN mixes channels BEFORE forming the summary
+  ⇒ BNT-invariant. (Consistent with the M3 whitening result: only a channel-mixing/whitening frame
+  recovers the BNT info.)
+- **BNT figures** (`analytical_nde_match/`): `contour_bnt_l1_collapse`, `contour_bnt_l1_vs_cnn`,
+  `contour_bnt_4way_l1_cnn`, `bnt_fom3_bars_l1_vs_cnn`, `tarp_pooled_bnt_l1_vs_cnn`,
+  `sbc_pooled_bnt_l1_vs_cnn`, `violins_bnt_l1_vs_cnn`, `violin_fom3_bnt_l1_vs_cnn`. Scripts:
+  `plot_bnt_contours.py`, `plot_bnt_fom3_bars.py`, `plot_calibration_pooled.py --mode bnt`,
+  `plot_violins.py --out-tag _bnt`. Caches: `l1product_bnt_vmim_s41/`, `gate_l1product_bnt_rnvp/`.
