@@ -22,6 +22,160 @@ Each arm cross-gain over auto-only is measured AND calibration-validated (TARP/S
 ## Guardrails
 patch-local cross ONLY (never full-sphere = leakage); per-channel noise (not shared auto-sigma); never PCA L1; GPU 1 only; example-disjoint compressor/NDE split by perm; calibrate BEFORE contours; SAME auto channels across all arms; one apodized-circular convolution definition; do not relitigate the operator choice (notes S8-12).
 
+## Analytical→best-NDE match-the-CNN — IN PROGRESS 2026-06-14 ~23:00 UTC (overnight; Andreas asleep)
+TRIGGER: CNN got fixed — ResNet18 + sbi_lens RealNVP 4×128 → **FoM3 3293** (σ 0.045/0.072/0.229),
+calibrated (the NDE swap did it: jaxili-MAF 2312 → sbi_lens RealNVP 3141). Best analytical still
+l1+product-MAF 2875. Andreas: "back on the hunt — make analytical as close as possible to the CNN."
+Interview (3 Qs): scope = L1-family+unions; L1-VMIM compression ALLOWED; keep-rule = calibrated FoM3 +
+plateau-stop. APPROACH = lane-A's own deeper recommendation, now executable because the good NDE is
+known: give every analytical representation the SAME best NDE the CNN uses (VMIM→10-d→sbi_lens RealNVP
+4×128), GATE every cell (TARP+SBC), read the PATTERN (not raw FoM3). Seam reused as-is: vmim_from_cache
+→ train_nde_from_compressed (--nde-family) → tarp_stratified_val_nde → run_tarp_coverage → gate_verdict.
+Branch `analytical-nde-match-2026-06`; dir analytical_nde_match/; PLAN_ANALYTICAL_NDE_MATCH.md (registered
+branch sentences). Cleanup: killed 32 deadlocked product3-freeze procs (the old fork/healpy Pool hang).
+RESULTS so far (n=1000 screens; gates 600-pt 3-seed):
+- **l1+product-VMIM→RealNVP: 3-seed band 3146/3265/3399 (mean 3270; n=9000 single 3045)** → **≈ CNN
+  3293, CNN-matching marginals** (σ_w0 0.229 exact); GATE **PASS-with-caveat on ALL 3 compressor seeds**
+  (SBC std ~0.30 ≈ uniform; worst TARP dev ~0.07; net −0.022/−0.011/+0.004 = centered). ⇒ THE HEADLINE:
+  the calibration-CLEAN l1+product, compressed + given the CNN's own NDE, MATCHES the CNN, seed-robust.
+  Same 10-D under MAF = 2426 (+30% from RealNVP alone = the NDE lever, mirrors CNN 2312→3293). Gain over
+  raw-2875 modest, "matches within calibration tolerance" (mild over-conf caveat), NOT "gains info".
+- **pair2d-VMIM→RealNVP = 4922/5156/4513** (3 compressor seeds) but GATE **FAIL** (SBC std 0.32–0.33 =
+  over-confident; net −0.018). pair2d was already FAIL raw (2794, over-conf) → compress+RealNVP AMPLIFIES
+  the over-confidence = fool's gold. DPI confirms (can't add info to 2794 by compressing). Registered
+  branch-2 holds.
+- **l1-auto-VMIM→RealNVP = 2448** (CONTROL) — does NOT jump to CNN levels ⇒ compress→RealNVP is NOT a
+  universal inflator; l1+product's gain reflects genuine cross (ξ_ij) info, not a generic NDE artifact.
+DONE: seed band (3 seeds, all PASS-caveat), n=9000 finalist, control gate, synthesis (RESULT_ANALYTICAL_
+NDE_MATCH.md + fom3_matrix.png), memory [[project_analytical_matches_cnn_via_nde]] + index, HANDOFF_
+MORNING.md. ONLY PENDING: l1+product-VMIM→MAF gate (slow jaxili, GPU2, non-critical 2×2 footnote — FoM3
+2426 under-tight so expect calibrated). NOT committed (Andreas's call). Plateau-stop reached: goal met
+(analytical ≈ CNN, calibrated), did NOT chase a clean-PASS push (would risk pair2d-style over-conf).
+Lesson re-confirmed: only the GATE decides (pair2d 4922 raw = fool's gold FAIL; l1+product 3270 = real
+PASS-caveat). FoM3-fragility/calibration throughline. Builds on LANE_A_CONCLUSION.md +
+[[project_cnn_nde_swap_resolves_m1]] (which gave CNN RealNVP but L1 only MAF; matched-NDE both = tie).
+
+### 06-15 follow-up (Andreas asked: quantify the caveat + write down for paper). DONE.
+Overlay plots (l1 vs CNN, gated): pooled TARP l1 net **+0.001** (PERFECT joint coverage), CNN +0.030;
+SBC 1D std l1 0.302 / CNN 0.290 ⇒ caveat = ~4% too-narrow MARGINALS only, joint volume correct. Sweep
+#1+#3 (RealNVP capacity × 5-seed, gated): ensemble CENTERS net bias (−0.022→+0.003..+0.016), FoM3
+3084–3173 ≈ CNN, but clean PASS NOT reached (worst-tercile dev ~0.07–0.09 persists) ⇒ needs disjoint
+compressor↔flow split or conformal; best cfg RealNVP 3×128 5-seed = 3173. MEAN-OBS contour (noiseless
+mean of 9000 patches): both UNBIASED, **CNN 3279 vs l1 2840 (CNN ~10–15% tighter)**; median TIE but
+noiseless CNN edge ⇒ l1 median partly favorable-patch scatter. REFINED HEADLINE = "l1 matches CNN in
+population-median, trails ~10–15% on the expected obs, calibrated". WROTE DOWN: PAPER_MESSAGES.md M1
+REWRITTEN (supersedes common-MAF CNN~2300 + flags STALE definitive_comparison violins), RESULT_ANALYTICAL
+_NDE_MATCH.md ADDENDUM, memory addendum. Proper paper figs = analytical_nde_match overlays. Scripts:
+plot_calibration_overlay/_pooled.py, plot_contour_overlay.py (--obs-mode mean), run_calib_sweep.py.
+Bash auto-classifier had a ~1h outage mid-session (worked around: Andreas ran one `!` cmd; rest resumed).
+
+## 2D-1D wavelet — PHASE 2 DONE + GATED 2026-06-14 ~09:30 UTC — modulus UNDERPERFORMS; direction closed
+Per Andreas: validated HARD before committing (he asked to "really think + validate it makes sense AND
+works"). Pre-run validation (validate_haar_scatter.py): transform mechanically correct (einsum exact,
+deep-mode ½Σ|W|≥0 everywhere, diffs zero-mean, shape/NaN clean); CAUGHT+FIXED a real fork/healpy-OpenMP
+Pool DEADLOCK in the noise freeze (→ spawn context, workers then ~115% CPU); cosmology-sensitivity
+proxy looked promising (σ8-corr 0.49 BNT vs 0.61 no-BNT). Ran full pipeline (bb8aogu7j, ~39min, clean,
+9000-obs, no NaN-skips, R=48 freezes). RESULT — NEGATIVE: haarscat_nobnt **2234** (BELOW auto 2405,
+below linear 2676), haarscat_bnt **706** (0.32× collapse, < linear 885). Both gated PASS-w-caveat
+(slightly CONSERVATIVE ⇒ real loss not over-confidence). MECHANISM: the ℓ1 already uses |·| optimally
+(bins SIGNED S/N, peaks/voids separated); an EXTRA modulus kills the peak/void sign ⇒ strictly less
+informative ⇒ below auto-only. ⇒ "absolute values" = ℓ1's OWN |·| (Approach A linear), NOT a scattering
+modulus. LESSON: the sensitivity proxy OVERSOLD it (necessary-not-sufficient; only gated FoM3 decides).
+COMBINED 2D-1D verdict: neither reading advances goal-1 (linear ties ~2900 cross ceiling; modulus below
+auto) or goal-2 (linear 885 / modulus 706 collapse; only whitening recovers BNT). DECISION: do NOT roll
+with it (Andreas's "if it's really good" — it isn't); keep as a mechanistically-understood NEGATIVE for
+the paper journey + a concrete answer to Jean-Luc. DELIVERABLES: RESULT_2D1D_PHASE2.md, updated
+2D1D_WAVELET_NOTE.md (Jean-Luc explainer, both phases + the open question), memory
+[[project_2d1d_haar_l1_linear_result]]. GPU released. Awaiting Andreas: send note to Jean-Luc / pick
+next direction.
+
+## 2D-1D wavelet — PHASE 1 DONE + GATED (overnight) 2026-06-14 ~01:30 UTC — linear Haar UNDERDELIVERS
+Driver biprjkn1p completed clean (63 min, full 9000-obs/3-seed, no NaN-skips). RESULTS (all same
+common-MAF path; baselines auto 2405 / product 2875 / both 2910):
+- haar_nobnt (pure 2D-1D Haar ℓ1) FoM3 **2676** (+11% vs auto, <product) — **FAILS gate** (HIGH tercile
+  TARP −0.104, net +0.004, SBC ok = mild tail over-confidence; 2676 partly inflated).
+- autohaar_nobnt (autos⊕Haar) **2954** PASS-w-caveat — but **≈ flat_both 2910** (identical σ
+  0.046/0.074/0.231) ⇒ Haar modes add NOTHING beyond ξ_ij/conv.
+- haar_bnt_uncut (Haar·B, BNT space) **COLLAPSES 885** = 0.33×, **CALIBRATED** (net −0.007, SBC ok) ⇒
+  real info loss, **NOT BNT-robust**. Mechanism: generic fixed rotation doesn't reconstruct the deep
+  mode (only whitening does — M3). σ table confirms only deep_bnt carries signal & weaker than no-BNT.
+BOTH registered predictions over-optimistic & recorded as missed (goal-1 2900-3300→2676+FAIL; goal-2
+"≈no-BNT"→collapses). Confirms §4 linearity reduction empirically: linear bin-mix + per-channel ℓ1 ≡
+ℓ1 on fixed Haar maps, bounded by the ~2900 linear-recombination ceiling, can't recover BNT.
+DELIVERABLES: RESULT_2D1D_PHASE1.md (full honest reading + scoring), GATE_C_2D1D.md, verdicts.json,
+memory project_2d1d_haar_l1_linear_result. **DECISION POINT — stopped here (did NOT run Phase 2
+overnight):** Phase 1 underdelivered on BOTH goals ⇒ the modulus (Approach B) is now the ONLY lever,
+but its empirical modulus-field noise freeze is exactly the noise-model-care class that bit us before
+(v1 cross bug) and deserves Andreas's eyes + possibly a Jean-Luc note (his "absolute values" is now
+the crux) before committing compute. Phase 2 code-level spec ready (PLAN §Phase 2); ~1.5h once
+greenlit. GPU released. Awaiting Andreas: greenlight Phase 2 modulus / loop in Jean-Luc / redirect.
+
+## 2D-1D wavelet — PHASE 1 IMPLEMENTED + LAUNCHED (overnight) 2026-06-13 ~00:10 UTC
+Andreas: "write the plan for phase 1 and 2 and start implementing overnight" (he's asleep; nothing
+blocking). DONE: (1) PLAN_2D1D_PHASE_1_2.md (Phase 1 = pure linear Haar ℓ1; Phase 2 = modulus-Haar,
+now a code-level spec grounded in the WLStatistics API). (2) Verified the real machinery via Explore
++ direct reads: `bnt=<ndarray>` in flatsky_cross_l1 applies an arbitrary mix over the 4 autos
+(op=none) → so Approach A = pass the Haar matrix as the mix; "Haar across BNT" = single combined mix
+Haar·B over autos (no separate BNT σ-table needed uncut). Baselines reconfirmed from disk: flat_none
+2404.6, flat_product 2875.3. (3) Wrote+SMOKE-PASSED build_flatsky_haar_arm.py (orthonormal 4-bin
+Haar incl. deep ¼Σκ row; per-mode quadrature σ; smoke: shape (180,800), no NaN, deep SNR range
+[-12,14] vs diffs [-3,3] as predicted). (4) Wrote run_haar_2d1d_phase1.py orchestrator (resumable;
+build→sweep→gate→verdicts, verdict fns copied verbatim from run_laneB_gate_c.py). LAUNCHED on GPU2
+(bg task biprjkn1p) — 3 arms: haar_nobnt (faithful A1, goal-1), haar_bnt_uncut (goal-2 frame test),
+autohaar_nobnt (autos⊕Haar, goal-1 augmented). Build healthy @1100 patches/s.
+GPU posture: GPU2 only (my own CNN-sibling job + a root service co-tenant; ~34GB free, mem_frac 0.30);
+GPU0 (84%, bonjean+my CNN) & GPU1 (alahiry) untouched. Registered predictions: haar_nobnt 2900-3300,
+haar_bnt_uncut ≈ haar_nobnt if BNT-robust, autohaar ≥ haar_nobnt. Driver produces ARTIFACTS
+(median_summary.json + dumps + curves + verdicts.json + GATE_C_2D1D.md table); the scientific reading
+(RESULT_2D1D_PHASE1.md, goal-1/goal-2 verdict vs 2405/2875) is written BY HAND on completion. Phase 2
+NOT run tonight (gated on Phase 1 + needs the empirical modulus-field noise freeze). ~4-6h sequential.
+
+## 2D-1D wavelet — CONSOLIDATED into canonical doc + phased plan agreed 2026-06-13
+Discussion converged. (1) Andreas: Jean-Luc meant **modulus-first scattering** form and did NOT mean
+any whitening frame ⇒ my "whiten-before-modulus / C2" proposal RETIRED as a literal reading (M3
+principle kept only as the BNT-interpretation lens). (2) Andreas correctly flagged I conflated
+**wavelet ℓ1-norm ≠ scattering transform**; retracted the "this is Gatti scattering" line. The faithful
+statistic = **2D-1D wavelet ℓ1-norm** (S/N-binned hist of |2D-1D coeffs|), NOT scattering. TWO
+approaches both wanted: **A** = pure linear Haar-along-bins ℓ1 (faithful, cheap, but LINEAR ⇒ reduces
+to ordinary ℓ1 on the 4 Haar maps {¼Σκ,(12)-(34),κ1-κ2,κ3-κ4} = linear-recombination ceiling
+~1.2-1.4×); **B** = insert a modulus between the 2D & 1D transforms (only way past the linear ceiling,
+but scattering-STRUCTURED, no longer pure ℓ1; bonus: sum-of-positive-moduli plausibly more BNT-robust
+since no sign-cancellation). PLAN (Andreas): build A first, measure (fixes the linear ceiling), THEN
+draft B (gain measured vs A's known baseline). All consolidated into a clean canonical doc
+TOMO_2D1D_WAVELET_RESEARCH.md (rewritten from the layered v1/v2/v3 log into proper proposal+theory+
+phased plan §0-9 + verified bibliography + provenance). Registered predictions: A no-BNT 2900-3300,
+A BNT rescue-to-parity (inherits M4), B ≥ A. Tripwire: per-Haar-mode noise model (σ²_m=ΣH²σ²) or
+reproduces the 2026-05-15 cross-noise bug. Goal-2 fresh lever = surgical cut in the (j1,m) 2D
+scale-space (HOWLS-2 BNT-scale-cuts generalized; A/B-independent; untested; most promising BNT angle).
+Open Q to Jean-Luc: did "absolute values" = ℓ1's own |·| (A) or an intermediate modulus (B)? Build A
+regardless. STILL no code/GPU — awaiting Andreas's go on Phase-1 implementation plan.
+
+## NEW DIRECTION (research only) — 2D-1D wavelet / Haar tomographic L1 (Jean-Luc suggestion) 2026-06-13
+Andreas relayed Jean-Luc Starck's suggestion: generalize the starlet ℓ1-norm with an extra 1D
+axis = the tomographic-bin dimension ("2D-1D wavelet"), "something to do with Haar." Asked for
+DEEP RESEARCH first (no code). Done: 3 parallel research agents pulled PRIMARY sources (PDFs
+read, Sparse2D source tree). Verified: Starck Fadili Digel+2009 (A&A 504,641; arXiv:0904.3299) =
+canonical 2D-1D (2D starlet × 1D wavelet on a 3rd axis = energy/time); Schmitt+2012 sphere;
+Flöer&Winkel+2012 HI cubes; software `mr2d1d_trans`/`msvst_2d1d`/`Atrous2D1D` (+ bihaar variant)
+in CosmoStat/Sparse2D. CORRECTION to our prior: canonical 1D-axis wavelet is **B3-spline starlet,
+NOT Haar** (Haar is a non-default variant; 2009 paper argues Haar is worse *spatially*). Haar on 4
+bins = {¼Σκ, (12)-(34), κ1-κ2, κ3-κ4}, 2 decimated levels; unnormalized = sum/diff maps. NOVELTY:
+bin-axis wavelet for an ℓ1 HOS appears unclaimed (Zürcher/Gatti do pairwise products; Leistedt does
+*continuous radial*). ★ KEY ANALYSIS (mine): by linearity, S_{j1}[Σ_b H_{m,b}κ_b]=Σ_b H_{m,b}S_{j1}[κ_b]
+⇒ **2D-1D-(linear-Haar)-L1 ≡ ordinary starlet-L1 on a FIXED Haar recombination of the maps** — NOT
+a new functional, just a principled choice of linear combinations feeding the per-channel L1. Its
+ceiling = "best-fixed-linear-recombination + per-channel L1", a family we ALREADY bounded: M3
+whitening (right rotation recovers all), +deep ladder (bin-avg = the highest-value channel, and
+Haar's row-0 IS ¼Σκ), unions6 (1.18×), M4 (BNT rescue, modest at realistic cut). REGISTERED
+PREDICTION (before any run): no-BNT FoM3 ≈ 2900–3300 (~1.2–1.4× over auto 2405, ≈ L1+product 2875);
+BNT ≈ rescue-to-parity (inherits M4); will NOT break the CNN/joint ceiling in linear form. Genuine
+upside requires a MODULUS between 2D and 1D transforms (scattering/WPH route, §4) — that breaks the
+reduction. Tripwire: per-Haar-channel noise model (σ²_m=Σ H²σ²) or it reproduces the 2026-05-15
+cross-noise bug. VALUE = re-narrates the whole cross-maps zoo into ONE principled citable statistic
++ characterizes the linear ceiling + novelty; NOT a hoped-for FoM3 win. Full writeup +
+test matrix (H1 no-BNT, H2 BNT, H3 modulus-optional) in TOMO_2D1D_WAVELET_RESEARCH.md. NO code, NO
+GPU — awaiting Andreas's go on the test plan.
+
 ## Loop status (M4 PARKED 2026-06-13 ~14:40 UTC)
 Andreas: M4 result is modest in the realistic regime (1.07×) — "not super interesting for
 now." DECISION: record it (done: PAPER_MESSAGES.md M4 re-tagged PARKED, M_VS_L_ROBUSTNESS.md,
