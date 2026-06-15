@@ -1,4 +1,12 @@
-# BNT and per-channel statistics: where the information goes — the deep-dive (v2.2, 2026-06-12)
+# BNT and per-channel statistics: where the information goes — the deep-dive (v2.3, 2026-06-15)
+
+**v2.3 (pedagogy fold, 2026-06-15):** two explanatory additions prompted by talk-prep
+questions, no new results. (i) The *closure criterion* as a corollary under P7 — why the full
+auto+cross 2-pt survives BNT (B acts on it as the invertible congruence Ĉ↦BĈBᵀ) while autos-only
+fails by *incompleteness* and the l1 fails by being a *mix-then-marginalize* (irreversible). (ii)
+§4.2 now gives the explicit *full recovery set* three equivalent ways — the monomial/product
+tower, its linear-combination reorganisation, and the B⁻¹ shortcut for the l1 — and states the
+*ceiling* (the joint one-point PDF; the field is beyond any per-pixel combination).
 
 **v2.2 (GATE-C + theory-discussion fold, 2026-06-12 afternoon):** GATE C (TARP+SBC) has now
 RUN on the joint-stat q-arms (`overnight_menu/gate_c/GATE_C_JOINT.md`): pair2dq_nobnt FAILS
@@ -97,6 +105,8 @@ but not derived end-to-end):
 | Gaussian (two-point) share of the l1's BNT loss = 0.38 (P7 block appended; rest is non-Gaussian) | MEASURED | §5.4 |
 | Joint one-point statistics reach l1-auto +16%, broadly comparable to l1+product, autos alone (GATE C 06-12: noBNT joint arms over-confident in their tightest tercile, pair2d FAILS its band — "equal-or-better" downgraded) | MEASURED + GATED | §4.3, §1.8 |
 | Binned joint estimators: invariance requires grid TRANSPORT; axis-aligned grids cannot transport under B | PROVED (geometry) + MEASURED (0.45→0.70) | P4c, §4.3 |
+| Closure criterion: survives B ⇔ closed under its induced action; 2-pt closed (Ĉ↦BĈBᵀ), autos-only fails by incompleteness, l1 by mix-then-marginalize | PROVED | P7c |
+| Full one-point recovery set = monomial tower = linear-combo bank = (for the l1) B⁻¹ deep channels; ceiling = joint one-point PDF (field is beyond) | PROVED + MEASURED | §4.2, §5.4 |
 
 ================================================================================
 ## §1 — The story in plain language
@@ -484,6 +494,24 @@ maximally exposed to the basis, and auto+cross 2-pt is the configuration provabl
 Practical corollary: appending the 10 numbers of Ĉ to any BNT-basis datavector restores the
 complete Gaussian sector for free (§1.7 item 3).
 
+**P7c (the closure criterion — why this protects the full 2-pt datavector but not the l1).**
+P7 is one case of a general test: a summary T survives a fixed invertible B *exactly* iff B's
+induced action on T is itself invertible — T(Bx) is computable from T(x), and back. The full
+auto+cross second-moment vector passes: B acts on it by the linear congruence Ĉ ↦ BĈBᵀ,
+invertible (apply B⁻¹ and B⁻ᵀ), so the set is **closed** under B. There are exactly two ways to
+fail the test, one per arm of this paper. (a) *Autos only* keeps diag(BĈBᵀ) — four numbers that
+depend on all ten originals but cannot be inverted without the off-diagonals: a **completeness**
+failure (still 2-pt, just not the closed set; repaired by adding the cross-spectra). (b) *The
+l1* (or any per-map higher-order statistic): B's induced action is now "mix the maps, THEN take
+a marginal histogram," and marginalizing after mixing is irreversible — it discards exactly the
+between-channel structure (P4b/P4c). This is a **nonlinearity** failure that no finite list of
+per-channel channels can repair, because adding channels cannot make a marginal remember the
+joint. ∎ *In words:* the auto+cross power spectrum is the unique classical summary BNT acts on
+as a plain invertible relabelling; autos-only breaks it by incompleteness (cheap to fix), the
+l1 breaks it by being a mix-then-marginalize — fixable only by mixing the channels back
+(whitening, appended deep directions, or the CNN's first-layer linear mix, P3). The two failure
+modes are not symmetric: the first is a missing-numbers problem, the second is structural.
+
 ================================================================================
 ## §3 — The worked Gaussian toy (all closed-form, walked through)
 ================================================================================
@@ -622,6 +650,36 @@ constructible from BNT maps (another face of "the statistics basis is free").
 *Empirical anchor (2026-06-12):* the six equal-weight pair averages appended to the BNT-l1
 recover 1.178 of (noBNT − BNT) — survey practice fully rescues the per-channel statistic in
 the nulled basis (§1.7 item 5).
+
+**The full recovery set, three equivalent ways — and its ceiling (NEW v2.3).** Keep the four
+nulled autos and the six pairwise products κ′ᵢκ′ⱼ, and ask what *more* asymptotically recovers
+everything a one-point statistic can hold. Three equivalent answers, increasing in cleverness.
+
+1. *Monomial / product tower (brute force).* The histograms in hand already pin every single-bin
+   moment ⟨κ′ᵢⁿ⟩ (from the autos) and every equal-power pair moment ⟨κ′ᵢⁿκ′ⱼⁿ⟩ (from the pair
+   products); what is missing is the **unequal-power pairs** (⟨κ′ᵢ²κ′ⱼ⟩, …) and **all ≥3-bin**
+   moments. Add the matching monomial maps: at order 3, κ′ᵢ²κ′ⱼ (12 of them) and the triple
+   products κ′ᵢκ′ⱼκ′ₖ (4); at order 4, κ′ᵢ³κ′ⱼ, κ′ᵢ²κ′ⱼ², κ′ᵢ²κ′ⱼκ′ₖ and the four-bin product
+   κ′₁κ′₂κ′₃κ′₄; in general every monomial κ′₁^{a₁}κ′₂^{a₂}κ′₃^{a₃}κ′₄^{a₄} (Σaᵢ = k, all k). Their
+   means are the joint moments, which fix the joint one-point PDF. The tower never terminates —
+   incomplete at every finite order (the M2 statement above: pairwise complete at 2nd order,
+   incomplete at 3rd).
+2. *Linear-combination bank (the efficient equivalent).* By Cramér–Wold the histograms of enough
+   LINEAR maps w·κ′ determine the same joint PDF, each one packing many moments at once; the
+   multilinear accounting above (k−1 distinct ratios per pair; 3-bin cumulants need 3-bin unions)
+   is just the tower reorganised. Measured: six equal-weight pair-averages recover 1.178 — a
+   handful of weighted sums replaces the infinite product tower.
+3. *The B⁻¹ shortcut (if the target is only the original-basis l1, not the whole joint PDF).*
+   Because B is linear and invertible, κ = B⁻¹κ′: the four original marginals are simply the
+   histograms of **four fixed LINEAR channels** of the nulled maps — no products at all. Measured:
+   two deep linear channels recover 1.082; whitening (a pure rotation) 1.06. This is the cheap
+   target the CNN reaches for free, its first layer being exactly that linear mix (P3).
+
+*The ceiling.* All three routes top out at the **joint one-point PDF** (P4b, §1.8) — the
+information envelope over every per-channel / per-pixel statistic. The field carries strictly
+more (spatial / 2-pt-shape structure at fixed one-point PDF; P5, levels 3→4), reachable by no
+combination of single-pixel values; that residual is the CNN-on-the-maps' alone. So
+"asymptotically recover everything" means *all of the one-point information* — never the field.
 
 ### 4.3 The joint PDF as a statistic — design sheet (M3), MEASURED 2026-06-12
 
