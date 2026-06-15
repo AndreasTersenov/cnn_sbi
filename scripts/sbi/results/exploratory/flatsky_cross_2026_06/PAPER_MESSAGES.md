@@ -7,18 +7,54 @@ doc-backed) / **OPEN** (live work) / **VULN** (referee-exposed, needs shoring up
 
 ---
 
-## M1 — The learned "optimal" compressor (CNN-VMIM) does not beat the L1 norm. [VULN→to-LOCK]
-Headline framing (referee-proof): *the CNN does not OUTPERFORM L1* — not "L1 wins".
-Numbers (flat-local, pooled/representative): auto-only CNN best 2620 / mean 2457 vs L1 2405
-= **tie**; on the product cross channel L1+product 2875 ≫ CNN+product mean 2191 (CNN cross
-HURTS). So the learned compressor matches L1 on autos and is BEHIND on cross.
-Explanation: CNNs are optimal only in the limit; in practice finite cosmologies + a
-high-variance VMIM objective + an unstable companion flow keep them off it. Evidence the
-CNN (not the data) is the limiter: the *dataset is ample* (324k patch examples / 899
-cosmologies, §dataset below), so this is NOT data scarcity. **VULN:** a referee will say
-"your CNN is undertrained." Defended only once the separate CNN-optimization session shows
-best-effort training (architecture + NDE-flow + convergence) and the gap persists.
-Backing: FLATSKY_CNN_RESULT.md; HANDOFF_CNN_OPTIMIZATION.md (the defense work).
+## M1 — With matched best NDE, analytical ℓ1+product ≈ the optimal CNN; the CNN's lead is the estimator, not physics. [to-LOCK]
+**REWRITTEN 2026-06-15 (NDE-matched, every arm gated). Supersedes the common-MAF numbers below
+and the definitive_comparison violin figures (now stale — see "Outdated plots").**
+
+The earlier "CNN does not outperform L1" rested on a COMMON jaxili-MAF NDE that under-served the
+CNN (CNN-MAF ~2300–2620). With the CNN's NDE properly optimized — **ResNet18 + sbi_lens RealNVP
+4×128 → FoM3 3293** (σ 0.045/0.072/0.229), calibrated (TARP+SBC) — the optimized CNN DOES beat the
+common-MAF L1+product (2875) by ~15%. **But that gap is an ESTIMATOR effect, not physics:** give the
+calibration-clean ℓ1+product the SAME pipeline (VMIM-compress to 10-D → the SAME sbi_lens RealNVP)
+and it reaches **FoM3 ~3100–3270**, calibrated:
+- **Population-median FoM3 (robust, matched n=9000):** l1+product **3045** vs CNN **3326** — CNN ~9%
+  higher (with the 5-seed ensemble at n=1000, l1 ≈ 3173 → ~5%). σ(Ωm,σ8,w0) l1 0.048/0.077/0.229 vs CNN
+  0.045/0.072/0.231 ⇒ **σ(w0) matched, Ωm/σ8 within ~7%.** (The earlier "tie at 3270≈3293" was l1's
+  noisier n=1000 screens running high; the n=9000 medians are the reliable ones — quote these.)
+- **Noiseless mean-observation:** **CNN ~3250–3280 vs l1 ~2770–2840** (CNN ~10–15% tighter); both
+  UNBIASED. l1's lower noiseless constraint (≈ clean raw-MAF 2875) vs its higher median reflects its
+  larger per-patch realization scatter ([[project_l1_patch_sensitivity_full200]]).
+- **Calibration (Andreas 2026-06-15 — judge OVERALL, not per-tercile):** l1+product→RealNVP is
+  CALIBRATED for the paper — **pooled TARP within ±0.05 (net +0.001 = perfect joint coverage), SBC
+  marginal-std 0.30 in-band**; the CNN is comparably imperfect (net +0.030, conservative). The
+  per-tercile HIGH worst-dev (~0.07) is a stricter diagnostic, NOT a paper blocker; an optional
+  disjoint-split / conformal pass would erase it but isn't needed. Everything is within the bands.
+
+**Mechanism (the lever, isolated):** on the IDENTICAL 10-D ℓ1+product summary, jaxili-MAF = 2426 vs
+sbi_lens-RealNVP = 3146 (+30%) — exactly mirroring the CNN's own MAF 2312 → RealNVP 3293. RealNVP on
+the RAW 2000-D ℓ1 craters (1111), so the VMIM compression is what unlocks it. Controls: ℓ1-auto (no
+cross) → RealNVP = 2448, calibrated, does NOT inflate ⇒ the gain is the cross ξ_ij info, not a generic
+artifact; pair2d (over-confident raw) → RealNVP = 4864 but GATE **FAIL** (fool's gold, correctly
+rejected). **Different NDEs per probe are fine given each is independently gated** (Andreas).
+
+**Headline (referee-proof):** with best-effort training on BOTH sides — we optimized the CNN
+(arch+NDE+convergence) AND gave L1 the same NDE — the optimal CNN's advantage over the analytical
+wavelet ℓ1+product is **small (~5–9% on the population-median FoM3, ~10–15% on the expected
+observation; σ(w0) matched), calibrated, and is an estimator/full-field effect, not a representation
+gap ⇒ ℓ1+product is near-sufficient.** This
+RESOLVES the VULN (the gap is small, calibrated, and understood). Backing:
+analytical_nde_match/RESULT_ANALYTICAL_NDE_MATCH.md (matrix + sweep + overlays), fom3_matrix.png,
+tarp/sbc/contour overlay PNGs; FLATSKY_CNN_RESULT.md; HANDOFF_CNN_OPTIMIZATION.md.
+Memory: [[project_analytical_matches_cnn_via_nde]], [[project_cnn_nde_swap_resolves_m1]].
+
+### Outdated plots (regenerate / drop before the paper)
+The pre-NDE-swap comparison figures show the stale "CNN ~2300, L1 wins/ties on autos" picture and
+must NOT go in the paper. Known stale: `definitive_comparison/fiducial_full200/figures/
+headline_typical_patch_violins.png` (and the other definitive_comparison/violin/per-patch figures
+built on the common-MAF CNN). The CURRENT, PROPER comparison figures are the
+analytical_nde_match overlays: `fom3_matrix.png`, `tarp_overlay_l1_vs_cnn.png` /
+`tarp_pooled_l1_vs_cnn.png`, `sbc_overlay_l1_vs_cnn.png` / `sbc_pooled_l1_vs_cnn.png`,
+`contour_overlay_meanobs_l1_vs_cnn.png`. Audit `figs/` for any FoM3-bar/violin that cites CNN<2900.
 
 ## M2 — Designed cross-maps: convolution doesn't help, product modestly does, and we know why. [LOCKED]
 Conv +4% (≈0 de-leaked), product +20% (L1). Three-leg explanation: (i) the conv map is a
