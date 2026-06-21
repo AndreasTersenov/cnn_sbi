@@ -47,6 +47,24 @@ analytical_nde_match/RESULT_ANALYTICAL_NDE_MATCH.md (matrix + sweep + overlays),
 tarp/sbc/contour overlay PNGs; FLATSKY_CNN_RESULT.md; HANDOFF_CNN_OPTIMIZATION.md.
 Memory: [[project_analytical_matches_cnn_via_nde]], [[project_cnn_nde_swap_resolves_m1]].
 
+### Joint ℓ1 update (2026-06-21) — analytical now MATCHES the CNN, calibrated + seed-robust
+A richer analytical statistic closes the small remaining gap. The wavelet **joint ℓ1** (histogram
+of the across-channel coefficient vector, cells holding the ℓ1 sum — the *complete* cross-correlation
+statistic; products κ_iκ_j are only its 2nd-moment ξ_ij slice) through the SAME matched pipeline
+(VMIM→10-D→sbi_lens RealNVP) reaches **FoM3 3754 (n=9000), gate PASS** — vs ℓ1+product 3045 and CNN
+3326. So **analytical (joint ℓ1) ≈ the optimized CNN, calibrated** (σ 0.043/0.069/0.220 ≈ CNN
+0.045/0.072/0.231; pooled TARP net −0.003, within ±0.05). Seed-robust: 3 compressor seeds = 3754 /
+3761 / 4034, all PASS-with-caveat (band mean 3850, ~7%). A clean *completeness/calibration*
+trade-off bounds it: pushing the joint further (full4d 4501, pair2d 4864 — count histograms) buys raw
+FoM3 but FAILs the gate (over-confidence); the continuous ℓ1-weighted joint ℓ1 is the calibrated
+sweet-spot. ⇒ the joint captures the cross-correlation that products miss, and the CNN's earlier
+~9% edge over ℓ1+product is closed by a *fixed analytical statistic*. (BNT/Q2: joint ℓ1 is far more
+BNT-robust in raw FoM3 — 0.86 vs ℓ1+product's 0.26 — but the BNT-frame estimate is over-confident
+(gate FAIL); captures the cross-corr, not yet *calibratedly* BNT-lossless.) Backing:
+analytical_nde_match/RESULT_JOINT_MATCHED.md (+ RESULT_JOINTL1_SEEDCHECK.md); figures
+violins_jointl1_3arm, violin_fom3_jointl1_3arm, tarp/sbc_pooled_jointl1_3arm,
+contour_jointl1_vs_l1product_vs_cnn. Memory: [[project_joint_l1_matches_cnn]].
+
 ### Outdated plots (regenerate / drop before the paper)
 The pre-NDE-swap comparison figures show the stale "CNN ~2300, L1 wins/ties on autos" picture and
 must NOT go in the paper. Known stale: `definitive_comparison/fiducial_full200/figures/
