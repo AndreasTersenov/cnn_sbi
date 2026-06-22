@@ -65,6 +65,17 @@ analytical_nde_match/RESULT_JOINT_MATCHED.md (+ RESULT_JOINTL1_SEEDCHECK.md); fi
 violins_jointl1_3arm, violin_fom3_jointl1_3arm, tarp/sbc_pooled_jointl1_3arm,
 contour_jointl1_vs_l1product_vs_cnn. Memory: [[project_joint_l1_matches_cnn]].
 
+#### Calibrated update 2026-06-22 (compressor ensemble — the number to quote)
+The single-compressor joint ℓ1 (3754) was ~10% over-confident (SBC 0.31, caveat). A **3-compressor
+deep ensemble** (pool the 41/42/43 compressor posteriors per obs — principled, non-conformal)
+calibrates it to a **clean PASS** (TARP net −0.005, SBC 0.30) and gives the corrected FoM3 **3371**
+(σ 0.044/0.072/0.223) = a **calibrated TIE with the CNN (3326), σ matched, no caveat.** Removing the
+over-confidence brings the inflated 3754 down onto the CNN — physically sensible (the CNN is ~optimal;
+"analytical > CNN" was the over-confidence, now gone). **Quote 3371 ≈ CNN, not 3754.** The capacity
+sweep does NOT fix the over-confidence (flat across flow capacity) — it's amortization leakage, fixed
+by the ensemble. Backing: RESULT_JOINTL1_ENSEMBLE.md; figs violins_ensemble_3arm,
+tarp/sbc_pooled_ensemble_3arm, contour_ensemble_nobnt_3arm.
+
 ### Outdated plots (regenerate / drop before the paper)
 The pre-NDE-swap comparison figures show the stale "CNN ~2300, L1 wins/ties on autos" picture and
 must NOT go in the paper. Known stale: `definitive_comparison/fiducial_full200/figures/
@@ -94,6 +105,15 @@ BNT/no-BNT = **0.96×** (LOSSLESS, 3186 vs 3326). The collapse is NDE-independen
 discards the cross-channel info BEFORE the VMIM MLP, so even the CNN's own NDE can't recover it; the
 channel-mixing CNN mixes channels before the summary. Figures: analytical_nde_match/contour_bnt_*,
 bnt_fom3_bars_l1_vs_cnn, tarp_pooled_bnt_l1_vs_cnn. RESULT_ANALYTICAL_NDE_MATCH.md Addendum c.
+**Joint ℓ1 under BNT (2026-06-22, calibrated ensemble):** the wavelet joint ℓ1 is far more
+BNT-robust than the per-channel ℓ1/products — calibrated retention **0.72** (BNT 2424 / noBNT 3371,
+3-compressor ensemble, clean PASS both bases) vs ℓ1+product's **0.26** and CNN's **0.96**. So the
+joint captures ~3× more of the BNT-surviving cross-correlation than products, but is NOT fully
+BNT-lossless: the 0.72→0.96 gap is the full-4-D channel mixing the CNN learns, which a fixed
+(pairwise) analytical statistic cannot reach (the shear-aware rotated-grid binning did not close it —
+RESULT_JOINTL1_ROTATED.md). The single-arm raw retention 0.86 was over-confidence-inflated; calibrated
+it is 0.72. Backing: RESULT_JOINTL1_ENSEMBLE.md; figs contour_ensemble_bnt_3arm,
+tarp/sbc_pooled_ensemble_3arm.
 
 ## M4 — Make L1 work in BNT space via map combinations. [PARKED 2026-06-13 — NOT in paper for now]
 **Decision (Andreas 2026-06-13):** result is gated + schedule-tested but modest in the

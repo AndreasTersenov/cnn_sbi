@@ -11,6 +11,14 @@ BNT collapse (0.26×) being the direct evidence products miss most of the cross-
 (transported binning). full4d K=5 + dequantize; jointl1 K=10. Reference: ℓ1+product noBNT 3045 /
 BNT 779 (0.26×); pair2d→RealNVP 4864 GATE FAIL (the cautionary baseline).
 
+> **UPDATE 2026-06-22 — the calibrated numbers are in `RESULT_JOINTL1_ENSEMBLE.md`.** The
+> single-compressor joint ℓ1 below (noBNT 3754, BNT raw retention 0.86) was mildly/ frankly
+> over-confident. A **3-compressor deep ensemble** calibrates both bases to clean PASS and gives
+> the corrected numbers: **noBNT FoM3 3371 (σ 0.044/0.072/0.223) = calibrated TIE with the CNN
+> 3326**; **BNT FoM3 2424, calibrated retention 0.72** (not 0.86) vs ℓ1+product 0.26 vs CNN 0.96.
+> Read the single-arm tables below as the (over-confident) upper envelope; the ensemble is the
+> result. The rotated-grid shear fix did NOT work (RESULT_JOINTL1_ROTATED.md).
+
 ## Q1 — better statistic? (noBNT FoM3 vs ℓ1+product 3045; PASS-gate required)
 | arm (noBNT) | FoM3 n=9000 | σ(Ωm,σ8,w0) | gate |
 |---|---|---|---|
