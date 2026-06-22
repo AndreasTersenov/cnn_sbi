@@ -80,15 +80,30 @@ CNN seeds are compressor seeds 41 / 42 / 43. Headline single-seed = 3326 (seed 4
 
 The lift is CNN-specific; the same RealNVP that helps the 10-D CNN summary destroys the 2000-D L1 vector.
 
-### Calibration (GATE C: TARP-DRP net-bias; + conservative, − over-confident)
+### Calibration (GATE C: TARP-DRP + SBC) — recomputed with a proper uncertainty band (2026-06-22)
 
-| Arm | net-bias | HIGH-tercile |
-|---|---|---|
-| CNN auto-only (resnet18+RealNVP), no-BNT | +0.029 | +0.004 |
-| L1 +product (MAF) | +0.000 | — |
-| CNN BNT | — | +0.005 |
+NOTE: the pipeline's saved TARP `ecp_bootstrap` resamples only the random reference points (per-bin
+std ~1e-4), so its band was ~200× too small. The numbers below are recomputed by bootstrapping the
+600 validation sightlines (1σ ≈ ±0.020, matches the binomial SE), same convention for every arm
+(`references="random"`, `norm=True`, first 3 params). See `calib_refine_2026_06/` (figs + finding).
 
-SBC: flat within the 99% binomial band for all three params (see fig 08). Both summaries calibrated.
+Un-stratified TARP-DRP net (+ = conservative/over-covers; − = over-confident) and SBC rank-std
+(ideal 0.289; >0.289 = over-confident/narrow, <0.289 = conservative/wide):
+
+| Arm | TARP net (±1σ) | SBC std (Ωm/σ8/w0) | reading |
+|---|---|---|---|
+| CNN auto-only (resnet18+RealNVP) | **+0.033** ± 0.020 | 0.290 / 0.289 / 0.282 | mildly conservative (safe) |
+| L1 auto+product (MAF) | **+0.001** ± 0.020 | 0.296 / 0.300 / 0.295 | joint-calibrated; marginals slightly over-confident |
+| joint L1 (3-seed ensemble) | **+0.004** ± 0.020 | 0.299 / 0.298 / 0.298 | joint-calibrated; marginals ~ideal |
+
+CNN FoM3-stratified terciles (proper 1σ): LOW (widest) +0.053, MID +0.002, HIGH (tightest) +0.021 —
+mildly conservative across the board, no compensating under-coverage. SBC marginals flat within the
+99% binomial band for all arms. All three PASS GATE C.
+
+**Reading:** the CNN errs on the *safe* (conservative) side; the analytical L1 summaries err slightly
+*over-confident* on the marginals. The asymmetry means the reported FoM3 gap (CNN 3326/3304 vs
+L1+product 2875) **under**-states the CNN's lead — perfect calibration would tighten the CNN and loosen
+the L1. The CNN FoM3 is effectively a lower bound.
 
 ---
 
@@ -103,13 +118,17 @@ Flat copies live in `paper_figures/` (pdf + png). Sources:
 | 03_corner_l1_vs_cnn_stacked | `…/corner_resnet18_stacked` | population-stacked corner |
 | 04_fom3_distribution_l1_vs_cnn | `…/fom3_distribution_resnet18` | per-obs FoM3 distributions |
 | 05_calibration_best_cnn | `…/calibration_best_cnn_resnet18` | best-CNN calibration panel |
-| 06_tarp_cnn_vs_l1_calibrated | `…/tarp_cnn_vs_l1_calibrated` | both summaries on the TARP diagonal |
-| 07_tarp_cnn_standalone | `gate_c/tarp_drp/figures/tarp_resnet18_rnvp_dim3` | CNN TARP (un-stratified) |
+| 06_tarp_cnn_vs_l1_calibrated | `…/tarp_cnn_vs_l1_calibrated` | CNN vs L1+product TARP, proper 1σ band |
+| 06b_tarp_cnn_l1_jointl1_calibrated | `…/tarp_cnn_l1_jointl1_calibrated` | 3-way TARP (adds joint-L1 ensemble), proper 1σ |
+| 07_tarp_cnn_standalone | `gate_c/tarp_drp/figures/tarp_resnet18_rnvp_dim3` | CNN TARP (un-stratified), proper 1σ |
 | 08_sbc_cnn_rank_histograms | `gate_c/sbc/sbc_rank_histograms_resnet18` | CNN SBC, 99% band |
 | 09_corner_cnn_bnt_vs_nobnt | `…/corner_cnn_bnt_vs_nobnt` | CNN BNT vs no-BNT (losslessness) |
 | 10_fom3_bars_bnt_collapse | `…/fom3_bars_l1_cnn_bnt` | FoM3 bars: L1 collapses, CNN lossless |
 
-`…/` = `nde_sweep_2026_06_13/figs/`.
+`…/` = `nde_sweep_2026_06_13/figs/`. The calibration TARP figures (06/06b/07) were recomputed
+2026-06-22 with the proper sightline-bootstrap 1σ band (the pipeline's saved band was ~200× too
+small); see `calib_refine_2026_06/`. The stratified per-tercile version is
+`calib_refine_2026_06/figs/tarp_resnet18_stratified`.
 
 ---
 
