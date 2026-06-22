@@ -42,7 +42,7 @@ def load_sigma(basis, dev):
 
 
 def dataset_pass(split, perm_lo, perm_hi, flip, seed, stat, basis_mix, sigma, stats, k,
-                 dq_gen=None, ranges=None):
+                 dq_gen=None, ranges=None, rotation=None):
     from tfds_cross_tfdata_loader import iter_cross_tfds_batches
     print(f"  [{stat}] features from cross TFDS [{split} perms {perm_lo}-{perm_hi} "
           f"flip={flip} basis={basis_mix}] ...", flush=True)
@@ -54,7 +54,7 @@ def dataset_pass(split, perm_lo, perm_hi, flip, seed, stat, basis_mix, sigma, st
         if np.isnan(autos_np).any():
             print("    [!] skipped batch with NaN autos"); continue
         xs.append(fjs.compute_features(autos_np, stat, basis_mix, sigma, stats, k,
-                                       dequant_gen=dq_gen, ranges=ranges))
+                                       dequant_gen=dq_gen, ranges=ranges, rotation=rotation))
         th = theta_np.copy(); th[:, 3] = th[:, 3] / 100.0
         ths.append(th)
         n += autos_np.shape[0]
@@ -83,6 +83,10 @@ def main():
     ap.add_argument("--adaptive-ranges", action="store_true",
                     help="per-(channel,scale) percentile SNR grid instead of fixed [-5,5] "
                          "(the transported-binning variant; calibrated on ~3600 train maps)")
+    ap.add_argument("--rotated-binning", action="store_true",
+                    help="pair2d/jointl1 only: per-(pair,scale) 2-D PCA-whitened grid (rotates "
+                         "the grid onto the cloud's eigen-axes = the shear-aware transport, P4c). "
+                         "Supersedes --adaptive-ranges for the pairwise binning.")
     a = ap.parse_args()
 
     import torch
@@ -98,14 +102,21 @@ def main():
     print(f"############ joint arm build: stat={a.stat} basis={a.basis} k={a.k} "
           f"dequantize={a.dequantize} adaptive={a.adaptive_ranges} ############", flush=True)
     ranges = None
-    if a.adaptive_ranges:
+    rotation = None
+
+    def _autos_iter():
         from tfds_cross_tfdata_loader import iter_cross_tfds_batches
-        def _autos_iter():
-            for autos_np, _ in iter_cross_tfds_batches(
-                    TFDS, DDIR, "train", 512, flip=False, channel_scale=None,
-                    channel_slice=slice(0, 4), perm_lo=5, perm_hi=6, seed=0):
-                if not np.isnan(autos_np).any():
-                    yield autos_np
+        for autos_np, _ in iter_cross_tfds_batches(
+                TFDS, DDIR, "train", 512, flip=False, channel_scale=None,
+                channel_slice=slice(0, 4), perm_lo=5, perm_hi=6, seed=0):
+            if not np.isnan(autos_np).any():
+                yield autos_np
+
+    if a.rotated_binning:
+        rotation = fjs.calibrate_joint_rotation(_autos_iter(), basis_mix, sigma, stats, a.k)
+        print(f"  rotated (2-D PCA-whitened) pairwise binning: {len(rotation['pairs'])} pairs "
+              f"x {rotation['mu'].shape[1]} scales calibrated (shear-aware transport)", flush=True)
+    elif a.adaptive_ranges:
         ranges = fjs.calibrate_joint_ranges(_autos_iter(), basis_mix, sigma, stats, a.k)
         print("  adaptive per-(channel,scale) SNR ranges:", flush=True)
         for c in range(4):
@@ -113,9 +124,9 @@ def main():
             print("    ch%d: " % c + " ".join(f"[{x[0]:.1f},{x[1]:.1f}]" for x in r),
                   flush=True)
     ds_tr = dataset_pass("train", 5, 6, True, 1001, a.stat, basis_mix, sigma, stats, a.k,
-                         dq_gen=dq_gen, ranges=ranges)
+                         dq_gen=dq_gen, ranges=ranges, rotation=rotation)
     ds_va = dataset_pass("test", 0, 1, False, 2001, a.stat, basis_mix, sigma, stats, a.k,
-                         dq_gen=dq_gen, ranges=ranges)
+                         dq_gen=dq_gen, ranges=ranges, rotation=rotation)
     x_tr, th_tr = ds_tr["x"], ds_tr["theta"]
     x_va, th_va = ds_va["x"], ds_va["theta"]
 
@@ -136,6 +147,7 @@ def main():
     np.savez(a.out_cache + "/l1_val.npz", theta=th_va, x=x_va)
     np.savez(a.out_cache + "/l1_cache_meta.npz", stat=a.stat, basis=a.basis, k=a.k,
              dequantize=a.dequantize, adaptive_ranges=a.adaptive_ranges,
+             rotated_binning=a.rotated_binning,
              snr_range=fjs.SNR_RANGE, append_to=str(a.append_to),
              note="overnight menu arm; PLAN_OVERNIGHT_MENU.md")
 
@@ -149,7 +161,7 @@ def main():
         zf = np.load(f)
         autos = zf["patches"][:, :, :, :4].astype(np.float32)
         X.append(fjs.compute_features(autos, a.stat, basis_mix, sigma, stats, a.k,
-                                      dequant_gen=dq_gen, ranges=ranges))
+                                      dequant_gen=dq_gen, ranges=ranges, rotation=rotation))
         p = int(zf["perm"]) if "perm" in zf.files else int(f.split("perm")[-1].split(".")[0])
         perms.append(np.full(X[-1].shape[0], p, np.int32))
         patches.append(np.arange(X[-1].shape[0], dtype=np.int32))

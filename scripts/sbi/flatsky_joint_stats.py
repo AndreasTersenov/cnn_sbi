@@ -86,32 +86,102 @@ def calibrate_joint_ranges(autos_iter, basis, sigma, stats, k_unused,
     return torch.stack([lo - 0.05 * span, hi + 0.05 * span], dim=-1)  # (C,S,2)
 
 
+def calibrate_joint_rotation(autos_iter, basis, sigma, stats, k,
+                             n_examples=3600, q_lo=0.5, q_hi=99.5, eps=1e-8):
+    """Per-(pair,scale) 2-D PCA-whitening of the (u_i,u_j) SNR cloud (shear-aware transport):
+    rotates the pair's 2-D grid onto the cloud's eigen-axes AND scales to unit variance, so the
+    histogram follows BNT's full 2-D tilt (the shear the axis-aligned `ranges` cannot). Returns a
+    dict {pairs, mu(npairs,S,2), L(npairs,S,2,2)=diag(1/sqrt λ)·Vᵀ, rng(npairs,S,2,2)=[lo,hi] on
+    the whitened axes}. Calibrated ONCE on ~n_examples train maps; applied identically to all passes.
+    NB BNT mixes all 4 channels, so the BNT pair is NOT a 2-D rotation of the original pair —
+    this is a genuine pairwise transport, not the trivial full rotate-back."""
+    pooled, n = None, 0
+    for autos_np in autos_iter:
+        wc = wavelet_stack(autos_np, basis, stats)
+        B, C, S, H, W = wc.shape
+        u = (wc / sigma.view(1, C, S, 1, 1)).reshape(B, C, S, -1)
+        sub = u[:, :, :, ::37].reshape(-1, C, S)
+        pooled = sub if pooled is None else torch.cat([pooled, sub], 0)
+        n += B
+        if n >= n_examples:
+            break
+    pairs = fx.cross_pairs(pooled.shape[1])
+    S = pooled.shape[2]
+    dev, dt = pooled.device, pooled.dtype
+    npairs = len(pairs)
+    mu = torch.zeros(npairs, S, 2, device=dev, dtype=dt)
+    L = torch.zeros(npairs, S, 2, 2, device=dev, dtype=dt)
+    rng = torch.zeros(npairs, S, 2, 2, device=dev, dtype=dt)
+    eye = torch.eye(2, device=dev, dtype=dt)
+    for pidx, (i, j) in enumerate(pairs):
+        for s in range(S):
+            x = torch.stack([pooled[:, i, s], pooled[:, j, s]], dim=1)  # (m,2)
+            m = x.mean(0)
+            xc = x - m
+            cov = (xc.T @ xc) / (xc.shape[0] - 1) + eps * eye
+            evals, evecs = torch.linalg.eigh(cov)                       # ascending
+            Lmat = torch.diag(evals.clamp_min(eps).rsqrt()) @ evecs.T   # PCA-whitening (2,2)
+            v = xc @ Lmat.T                                             # (m,2) whitened
+            lo = torch.quantile(v, q_lo / 100.0, dim=0)
+            hi = torch.quantile(v, q_hi / 100.0, dim=0)
+            span = hi - lo
+            mu[pidx, s] = m
+            L[pidx, s] = Lmat
+            rng[pidx, s, :, 0] = lo - 0.05 * span
+            rng[pidx, s, :, 1] = hi + 0.05 * span
+    return {"pairs": pairs, "mu": mu, "L": L, "rng": rng}
+
+
+def _bin_axis(v, lo, hi, k):
+    """v (...) -> bin index in [0,k) with clamp-to-edge given scalar lo/hi."""
+    return torch.clamp(((v - lo) / (hi - lo) * k).long(), 0, k - 1)
+
+
 def pair2d_features(wc, sigma, k: int, weighted: bool = False,
-                    dequant_gen=None, ranges=None) -> torch.Tensor:
+                    dequant_gen=None, ranges=None, rotation=None) -> torch.Tensor:
     """(B,C,S,H,W) -> (B, npairs*S*k*k). weighted=False: counts (the joint PDF estimate);
     weighted=True: cells hold sum (|u_i|+|u_j|)/2 (the joint wavelet l1).
     dequant_gen: optional — U(0,1) noise per cell (kills the zero-point-mass of
     rarely-occupied cells, which seed-dependently NaN the MAF in the sparse BNT basis)."""
     B, C, S, H, W = wc.shape
     P = H * W
-    u, bins = _snr_bins(wc, sigma, k, ranges=ranges)
-    u = u.reshape(B, C, S, P)
-    bins = bins.reshape(B, C, S, P)
-    pairs = fx.cross_pairs(C)
+    u_snr = (wc / sigma.view(1, C, S, 1, 1)).reshape(B, C, S, P)    # SNR (weights + rotation input)
     ncell = k * k
     row = (torch.arange(B, device=wc.device) * ncell).view(B, 1)
     out = []
-    for (i, j) in pairs:
-        for s in range(S):
-            cell = bins[:, i, s] * k + bins[:, j, s]               # (B,P)
-            flat = (cell + row).reshape(-1)
-            if weighted:
-                w = 0.5 * (u[:, i, s].abs() + u[:, j, s].abs()).reshape(-1)
-                h = torch.zeros(B * ncell, dtype=torch.float64, device=wc.device)
-                h.scatter_add_(0, flat, w)
-            else:
-                h = torch.bincount(flat, minlength=B * ncell).to(torch.float64)
-            out.append(h.view(B, ncell))
+    if rotation is None:
+        _, bins = _snr_bins(wc, sigma, k, ranges=ranges)
+        bins = bins.reshape(B, C, S, P)
+        pairs = fx.cross_pairs(C)
+        for (i, j) in pairs:
+            for s in range(S):
+                cell = bins[:, i, s] * k + bins[:, j, s]           # (B,P)
+                flat = (cell + row).reshape(-1)
+                if weighted:
+                    w = 0.5 * (u_snr[:, i, s].abs() + u_snr[:, j, s].abs()).reshape(-1)
+                    h = torch.zeros(B * ncell, dtype=torch.float64, device=wc.device)
+                    h.scatter_add_(0, flat, w)
+                else:
+                    h = torch.bincount(flat, minlength=B * ncell).to(torch.float64)
+                out.append(h.view(B, ncell))
+    else:
+        pairs, mu, L, rng = (rotation[x] for x in ("pairs", "mu", "L", "rng"))
+        for pidx, (i, j) in enumerate(pairs):
+            for s in range(S):
+                ui, uj = u_snr[:, i, s], u_snr[:, j, s]            # (B,P)
+                x = torch.stack([ui, uj], dim=-1)                  # (B,P,2)
+                v = (x - mu[pidx, s]) @ L[pidx, s].T               # (B,P,2) whitened (rot+scale)
+                b0 = _bin_axis(v[..., 0], rng[pidx, s, 0, 0], rng[pidx, s, 0, 1], k)
+                b1 = _bin_axis(v[..., 1], rng[pidx, s, 1, 0], rng[pidx, s, 1, 1], k)
+                cell = b0 * k + b1                                 # (B,P)
+                flat = (cell + row).reshape(-1)
+                if weighted:
+                    w = 0.5 * (ui.abs() + uj.abs()).reshape(-1)
+                    h = torch.zeros(B * ncell, dtype=torch.float64, device=wc.device)
+                    h.scatter_add_(0, flat, w)
+                else:
+                    h = torch.bincount(flat, minlength=B * ncell).to(torch.float64)
+                out.append(h.view(B, ncell))
     f = torch.cat(out, dim=1)                                      # (B, npairs*S*k*k)
     if dequant_gen is not None:
         f = f + torch.rand(f.shape, generator=dequant_gen,
@@ -146,16 +216,16 @@ def full4d_features(wc, sigma, k: int, dequant_gen=None, ranges=None) -> torch.T
 
 
 def compute_features(autos_np, stat: str, basis, sigma, stats, k: int,
-                     dequant_gen=None, ranges=None) -> np.ndarray:
+                     dequant_gen=None, ranges=None, rotation=None) -> np.ndarray:
     wc = wavelet_stack(autos_np, basis, stats)
     if stat == "cov":
         f = cov_features(wc)
     elif stat == "pair2d":
         f = pair2d_features(wc, sigma, k, weighted=False, dequant_gen=dequant_gen,
-                            ranges=ranges)
+                            ranges=ranges, rotation=rotation)
     elif stat == "jointl1":
         f = pair2d_features(wc, sigma, k, weighted=True, dequant_gen=dequant_gen,
-                            ranges=ranges)
+                            ranges=ranges, rotation=rotation)
     elif stat == "full4d":
         f = full4d_features(wc, sigma, k, dequant_gen=dequant_gen, ranges=ranges)
     else:
