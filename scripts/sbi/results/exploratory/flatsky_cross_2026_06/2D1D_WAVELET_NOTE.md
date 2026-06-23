@@ -199,6 +199,47 @@ different 1D operation along the bins, a signed (peak/void-preserving) cross-bin
 different placement of the absolute value? We would rather check with you than conclude prematurely
 that the idea doesn't help.
 
+## 8. First-principles addendum (2026-06-23): why it failed, and when it *would* work very well
+
+Stepping back from the two specific readings, the negative has a structural cause that also says
+exactly when a 2D-1D-style approach shines. A "transform along the bin axis" must satisfy two things:
+**G1** read genuine *cross-bin* structure beyond fixed linear combinations; **G2** be *covariant* under
+the linear BNT relabelling `B`. The 4-bin construction fails both for intrinsic reasons:
+
+1. **At 4 bins the "1D wavelet" is not a wavelet — it is a fixed 4×4 rotation.** A wavelet needs a
+   multiscale axis; on 4 samples Haar just gives a deep mode + three differences, no scale hierarchy.
+   So "2D starlet ⊗ 1D Haar" = ℓ1 of four *fixed linear combinations* of the maps, which is bounded by
+   the fixed-linear-recombination ceiling (exactly the ~2900 plateau it hit) and adds nothing over the
+   conv/product channels. No mother wavelet escapes this — the bin axis is too short.
+2. **A fixed basis can never be BNT-covariant.** `H·B` is just another fixed frame, and per-channel ℓ1
+   of any fixed frame collapses when `B` rotates the signal-rich deep direction out of every channel.
+   Only a `B`-*adaptive* transform survives: whitening `(BBᵀ)^{-1/2}B` (= rotate-back, recovers fully
+   but undoes the cuts) or a *learned* mixing (= the CNN). A fixed wavelet is neither — BNT-fragile by
+   construction, not by tuning. (This is a theorem, consistent with the M3 whitening result.)
+
+The two failure causes point at the two regimes where it *would* work very well:
+
+- **Many tomographic bins.** This is the real one. With ~15-30+ bins (high tomographic resolution / a
+  continuous photo-z weighting) the redshift axis acquires genuine 1D scale structure — the regime
+  where the Starck et al. 2009 2D-1D transform shines (their finely-sampled energy axis). A
+  2D(space)×1D(redshift-scale) ℓ1 then captures *how the non-Gaussian structure evolves across redshift
+  scales* (peaks/voids coherent across z vs localized in z) — real information a 4-bin statistic cannot
+  hold. The approach is **bin-count-limited**; at 4 bins it degenerates.
+- **A signed, joint, covariant readout instead of a fixed-linear/modulus one — i.e. the joint ℓ1.**
+  Both A (linear, bounded) and B (modulus, sign-destroying) fail to read the *joint signed* across-bin
+  structure. The construction that does — histogramming the signed across-bin coefficient *vector* — is
+  the joint ℓ1: covariant under `B` (BNT-robust, climbs to ×0.72), sign-preserving, and joint (beats
+  the linear ceiling). See `JOINT_L1_DEFINITION_AND_THEORY.md`.
+
+**Synthesis.** The 2D-1D *wavelet* and the *joint ℓ1* are two routes to the same goal (generalise the
+wavelet ℓ1 across the tomographic axis). At 4 bins the wavelet route degenerates to a fixed rotation
+and the joint readout wins; **the joint ℓ1 is the small-bin-count limit of "doing the cross-bin part
+right," and a redshift-resolved 2D-1D ℓ1 is what it would become at high bin count** — the wavelet
+handling the now-long redshift axis, a signed joint readout handling the cross-structure. That
+many-bin, joint-readout version is a genuine future direction (it needs more tomographic bins than
+CosmoGridV1's 4), not a rescue for the present 4-bin setup, where the joint ℓ1 already captures
+everything the 2D-1D Haar could, and more.
+
 ## Figures (full paths)
 All under `/mnt/home/tersenov/software/cnn_sbi/scripts/sbi/results/exploratory/flatsky_cross_2026_06/plots_2d1d/`:
 - **Contour overlay** at a matched cosmology (the 5 arms; Haar-in-BNT-space visibly widest):
