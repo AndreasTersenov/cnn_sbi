@@ -3677,6 +3677,55 @@ def build_flow(n_cosmo_params: int, n_layers: int, hidden: int):
     return nf_logp, nf_sample
 
 
+def build_spline_flow(n_cosmo_params: int, n_layers: int, hidden: int,
+                      num_bins: int = 8, interval: float = 5.0):
+    """Neural Spline Flow (A2 leg) — conditional rational-quadratic-spline coupling chain on distrax.
+
+    distrax is used instead of the sbi_lens tfb RealNVP because tfb.RationalQuadraticSpline does not
+    jit in the TFP-JAX substrate. theta is expected z-scored (mean 0, std 1) by the caller so it lives
+    well inside [-interval, interval]; the caller un-standardizes the samples. base = N(0, I). Returns
+    (nf_logp, nf_sample) mirroring build_flow's interface (consumed by train_flow). Alternating
+    even/odd coupling masks; conditioner MLP sees concat([masked theta, summary y]).
+    """
+    import distrax
+    d, K, B = n_cosmo_params, int(num_bins), float(interval)
+
+    def make_chain(y):
+        layers = []
+        for i in range(n_layers):
+            mask = (jnp.arange(d) % 2 == (i % 2))
+
+            def conditioner(masked_x, _i=i):
+                h = jnp.concatenate([masked_x, y], axis=-1)
+                h = jax.nn.silu(hk.Linear(hidden, name="nsf%d_l0" % _i)(h))
+                h = jax.nn.silu(hk.Linear(hidden, name="nsf%d_l1" % _i)(h))
+                p = hk.Linear(d * (3 * K + 1), name="nsf%d_out" % _i)(h)
+                return p.reshape(p.shape[:-1] + (d, 3 * K + 1))
+
+            layers.append(distrax.MaskedCoupling(
+                mask=mask, conditioner=conditioner,
+                bijector=lambda params: distrax.RationalQuadraticSpline(
+                    params, range_min=-B, range_max=B)))
+        return distrax.Chain(layers)
+
+    @hk.transform
+    def nf_log_prob(theta, y):
+        z, ildj = make_chain(y).inverse_and_log_det(theta)
+        base = distrax.MultivariateNormalDiag(jnp.zeros(d), jnp.ones(d))
+        return base.log_prob(z) + ildj
+
+    @hk.transform
+    def nf_sample(y, n_samples):
+        n = y.shape[0]                                   # caller broadcasts the obs to (n_samples, dim)
+        base = distrax.MultivariateNormalDiag(jnp.zeros((n, d)), jnp.ones((n, d)))
+        z = base.sample(seed=hk.next_rng_key())          # (n, d)
+        x, _ = make_chain(y).forward_and_log_det(z)
+        return x                                         # (n, d): one posterior draw per row
+
+    nf_logp = hk.without_apply_rng(nf_log_prob)
+    return nf_logp, nf_sample
+
+
 def make_update_fn(nf_logp, optimizer):
     """JIT-compiled training update step."""
     def loss_fn(params, theta_batch, y_batch):

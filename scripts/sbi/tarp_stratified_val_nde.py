@@ -65,7 +65,7 @@ def main():
     import jax.numpy as jnp
     from npe_l1norm_cross_jaxili_nbody_tomo import preprocess_summaries, filter_zero_variance_bins
     from train_nde_from_compressed import (resolve_capacity, train_sbilens_realnvp,
-                                           train_jaxili_family)
+                                           train_sbilens_nsf, train_jaxili_family)
 
     layers, hidden = resolve_capacity(a.nde_family, a.nde_layers, a.nde_hidden)
     cdir = Path(a.train_cache_dir)
@@ -88,6 +88,8 @@ def main():
     out_ck.mkdir(parents=True, exist_ok=True)
     if a.nde_family == "sbilens_realnvp":
         samplers = train_sbilens_realnvp(layers, hidden, theta_tr, x_tr, seeds, M, dim, out_ck, a)
+    elif a.nde_family == "sbilens_nsf":
+        samplers = train_sbilens_nsf(layers, hidden, theta_tr, x_tr, seeds, M, dim, out_ck, a)
     else:
         samplers = train_jaxili_family(a.nde_family, layers, hidden, theta_tr, x_tr, seeds, M, out_ck, a)
 

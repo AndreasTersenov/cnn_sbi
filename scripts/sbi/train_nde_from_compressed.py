@@ -38,6 +38,7 @@ SBI = f"{REPO}/scripts/sbi"
 # Per-family (n_layers/transforms, hidden-width) defaults — used when --nde-layers/-hidden < 0.
 FAMILY_DEFAULTS = {
     "sbilens_realnvp": (4, 128),   # production CNN flow (npe_cnn --nvp-layers/--nvp-hidden)
+    "sbilens_nsf":     (4, 128),   # A2: rational-quadratic spline couplings (more expressive family)
     "jaxili_maf":      (5, 50),    # jaxili default (the B1 common-metric baseline)
     "jaxili_realnvp":  (5, 50),    # MAF-equivalent capacity (framework control)
     "jaxili_mdn":      (10, 50),   # n_components=10, hidden=50
@@ -192,6 +193,52 @@ def train_sbilens_realnvp(layers, hidden, theta_tr, x_tr, seeds, M, dim, out_dir
     return samplers
 
 
+def train_sbilens_nsf(layers, hidden, theta_tr, x_tr, seeds, M, dim, out_dir, args):
+    """A2: Neural Spline Flow (RQS couplings) in the sbi_lens RealNVP chain. theta is standardized to
+    the base scale (mean 0.5, std 0.05) so the spline models shape/correlations near [-B,B]; samples
+    are un-standardized. Same train_flow / pooling / metric machinery as train_sbilens_realnvp."""
+    import jax
+    import jax.numpy as jnp
+    import wandb
+    wandb.init(mode="disabled", project="nde-sweep", reinit=True)
+    sys.path.insert(0, SBI)
+    from npe_cnn_nbody_tomo import build_spline_flow, train_flow
+
+    mu = theta_tr.mean(0).astype(np.float32)
+    sd = (theta_tr.std(0) + 1e-8).astype(np.float32)
+    stdize = lambda t: ((t - mu) / sd).astype(np.float32)            # z-score -> N(0,1) base
+
+    n = len(theta_tr)
+    pidx = np.random.RandomState(0).permutation(n)
+    nval = max(1, n // 10)
+    val_idx, tr_idx = pidx[:nval], pidx[nval:]
+    dtr = {"theta": stdize(theta_tr[tr_idx]), "x": x_tr[tr_idx].astype(np.float32)}
+    dva = {"theta": stdize(theta_tr[val_idx]), "x": x_tr[val_idx].astype(np.float32)}
+
+    samplers = []
+    for seed in seeds:
+        t0 = time.time()
+        rng = jax.random.PRNGKey(seed)
+        nf_logp, nf_sample = build_spline_flow(n_cosmo_params=6, n_layers=layers, hidden=hidden)
+        best_params = train_flow(
+            rng, nf_logp, dtr, dva, n_cosmo=6, summary_dim=dim,
+            total_steps=args.flow_total_steps, batch_size=args.flow_batch_size,
+            save_every=args.flow_save_every, save_dir=out_dir / "ckpts" / f"nsf_s{seed}",
+            lr_init=args.flow_lr_init, end_lr=args.flow_lr_end,
+            grad_clip=args.flow_grad_clip, weight_decay=args.flow_weight_decay,
+            patience=args.flow_patience, lr_schedule_fn=None)
+
+        mu_j, sd_j = jnp.asarray(mu), jnp.asarray(sd)
+
+        def sampler(x, k, _p=best_params, _ns=nf_sample, _mu=mu_j, _sd=sd_j):
+            y = jnp.broadcast_to(jnp.asarray(x).reshape(1, dim), (M, dim))
+            raw = _ns.apply(_p, k, y, M)
+            return _mu + _sd * raw                           # un-standardize (z-score) to raw theta
+        samplers.append((seed, jax.jit(sampler)))
+        print(f"  NDE seed {seed} {time.time()-t0:.0f}s", flush=True)
+    return samplers
+
+
 def main():
     a = parse_args()
     sys.path.insert(0, str(REPO)); sys.path.insert(0, SBI)
@@ -236,6 +283,8 @@ def main():
     seeds = [int(s) for s in a.seeds.split(",") if s.strip()]
     if a.nde_family == "sbilens_realnvp":
         samplers = train_sbilens_realnvp(layers, hidden, theta_tr, x_tr, seeds, M, dim, out, a)
+    elif a.nde_family == "sbilens_nsf":
+        samplers = train_sbilens_nsf(layers, hidden, theta_tr, x_tr, seeds, M, dim, out, a)
     else:
         samplers = train_jaxili_family(a.nde_family, layers, hidden, theta_tr, x_tr, seeds, M, out, a)
 
