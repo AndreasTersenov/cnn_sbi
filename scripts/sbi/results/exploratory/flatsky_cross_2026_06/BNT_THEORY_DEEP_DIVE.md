@@ -395,6 +395,16 @@ broadly comparable to l1+product — NOT "equal-or-better".** A pitfall in its o
 count-histogram datavectors are harder to CALIBRATE through a MAF than weighted reductions
 (pure counts −0.134 vs weighted cells −0.080), not just harder to train.
 
+**Update (2026-06-22) — the calibrated joint ℓ1 and the projection-dimension ladder.** The arms
+above are the older count/quantile *q*-arms. The *calibrated* joint ℓ1 (ℓ1-weighted across-bin
+histogram, matched VMIM→sbi_lens-RealNVP, calibrated by a 3-compressor deep ensemble — the principled
+over-confidence fix, NOT finer binning) is clean-PASS in both bases and retains **0.72** of its no-BNT
+FoM under BNT (vs ℓ1+product 0.26, CNN 0.96). The retention ladder **0.26 → 0.72 → 0.96 is the
+dimension of the joint projection** a summary reads under the BNT rotation: per-channel 1-D marginals
+(most frame-fragile) → 2-D pairwise joint → full C-D joint (the CNN's learned mixing). This is the
+operational, measured face of P4b/P4c. Detail + mechanism: `JOINT_L1_DEFINITION_AND_THEORY.md`,
+`analytical_nde_match/RESULT_JOINTL1_ENSEMBLE.md`.
+
 ================================================================================
 ## §2 — Formal core (single scale; proofs walked through)
 ================================================================================

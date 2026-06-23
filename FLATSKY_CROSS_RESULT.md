@@ -6,6 +6,13 @@ with patch-local flat-sky cross-maps, recomputes L1, trains, calibrates, and mea
 power. Calibrated (TARP+SBC). Method matches the full-sphere `SUMMARY_PHASE_D` (pooled 3-seed,
 9000-obs median) so the comparison is apples-to-apples.
 
+> **Cross-correlation completion (2026-06-22):** the product cross-map captured here is only the
+> *2nd cross-moment* slice of the full inter-bin information. The **joint ℓ1** (ℓ1-weighted across-bin
+> coefficient histogram, no explicit cross-map) captures the complete pairwise cross-correlation and,
+> in the matched best-NDE pipeline with a 3-compressor ensemble, reaches a *calibrated tie with the CNN*
+> (FoM3 3371 ≈ 3326). See `analytical_nde_match/RESULT_JOINTL1_ENSEMBLE.md`,
+> `JOINT_L1_DEFINITION_AND_THEORY.md`; spine `PAPER_MESSAGES.md` M1.
+
 ## Headline
 
 **~92% of the full-sphere L1 auto+cross gain was LEAKAGE.** The physically-buildable patch-local

@@ -2,6 +2,8 @@
 
 **Pooled 3-seed 9000-obs median, common jaxili MAF (NDE confound removed).** CNN-VMIM compressor on the same de-leaked patch-local cross as the L1 side (`FLATSKY_CROSS_RESULT.md`). Calibration: GATE C section below + cnn_phase/gate_c.
 
+> **Note (2026-06-22):** numbers here are the older common-MAF arm. With matched best NDE, the optimal CNN reaches FoM3 **3326** and the analytical **joint ℓ1** reaches **3371** — a *calibrated tie* (ensemble-calibrated; the CNN is mildly conservative). The current L1-vs-CNN statement lives in `analytical_nde_match/RESULT_JOINTL1_ENSEMBLE.md` / `RESULT_JOINT_MATCHED.md`; spine `PAPER_MESSAGES.md` M1. CNN-perfect-calibration follow-up: `HANDOFF_CNN_CALIBRATION.md`.
+
 ## FoM3 (pooled median)
 
 | arm | CNN FoM3 | CNN vs auto | L1 FoM3 | L1 vs auto | CNN/L1 |

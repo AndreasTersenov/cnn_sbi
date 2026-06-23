@@ -100,6 +100,19 @@ equal-or-better than l1+product" → "broadly comparable" (the claimed ~4–5% e
 order as the miscalibration). Rescue-ladder arms (unions6/cov50) remain ungated ratio
 measurements, per precedent.
 
+**Update — calibrated joint ℓ1 in the matched best-NDE pipeline (2026-06-22; this is the clean
+BNT-ladder number, distinct from the older `jointl1q` *q*-arm above).** The joint arms above are the
+earlier MAF-path count/quantile estimators (GATE-C-downgraded, not BNT-invariant as binned estimators,
+P4c). The *calibrated* **joint ℓ1** — the ℓ1-weighted across-bin coefficient histogram through the
+matched VMIM→10-D→sbi_lens-RealNVP pipeline, calibrated by a **3-compressor deep ensemble** — gives the
+clean ladder: it **retains 0.72** of its no-BNT FoM3 (BNT 2424 / no-BNT 3371, clean-PASS both bases) vs
+ℓ1+product's **0.26** and the CNN's **0.96**. The joint statistic thus captures ~3× more of the
+BNT-surviving cross-correlation than products; the residual 0.72→0.96 is the full-4-channel mixing the
+CNN learns. The retention ladder **0.26 → 0.72 → 0.96 = the dimension of the joint projection** the
+summary reads (1-D marginals → 2-D pairwise → full C-D). Detail + mechanism:
+`analytical_nde_match/RESULT_JOINTL1_ENSEMBLE.md`, `JOINT_L1_DEFINITION_AND_THEORY.md`; spine
+`PAPER_MESSAGES.md` M3.
+
 ## Caveats / validation (GATE C ran 2026-06-11 — pass WITH caveats; `bnt_campaign/gate_c/GATE_C_BNT.md`)
 
 - **Headline-safe:** all calibration deviations are at the ~5–10% credible-width level vs the
