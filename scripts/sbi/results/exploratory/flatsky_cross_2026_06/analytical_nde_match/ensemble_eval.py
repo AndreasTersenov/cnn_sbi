@@ -20,6 +20,12 @@ A = f"{SBI}/results/exploratory/flatsky_cross_2026_06/analytical_nde_match"
 ARMS = {
     "nobnt": [f"{A}/jointl1_nobnt", f"{A}/jointl1_nobnt_s42", f"{A}/jointl1_nobnt_s43"],
     "bnt":   [f"{A}/jointl1_bnt",   f"{A}/jointl1_bnt_s42",   f"{A}/jointl1_bnt_s43"],
+    # BNT auto/+product 3-compressor ensembles (calibration fix 2026-06-26)
+    "product_bnt": [f"{A}/l1product_bnt_vmim_s41", f"{A}/ens_bnt_product_s42", f"{A}/ens_bnt_product_s43"],
+    "auto_bnt":    [f"{A}/bnt_auto",               f"{A}/ens_bnt_auto_s42",    f"{A}/ens_bnt_auto_s43"],
+    # no-BNT counterparts (uniform-analytical-family check 2026-06-27; CNN stays single)
+    "product_nobnt": [f"{A}/l1product_vmim_s41", f"{A}/l1product_vmim_s42", f"{A}/l1product_vmim_s43"],
+    "auto_nobnt":    [f"{A}/l1none_vmim_s41",   f"{A}/ens_nobnt_auto_s42", f"{A}/ens_nobnt_auto_s43"],
 }
 FLOW = SimpleNamespace(flow_total_steps=50000, flow_batch_size=128, flow_lr_init=1e-3,
                        flow_lr_end=1e-5, flow_save_every=2000, flow_patience=20,
@@ -28,7 +34,7 @@ FLOW = SimpleNamespace(flow_total_steps=50000, flow_batch_size=128, flow_lr_init
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--mode", choices=["nobnt", "bnt"], default="nobnt")
+    ap.add_argument("--mode", choices=list(ARMS), default="nobnt")
     ap.add_argument("--out", required=True)
     ap.add_argument("--cuda-visible-devices", default="2")
     ap.add_argument("--m-samples", type=int, default=2000)
@@ -95,7 +101,7 @@ def main():
              perm=perm_ref, patch=patch_ref, sel=sel_ref,
              truth=(truth if truth is not None else np.array([])))
     g = np.isfinite(fom3)
-    med = dict(arm=f"jointl1_{a.mode}_ensemble", n=int(g.sum()),
+    med = dict(arm=f"{a.mode}_ensemble", n=int(g.sum()),
                sigma_Om=float(np.median(sig[g, 0])), sigma_s8=float(np.median(sig[g, 1])),
                sigma_w0=float(np.median(sig[g, 2])), fom3=float(np.median(fom3[g])))
     json.dump(med, open(outd / "median_summary.json", "w"), indent=2)
