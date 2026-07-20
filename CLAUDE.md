@@ -4,16 +4,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this repo is
 
-Simulation-based inference (SBI) for weak gravitational lensing cosmology. Forked/extended from Justine Zeghal's [Learn2Map](https://github.com/Justinezgh/Learn2Map). It learns low-dimensional summaries from convergence maps (CNN-VMIM compressor or wavelet L1/L1-VMIM statistics) and feeds them to a conditional RealNVP flow (or `jaxili` NPE) to infer `theta = [Omega_m, sigma_8, w0, h0, n_s, Omega_b]`.
+Simulation-based inference (SBI) for weak gravitational lensing cosmology. It learns low-dimensional summaries from convergence maps (CNN-VMIM compressor or wavelet L1/L1-VMIM statistics) and feeds them to a conditional RealNVP flow (or `jaxili` NPE) to infer `theta = [Omega_m, sigma_8, w0, h0, n_s, Omega_b]`.
 
-The current scientific focus (branch `l1-cross-maps`) is **comparing wavelet-L1 vs CNN-VMIM compressors across 3 input configurations** (auto-only, cross-only, auto+cross). Headline as of 2026-05-15: the previously reported "L1 wins FoM3 ~3× on harm-cross" result was inflated by a wrong cross-channel noise model in the L1 SNR calibration (auto pixel-σ used for all channels, but cross-map amplitudes are ~10⁴× smaller — collapsing the wavelet SNR to ~0 and zeroing 95% of L1 histogram bins). The fix is a channel-aware noise estimator `--cross-noise-model channel_empirical_global` in `scripts/sbi/npe_l1norm_cross_jaxili_nbody_tomo.py`. With the fix:
-- L1 cross-only FoM3 12 k → 16 k (+33%).
-- L1 auto+cross FoM3 ~65 k → 34 k (−48%).
-- Real L1/CNN ratio on auto+cross is ~1.5× (not 3×). CNN still beats L1 by ~1.6× on cross-only.
+**Current focus (2026-06):** the **flat-sky patch-local** wavelet-L1 vs CNN-VMIM comparison on 10°/80px tomographic maps (with patch-local cross-maps), written up as an A&A paper at `~/papers/L1_vs_CNN_Tomographic_SBI/` (its `REVIEW.md` = manuscript state). The message spine is `scripts/sbi/results/exploratory/flatsky_cross_2026_06/PAPER_MESSAGES.md`.
 
-**Read `HANDOFF.md` and `memory/project_l1_noise_model_correction.md` first** for the current state. The older `HARMONIC_L1_VS_CNN_INVESTIGATION_BRIEF.md` / `HARMONIC_L1_VS_CNN_SESSION2_HANDOFF.md` cite the v1 (inflated) numbers and are historical.
+**Paper framing (decided 2026-06-19, supersedes the earlier "showcase the journey" plan):** present the work as **robust results**, not a failures/pitfalls/journey narrative — now that M1-v2 lands as expected, carry *much less* "things that failed" and instead show that everything was investigated and optimised thoroughly and the results hold. KEEP the methodological findings (leakage → patch-local; NDE estimator-effect / near-sufficiency; BNT frame-artifact) but frame them as robust results, not traps. Plan: `~/papers/L1_vs_CNN_Tomographic_SBI/HANDOFF_PAPER_M1v2_REFRAME_2026-06-19.md`.
 
-`PROJECT_SCIENTIFIC_KNOWLEDGE_BASE.md` is the long-form synthesis (more up-to-date than `README.md` but predates the noise-model correction). `CLAUDE_CODE_HANDOFF.md` is the runbook for the earlier (`bnt-parity-techniques`) BNT-inflation phase.
+**Current science — the headline (2026-06-15; supersedes everything older):**
+- **Auto-only: tie.** Patch-local cross-maps use two operators: the *convolution* (≈0 gain — it is a lag-space re-encoding of two-point info, CLT-compressed to a few modes at 10°, seed-fragile) and the *pointwise product* κ_i·κ_j (= ξ_ij; +20% for L1, since its one-point moments are genuine non-Gaussian joint moments ⟨κ_iⁿκ_jⁿ⟩). The conv≈0 / product+20% ranking is a **population-median** statement (it flips on single-obs).
+- **L1-vs-CNN (M1):** with best-effort NDE on **both** sides (CNN = ResNet18 + sbi_lens RealNVP; L1+product = VMIM-compress → the *same* RealNVP), the optimal CNN leads L1+product by **~5–9% FoM3 (σ(w0) matched), calibrated — but the gap is an estimator effect (RealNVP vs MAF: +30% on the identical 10-D summary), not a representation gap ⇒ L1+product is near-sufficient.** The earlier full-sphere harmonic "CNN wins ~2–3×" was ≈92% **leakage**; the common-MAF "CNN does not outperform L1" under-served the CNN.
+- **BNT (M3):** per-channel L1 **collapses** under BNT (~0.15–0.26×); the channel-mixing CNN is **near-lossless** (~0.93–0.96×). The inflation is a **frame artifact**, not lost information — one fixed rotation of the nulled maps recovers the full no-BNT FoM (1.06/1.01). Mechanism = *no-deep-direction* frame + *mix-then-marginalize* irreversibility (closure criterion P7c; proofs P1–P7c in `BNT_THEORY_DEEP_DIVE.md`). The old "BNT correlates the shape noise / lowers per-map S/N" story is **falsified** as the mechanism. NB whitening is diagnostic (it un-does the per-slice cuts), not a practical analysis frame; the practical BNT-lossless route is a joint compressor.
+- **Joint-ℓ1 refinement (2026-06-22; refines M1 + M3, does not overturn either):** the *joint* wavelet ℓ1 (across-channel coefficient histogram, the complete cross-correlation statistic of which the products κ_i·κ_j are only the 2nd-moment slice) → VMIM 10-D → the same RealNVP is the **cleanest** M1 statement: a **3-compressor deep ensemble** (seeds 41/42/43, the principled fix for amortized-SBI over-confidence — *not* finer binning) gives a **calibrated TIE** with the CNN (FoM3 **3371 ≈ CNN 3326**, clean-PASS both bases), versus the analytical ℓ1+product's pass-*with-caveat* 3270≈3293. Under BNT it sharpens M3: joint-ℓ1 retains **0.72** of its no-BNT FoM (calibrated 2424) vs products **0.26** vs CNN **0.96** — i.e. the joint statistic captures ~3× more BNT-surviving cross-correlation than products. Completeness/calibration trade-off: products 3045 → joint-ℓ1 3371/3754 → full-4D 4501 (FAIL) → pair-2D 4864 (FAIL, count-hists over-fit). See `analytical_nde_match/RESULT_JOINTL1_ENSEMBLE.md` and `JOINT_L1_DEFINITION_AND_THEORY.md`.
+
+**Read first** for current state: `PAPER_MESSAGES.md` (spine), `FLATSKY_{CROSS,CNN,BNT}_RESULT.md`, `analytical_nde_match/RESULT_ANALYTICAL_NDE_MATCH.md` (M1, ℓ1+product), `analytical_nde_match/RESULT_JOINTL1_ENSEMBLE.md` + `JOINT_L1_DEFINITION_AND_THEORY.md` (M1/M3 joint-ℓ1 refinement, the cleanest current statement), `BNT_THEORY_DEEP_DIVE.md` (BNT proofs/interpretation). Parked (not in paper): M4 (BNT cut-space rescue, ~1.07× at realistic cuts), M5 (joint one-point stats — "broadly comparable", GATE-C caveated), and the 2D1D Haar wavelet (a tested, understood negative).
+
+**Superseded / historical — do NOT cite as current science:** the full-sphere harmonic "CNN wins ~2–3×" (≈92% leakage); the common-MAF "CNN does not outperform L1"; the 2026-05-15 noise-model framing; `HANDOFF.md`, `HARMONIC_L1_VS_CNN_*`, `PROJECT_SCIENTIFIC_KNOWLEDGE_BASE.md`, `CLAUDE_CODE_HANDOFF.md`.
 
 ## Environment and external dependencies
 
@@ -105,7 +110,7 @@ The tree is chronically dirty (notebooks with outputs, caches, `__pycache__`, ca
 2. Do not delete or rewrite pre-existing dirty files unless the user explicitly asks.
 3. Do not run destructive cleanup (`git reset --hard`, mass deletes, `git clean`).
 4. Do not commit generated artifacts (results, caches, `.pkl` checkpoints, `*.pyc`) unless asked.
-5. Active development branch is `l1-cross-maps`; the "main" PR target is `main`. The earlier BNT campaign sits on `bnt-parity-techniques`.
+5. Active development branch is `analytical-nde-match-2026-06` (the M1/joint-ℓ1 work); the "main" PR target is `main`. Earlier branches: `cnn-nde-optimization-2026-06` (CNN-opt sweep), `l1-cross-maps` (the harmonic-cross arm), `bnt-parity-techniques` (the BNT campaign).
 
 ## Project protocol (from `skills/sbi/SKILL.md`)
 
@@ -133,8 +138,8 @@ Adopted 2026-05-22 after the cnn-auto-push-18-20-2026 retrospective. Every long-
 
 ## Other reference docs in the tree
 
-- **`HANDOFF.md`** (root) — most recent session handoff. Always read this first when picking up the cross-only L1 vs CNN comparison.
-- `HARMONIC_L1_VS_CNN_INVESTIGATION_BRIEF.md`, `HARMONIC_L1_VS_CNN_SESSION2_HANDOFF.md` — **HISTORICAL** running record of the L1-vs-CNN investigation. Cite the v1 (broken noise model) numbers as if they were the science answer. Treat as background; the v2 narrative is in `HANDOFF.md` and `memory/project_l1_noise_model_correction.md`.
+- **Current-state docs** (the read-first list is in "What this repo is" above): `scripts/sbi/results/exploratory/flatsky_cross_2026_06/PAPER_MESSAGES.md` (message spine), repo-root `FLATSKY_{CROSS,CNN,BNT}_RESULT.md`, `…/analytical_nde_match/RESULT_ANALYTICAL_NDE_MATCH.md` (M1), `…/BNT_THEORY_DEEP_DIVE.md` (BNT proofs/interpretation); the manuscript at `~/papers/L1_vs_CNN_Tomographic_SBI/` (`REVIEW.md`).
+- **HISTORICAL / superseded** (background only; their numbers are no longer the science answer): `HANDOFF.md`, `HARMONIC_L1_VS_CNN_INVESTIGATION_BRIEF.md`, `HARMONIC_L1_VS_CNN_SESSION2_HANDOFF.md`, `PROJECT_SCIENTIFIC_KNOWLEDGE_BASE.md`, `CLAUDE_CODE_HANDOFF.md`.
 - `Harmonic_cross_maps.md`, `Flat-Sky_Tomographic_Cross_Maps.md` — definitions and conventions for the cross-map channels.
 - `SBI_L1_CNN_PIPELINE_DETAILED.md` — step-by-step audit trail of all four pipelines.
 - `L1_CONTOUR_INVESTIGATION_LOG.md`, `L1_FIXES_VALIDATION_REPORT.md`, `L1_VMIM_FINAL_CONCLUSIONS.md` — L1 diagnosis and fix history.
