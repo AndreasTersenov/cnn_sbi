@@ -30,6 +30,11 @@ Known git-orphans this must catch (verified missing from the clone):
 - `scripts/sbi/results/exploratory/flatsky_cross_2026_06/analytical_nde_match/RESULT_TWOPT_SPLIT_ENSEMBLE.md`
   — the de-inflated ΔNG numbers (124/260) are quoted from it second-hand;
   the primary doc exists only on titan.
+- `RESULT_OPERATOR_GATE.md` (same campaign tree) — records the *content* of
+  the "PASS with caveat" gate verdict for the conv/both operator-probe arms.
+  The paper's `fig:ablation` caption says "calibrated with caveat" on its
+  authority; rewording that caption (and adding the App-A sentence a referee
+  will ask for) is blocked until this file is read.
 - `…/flatsky_cross_2026_06/conv_map_secure/` — the adversarial-verification
   outputs behind `CONV_MAP_SECURE_RESULT.md`: `secure_conv_mean.py`,
   `slope_seed_test.py`, `quantify_t4.py`, **`t4_results.npz`** (small npz —
@@ -129,6 +134,8 @@ restyling means re-running inference.
 ## Post-transfer verification (5 minutes)
 
 - [ ] `RESULT_TWOPT_SPLIT_ENSEMBLE.md` present and readable.
+- [ ] `RESULT_OPERATOR_GATE.md` present and readable (unblocks the
+      `fig:ablation` caveat caption).
 - [ ] `conv_map_secure/t4_results.npz` present.
 - [ ] `l1product_vmim_s41..43`, `l1none_vmim_s41` + `ens_nobnt_auto_s42/43`
       caches load.
