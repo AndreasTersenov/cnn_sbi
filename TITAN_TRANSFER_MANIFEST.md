@@ -119,6 +119,17 @@ restyling means re-running inference.
   campaigns. If found, take the whole directory.
 - **Canonical-recipe CNN seed-42/43 compressors** (see 1a) — search
   checkpoint dirs for the canonical tag before concluding they don't exist.
+- **Canonical CNN training configuration** (paper §3.3 reproducibility): the
+  *resolved* config of the canonical ResNet-18 VMIM training run — batch
+  size, learning-rate schedule values, and the augmentation policy (flip /
+  rotation flags, on-the-fly noise injection on or off). The clone's analysis
+  scripts reference `flip=True/False` arms and an "augmentation stochastic
+  check", so the switches exist in code; what git likely lacks is the
+  canonical run's config dump / command line. Grab `driver.out`, config
+  JSON/YAML dumps, and launch scripts under the canonical campaign dir.
+  Purpose: one sentence of training detail in the paper at the level of
+  Omori et al. (arXiv:2606.12255), who state batch size and augmentation
+  policy explicitly.
 - Do NOT hunt for the optuna study on titan — it ran on a different cluster
   (confirmed absent from all titan material).
 
