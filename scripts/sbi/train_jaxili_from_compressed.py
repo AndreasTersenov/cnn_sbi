@@ -209,3 +209,19 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+
+def posterior_moments(samples: np.ndarray) -> tuple:
+    """Per-observation posterior mean (3,) and full covariance (3, 3).
+
+    Added 2026-07-28. The absence of this pair in the persisted per-observation metrics
+    is what made the Table-1 error bars unrecoverable after the Titan RAID0 failure:
+    a mixture of two pooled members has exact moments
+        m_mix = (m_i + m_j) / 2
+        C_mix = (C_i + C_j) / 2 + (m_i - m_j)(m_i - m_j)^T / 4
+    so the mean-displacement term is required, and storing only per-member covariances
+    (or only the pooled ensemble) leaves it uncomputable. population_sweep.py persists
+    the output of this function for every observation and every pooled member.
+    """
+    s = np.asarray(samples, dtype=np.float64)[:, :3]
+    return s.mean(axis=0), np.cov(s.T)
