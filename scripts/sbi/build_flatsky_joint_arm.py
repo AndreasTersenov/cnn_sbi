@@ -20,13 +20,22 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import flatsky_joint_stats as fjs
 
-BASE = HERE + "/results/exploratory/flatsky_cross_2026_06"
-TFDS = "nbody_cosmogrid_dataset_tomo_cross/grid_10deg_80px_nonoverlap180"
-DDIR = "/home/tersenov/tensorflow_datasets"
-FID_OBS = (HERE + "/results/exploratory/cross_maps_campaign/"
+# RECOVERY PATCH (2026-07-28): the four constants below pointed at the dead Titan machine
+# (DDIR at /home/tersenov, BASE/FID_OBS inside the damaged tree). Made env-overridable, with
+# the originals as defaults so the file still behaves identically where those paths exist.
+# Nothing else in this file is changed. See recovery/HANDOFF_STATE.md sections 3 and 7a.
+BASE = os.environ.get("JOINT_BASE", HERE + "/results/exploratory/flatsky_cross_2026_06")
+TFDS = os.environ.get(
+    "JOINT_TFDS", "nbody_cosmogrid_dataset_tomo_cross/grid_10deg_80px_nonoverlap180")
+DDIR = os.environ.get("JOINT_TFDS_DIR", "/home/tersenov/tensorflow_datasets")
+FID_OBS = os.environ.get(
+    "JOINT_FID_OBS",
+    HERE + "/results/exploratory/cross_maps_campaign/"
            "full_sphere_cache_fiducial_10deg/nobnt/obs")
-SIGMA = {"nobnt": BASE + "/flatsky_cross_noise_sigma.npz",
-         "bnt": BASE + "/flatsky_cross_noise_sigma_bnt.npz"}
+SIGMA = {"nobnt": os.environ.get("JOINT_SIGMA_NOBNT",
+                                 BASE + "/flatsky_cross_noise_sigma.npz"),
+         "bnt": os.environ.get("JOINT_SIGMA_BNT",
+                               BASE + "/flatsky_cross_noise_sigma_bnt.npz")}
 RESO, NS = 7.5, 5
 
 
