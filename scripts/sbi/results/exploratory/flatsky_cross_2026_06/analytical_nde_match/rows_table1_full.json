@@ -1,0 +1,82 @@
+{
+ "l1 auto, no-BNT": {
+  "singles": {
+   "s41": "/lustre/fsn1/projects/rech/nzu/ulx34io/recovery/sweeps/auto_nobnt_s41/per_patch_metrics.npz",
+   "s42": "/lustre/fsn1/projects/rech/nzu/ulx34io/recovery/sweeps/auto_nobnt_s42/per_patch_metrics.npz",
+   "s43": "/lustre/fsn1/projects/rech/nzu/ulx34io/recovery/sweeps/auto_nobnt_s43/per_patch_metrics.npz"
+  },
+  "ensemble": "/lustre/fsn1/projects/rech/nzu/ulx34io/recovery/sweeps/auto_nobnt_ensemble/per_patch_metrics.npz",
+  "published": 2448,
+  "quoted": "single"
+ },
+ "l1 auto, BNT": {
+  "singles": {
+   "s41": "/lustre/fsn1/projects/rech/nzu/ulx34io/recovery/sweeps/auto_bnt_s41/per_patch_metrics.npz",
+   "s42": "/lustre/fsn1/projects/rech/nzu/ulx34io/recovery/sweeps/auto_bnt_s42/per_patch_metrics.npz",
+   "s43": "/lustre/fsn1/projects/rech/nzu/ulx34io/recovery/sweeps/auto_bnt_s43/per_patch_metrics.npz"
+  },
+  "ensemble": "/lustre/fsn1/projects/rech/nzu/ulx34io/recovery/sweeps/auto_bnt_ensemble/per_patch_metrics.npz",
+  "published": 388,
+  "quoted": "ensemble"
+ },
+ "l1 +product, no-BNT": {
+  "singles": {
+   "s41": "/lustre/fsn1/projects/rech/nzu/ulx34io/recovery/sweeps/product_nobnt_s41/per_patch_metrics.npz",
+   "s42": "/lustre/fsn1/projects/rech/nzu/ulx34io/recovery/sweeps/product_nobnt_s42/per_patch_metrics.npz",
+   "s43": "/lustre/fsn1/projects/rech/nzu/ulx34io/recovery/sweeps/product_nobnt_s43/per_patch_metrics.npz"
+  },
+  "ensemble": "/lustre/fsn1/projects/rech/nzu/ulx34io/recovery/sweeps/product_nobnt_ensemble/per_patch_metrics.npz",
+  "published": 3045,
+  "quoted": "single"
+ },
+ "l1 +product, BNT": {
+  "singles": {
+   "s41": "/lustre/fsn1/projects/rech/nzu/ulx34io/recovery/sweeps/product_bnt_s41/per_patch_metrics.npz",
+   "s42": "/lustre/fsn1/projects/rech/nzu/ulx34io/recovery/sweeps/product_bnt_s42/per_patch_metrics.npz",
+   "s43": "/lustre/fsn1/projects/rech/nzu/ulx34io/recovery/sweeps/product_bnt_s43/per_patch_metrics.npz"
+  },
+  "ensemble": "/lustre/fsn1/projects/rech/nzu/ulx34io/recovery/sweeps/product_bnt_ensemble/per_patch_metrics.npz",
+  "published": 718,
+  "quoted": "ensemble"
+ },
+ "joint l1, no-BNT": {
+  "singles": {
+   "s41": "/lustre/fsn1/projects/rech/nzu/ulx34io/recovery/sweeps/jointl1_nobnt_s41/per_patch_metrics.npz",
+   "s42": "/lustre/fsn1/projects/rech/nzu/ulx34io/recovery/sweeps/jointl1_nobnt_s42/per_patch_metrics.npz",
+   "s43": "/lustre/fsn1/projects/rech/nzu/ulx34io/recovery/sweeps/jointl1_nobnt_s43/per_patch_metrics.npz"
+  },
+  "ensemble": "/lustre/fsn1/projects/rech/nzu/ulx34io/recovery/sweeps/jointl1_nobnt_ensemble/per_patch_metrics.npz",
+  "published": 3371,
+  "quoted": "ensemble"
+ },
+ "joint l1, BNT": {
+  "singles": {
+   "s41": "/lustre/fsn1/projects/rech/nzu/ulx34io/recovery/sweeps/jointl1_bnt_s41/per_patch_metrics.npz",
+   "s42": "/lustre/fsn1/projects/rech/nzu/ulx34io/recovery/sweeps/jointl1_bnt_s42/per_patch_metrics.npz",
+   "s43": "/lustre/fsn1/projects/rech/nzu/ulx34io/recovery/sweeps/jointl1_bnt_s43/per_patch_metrics.npz"
+  },
+  "ensemble": "/lustre/fsn1/projects/rech/nzu/ulx34io/recovery/sweeps/jointl1_bnt_ensemble/per_patch_metrics.npz",
+  "published": 2424,
+  "quoted": "ensemble"
+ },
+ "CNN, no-BNT": {
+  "singles": {
+   "s41": "/lustre/fsn1/projects/rech/nzu/ulx34io/recovery/sweeps/cnn_nobnt_s41_pnone/per_patch_metrics.npz",
+   "s42": "/lustre/fsn1/projects/rech/nzu/ulx34io/recovery/sweeps/cnn_nobnt_s42_pnone/per_patch_metrics.npz",
+   "s43": "/lustre/fsn1/projects/rech/nzu/ulx34io/recovery/sweeps/cnn_nobnt_s43_pnone/per_patch_metrics.npz"
+  },
+  "ensemble": "/lustre/fsn1/projects/rech/nzu/ulx34io/recovery/sweeps/cnn_nobnt_ensemble_pnone/per_patch_metrics.npz",
+  "published": 3326,
+  "quoted": "single"
+ },
+ "CNN, BNT": {
+  "singles": {
+   "s41": "/lustre/fsn1/projects/rech/nzu/ulx34io/recovery/sweeps/cnn_bnt_s41_pnone/per_patch_metrics.npz",
+   "s42": "/lustre/fsn1/projects/rech/nzu/ulx34io/recovery/sweeps/cnn_bnt_s42_pnone/per_patch_metrics.npz",
+   "s43": "/lustre/fsn1/projects/rech/nzu/ulx34io/recovery/sweeps/cnn_bnt_s43_pnone/per_patch_metrics.npz"
+  },
+  "ensemble": "/lustre/fsn1/projects/rech/nzu/ulx34io/recovery/sweeps/cnn_bnt_ensemble_pnone/per_patch_metrics.npz",
+  "published": 3186,
+  "quoted": "single"
+ }
+}
