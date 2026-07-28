@@ -37,3 +37,59 @@ reproducibility. Differences: it reads the frozen per-channel RMS from
 `max|delta| <= 9e-4` rather than `allclose(rtol=1e-3, atol=1e-3)`, and verifies the
 compressor checkpoint SHA-256 by default. Cross-checked against the original: functionally
 equivalent on the flat_local route, slightly stricter.
+
+---
+
+## Complete job inventory
+
+Every SLURM job run during the 2026-07-28 recovery, so the numbers can be traced end to
+end. Submit order was: `setup/` -> compressors -> sweeps -> tables.
+
+### Production — these produced the quoted numbers
+
+| job | arm(s) |
+|---|---|
+| `cnn_nobnt.slurm`, `cnn_bnt.slurm` | 3 ResNet-18 VMIM compressors per frame (seeds 41/42/43) |
+| `vmim_none_{nobnt,bnt}.slurm` | l1 auto-only compressors |
+| `vmim_product_{nobnt,bnt}.slurm` | l1 +product compressors |
+| `vmim_joint.slurm` | joint l1 compressors |
+| `build_joint_arm.slurm` | raw joint-l1 datavector (3000-D) |
+| `train_l1both_build.slurm` | raw l1 datavector caches |
+| `train_l1product_s41.slurm` | the validation gate: l1+product no-BNT s41 vs the published 3045 |
+| `cnn_fidsum.slurm` | CNN observed summaries + G1 gate |
+| `sw_auto_*`, `sw_product_*`, `sw_joint_chain.slurm`, `sw_cnn.slurm` | the 9000-mock population sweeps |
+| `extra_seeds.slurm` | seeds 44/45/46 for the six-seed check (RESULT §7) |
+
+### setup/ — environment and one-off reconstruction
+
+The obs cache, the no-BNT frozen sigma table and the patch geometry all had to be rebuilt
+before any arm could run. `{find,fit,measure,prove,confirm}_centers.slurm` are the
+investigation that recovered and then verified the 180 patch centres two independent
+ways; its output is pinned in `inputs/centers_PAPER_180.npy` and must not be regenerated.
+
+### superseded/ — kept for the record, DO NOT USE
+
+`joint l1` was initially and wrongly mapped onto the ordinary l1 driver's
+`--cross-op both` (conv+product channels). It reproduced faithfully — and is a different
+statistic. no-BNT looked plausible (3130 vs 3371) and hid the error; BNT exposed it
+(703.9 vs 2424). The real statistic is the 2-D pairwise l1-weighted histogram in
+`flatsky_joint_stats.py` (`stat="jointl1"`), run via `build_joint_arm.slurm`.
+Everything in this directory belongs to that dead end, plus a timing probe and two
+retries. The sweeps it produced (`sweeps/joint_l1_nobnt_*`, `sweeps/joint_bnt_*`,
+`vmim/both_*`) are discarded and must not be quoted.
+
+## Patched pipeline scripts
+
+Three scripts in `scripts/sbi/` had paths hardcoded to the dead Titan machine and were
+made env-overridable so they run anywhere. All three changes are additive — nothing was
+removed but the hardcoded paths:
+
+| script | change |
+|---|---|
+| `build_full_sphere_cross_cache.py` | `CG_PARENT` / `CG_GRID_DIRNAME` env; new `--centers-npy` to load pinned centres instead of regenerating them |
+| `freeze_flatsky_cross_noise.py` | `FLATSKY_FID_CACHE` / `FLATSKY_FID_H5` / `FLATSKY_OUT_DIR` env |
+| `analytical_nde_match/ensemble_eval.py` | env-overridable paths; persists per-observation mean/cov/arm_mean/arm_cov and adds `--save-samples` |
+| `build_flatsky_joint_arm.py` | `JOINT_*` env overrides (see the previous commit) |
+
+`RECOVERY_STATE.md` is the working state document from the recovery session: verified
+constants, what was destroyed vs rebuilt, and the gotchas that cost real time.

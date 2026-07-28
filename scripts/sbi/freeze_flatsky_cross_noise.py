@@ -59,11 +59,18 @@ import flatsky_cross as fx
 import healpy as hp
 import h5py
 
-FID_CACHE = (HERE / "results/exploratory/cross_maps_campaign/"
-             "full_sphere_cache_fiducial_10deg/nobnt/obs")
-FID_H5 = Path("/home/tersenov/CosmoGridV1/stage3_forecast/fiducial/"
-              "cosmo_fiducial/perm_0000/projected_probes_maps_nobaryons512.h5")
-OUT_DIR = HERE / "results/exploratory/flatsky_cross_2026_06"
+# JZ port: both input paths were Titan-local with no CLI override. Env-driven now,
+# defaulting to the rebuilt cache on $SCRATCH and the read-only shared CosmoGridV1.
+FID_CACHE = Path(os.environ.get(
+    "FLATSKY_FID_CACHE",
+    str(HERE / "results/exploratory/cross_maps_campaign/"
+               "full_sphere_cache_fiducial_10deg/nobnt/obs")))
+FID_H5 = Path(os.environ.get(
+    "FLATSKY_FID_H5",
+    "/lustre/fsmisc/dataset/CosmoGridV1/stage3_forecast/fiducial/"
+    "cosmo_fiducial/perm_0000/projected_probes_maps_nobaryons512.h5"))
+OUT_DIR = Path(os.environ.get(
+    "FLATSKY_OUT_DIR", str(HERE / "results/exploratory/flatsky_cross_2026_06")))
 
 
 def _load_constants():

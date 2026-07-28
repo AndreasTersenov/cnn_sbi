@@ -88,12 +88,24 @@ class CosmoEntry:
         return self.realization_dir / f"perm_{perm:04d}"
 
 
+_CG_PARENT = os.environ.get("CG_PARENT", "/lustre/fsmisc/dataset")
+# On Titan the grid subset lived under a locally-reorganised "new_grid" directory; the
+# IDRIS shared dataset keeps CosmoGridV1's original "grid". Overridable so either works.
+_CG_GRID_DIRNAME = os.environ.get("CG_GRID_DIRNAME", "grid")
+
+
 def _remap_path_par(path_par: str) -> Path:
-    """Mirror the path remap used by tf_dataset_nbody_tomo._generate_examples."""
+    """Mirror the path remap used by tf_dataset_nbody_tomo._generate_examples.
+
+    JZ port: the original hardcoded Path("/home/tersenov") (ignoring --cosmogrid-root)
+    and renamed grid -> new_grid. Both are now environment-driven, defaulting to the
+    read-only shared copy at $DSDIR/CosmoGridV1.
+    """
     s = path_par.replace("CosmoGrid", "CosmoGridV1") \
-                .replace("raw", "stage3_forecast") \
-                .replace("grid", "new_grid")
-    return Path("/home/tersenov") / s.lstrip("/")
+                .replace("raw", "stage3_forecast")
+    if _CG_GRID_DIRNAME != "grid":
+        s = s.replace("/grid/", f"/{_CG_GRID_DIRNAME}/")
+    return Path(_CG_PARENT) / s.lstrip("/")
 
 
 def _theta_from_row(row) -> np.ndarray:
@@ -163,6 +175,7 @@ class BuildConfig:
     snapshot_cosmo_id: str
     snapshot_perm: int
     max_abs_lat: float | None = None
+    centers_npy: str | None = None   # if set, load centres instead of generating
 
 
 def _per_pixel_noise_std(sigma_e: float, galaxy_density: float, nside: int) -> float:
@@ -273,6 +286,41 @@ def compute_cross_patches(
     return patches
 
 
+def _resolve_centers(cfg) -> np.ndarray:
+    """Patch centres: load from file if given, else generate.
+
+    WHY THE FILE OPTION EXISTS. _build_non_overlapping_centers orders candidates with
+    `np.argsort(np.abs(lat))`, and argsort's default kind is quicksort, which is NOT
+    stable. Every HEALPix ring is a block of exact ties, so the tie order -- and hence
+    the whole selected tiling -- can differ between numpy versions for identical
+    arguments. Observed directly during the recovery: numpy 1.24.4 and 1.26.4 produce
+    tilings sharing only 2 of 180 centres. numpy 1.24.4 reproduces the paper's centres
+    (confirmed at 22 indices by bit-exact reprojection against the cross TFDS); 1.26.4
+    does not. Passing the verified centres in removes that hidden dependence entirely.
+    """
+    path = getattr(cfg, "centers_npy", None)
+    if path:
+        centers = np.load(str(path)).astype(np.float32)
+        if centers.ndim != 2 or centers.shape[1] != 2:
+            raise ValueError(f"--centers-npy {path}: expected (N,2), got {centers.shape}")
+        if centers.shape[0] != cfg.n_centers:
+            raise ValueError(f"--centers-npy {path}: {centers.shape[0]} centres "
+                             f"but --n-centers={cfg.n_centers}")
+        if cfg.max_abs_lat is not None and np.abs(centers[:, 1]).max() >= cfg.max_abs_lat:
+            raise ValueError(f"--centers-npy {path}: |lat|max="
+                             f"{np.abs(centers[:,1]).max():.3f} violates "
+                             f"--max-abs-lat={cfg.max_abs_lat}")
+        print(f"  centres LOADED from {path} "
+              f"({centers.shape[0]}, |lat|max={np.abs(centers[:,1]).max():.4f})", flush=True)
+        return centers
+    return _build_non_overlapping_centers(
+        n_centers=cfg.n_centers,
+        min_separation_deg=cfg.min_separation_deg,
+        center_nside=cfg.center_nside,
+        max_abs_lat=cfg.max_abs_lat,
+    )
+
+
 def _worker(job: tuple[CosmoEntry, int], cfg: BuildConfig) -> tuple[str, dict]:
     """Build one (cosmo, perm) job. Returns (status, info dict for manifest)."""
     # Pin healpy / OpenMP to 1 thread per worker process to avoid oversubscription
@@ -288,12 +336,7 @@ def _worker(job: tuple[CosmoEntry, int], cfg: BuildConfig) -> tuple[str, dict]:
         return ("missing", {"cosmo_id": entry.cosmo_id, "perm": perm,
                             "h5_path": str(h5_path)})
 
-    centers = _build_non_overlapping_centers(
-        n_centers=cfg.n_centers,
-        min_separation_deg=cfg.min_separation_deg,
-        center_nside=cfg.center_nside,
-        max_abs_lat=cfg.max_abs_lat,
-    )
+    centers = _resolve_centers(cfg)
     info: dict = {
         "cosmo_id": entry.cosmo_id,
         "cosmo_idx": entry.cosmo_idx,
@@ -422,6 +465,10 @@ def parse_args() -> argparse.Namespace:
                    help="Exclude patch centers with |lat|>=this (deg) BEFORE selection "
                         "(10deg campaign: 75 -> no near-pole patches). None = 20deg behavior.")
     p.add_argument("--center-nside", type=int, default=32)
+    p.add_argument("--centers-npy", type=str, default=None,
+                   help="Load patch centres from this .npy (N,2)=[lon,lat] instead of "
+                        "generating them. Use for exact reproduction: the generator's "
+                        "argsort tie-order is numpy-version dependent (see _resolve_centers).")
     p.add_argument("--out-dir", type=Path, required=True)
     p.add_argument("--num-workers", type=int, default=50)
     p.add_argument("--snapshot-cosmo-id", type=str, default="cosmo_fiducial")
@@ -457,6 +504,7 @@ def main() -> None:
         n_centers=args.n_centers,
         min_separation_deg=args.min_separation_deg,
         center_nside=args.center_nside,
+        centers_npy=args.centers_npy,
         noise_seed_base=args.noise_seed_base,
         regimes=regimes,
         snapshot_cosmo_id=args.snapshot_cosmo_id,
