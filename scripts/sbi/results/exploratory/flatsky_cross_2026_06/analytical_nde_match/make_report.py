@@ -13,9 +13,13 @@ from __future__ import annotations
 import argparse
 import json
 
-ORDER = ["l1 auto, no-BNT", "l1 auto, BNT", "l1 +product, no-BNT", "l1 +product, BNT",
+ORDER = ["l1 auto, no-BNT", "l1 auto, BNT",
+         "l1 +conv, no-BNT", "l1 +conv, BNT",
+         "l1 +product, no-BNT", "l1 +product, BNT",
+         "l1 +conv+product, no-BNT", "l1 +conv+product, BNT",
          "joint l1, no-BNT", "joint l1, BNT", "CNN, no-BNT", "CNN, BNT"]
-PRETTY = {"l1 auto": "ℓ1 auto-only", "l1 +product": "ℓ1 +product",
+PRETTY = {"l1 auto": "ℓ1 auto-only", "l1 +conv": "ℓ1 +conv",
+          "l1 +product": "ℓ1 +product", "l1 +conv+product": "ℓ1 +conv+product",
           "joint l1": "joint ℓ1", "CNN": "CNN"}
 
 
@@ -66,7 +70,10 @@ def main():
         r = d[n]
         s, f = split(n)
         frac = r["std"] / r["mean"]
-        W(f"| {s} | {f} | **{r['published']:.0f} ± {frac*r['published']:.0f}** "
+        pub = r.get("published")
+        central = pub if pub is not None else r["central"]
+        tag = "" if pub is not None else " *(new)*"
+        W(f"| {s} | {f}{tag} | **{central:.0f} ± {frac*central:.0f}** "
           f"| {100*frac:.1f}% | ±{r['median_se']:.1f} |")
     W("")
     W("**n = 3 compressor seeds for every row**, so the ± column is comparable across summaries.")
@@ -136,8 +143,10 @@ def main():
         ps = r["per_seed"]
         pop = r.get("population", {})
         trio = " / ".join(f"{ps[k]:.1f}" for k in sorted(ps))
-        dl = 100 * (r["central"] - r["published"]) / r["published"]
-        W(f"| {n} | {r['published']:.0f} | {r['central']:.1f} ({r['quoted']}) | {dl:+.1f}% "
+        pub = r.get("published")
+        pub_cell = f"{pub:.0f}" if pub is not None else "— *(new)*"
+        dl_cell = (f"{100 * (r['central'] - pub) / pub:+.1f}%" if pub is not None else "—")
+        W(f"| {n} | {pub_cell} | {r['central']:.1f} ({r['quoted']}) | {dl_cell} "
           f"| {trio} | ±{r['std']:.0f} ({r['pct']:.1f}%) | {r['bias_pct']:+.1f}% "
           f"| ±{r['median_se']:.2f} | {pop.get('rho', float('nan')):.3f} "
           f"| {pop.get('CV_pop', float('nan')):.3f} |")
